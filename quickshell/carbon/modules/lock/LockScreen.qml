@@ -15,10 +15,17 @@ Scope {
 
     function lock() {
         if (LockTransition.phase === "idle") {
-            LockTransition.startLock()
+            LockTransition.startLock(false)
+        } else if (LockTransition.phase === "locking") {
+            // Transition is actively animating desktop pre-roll, do not interrupt!
+            return
         } else {
             sessionLock.locked = true
         }
+    }
+
+    function unlock() {
+        LockTransition.startUnlock()
     }
 
     Connections {

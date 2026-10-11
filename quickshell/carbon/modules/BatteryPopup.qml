@@ -219,13 +219,11 @@ Item {
                 /* Wave animation phase state */
                 property real wavePhase: 0.0
 
-                Timer {
-                    id: waveTimer
-                    interval: 45
-                    repeat: true
-                    running: root.open && card.opacity > 0.85
+                FrameAnimation {
+                    id: waveAnim
+                    running: root.open && card.opacity > 0.85 && root.visible
                     onTriggered: {
-                        wavyCard.wavePhase = (wavyCard.wavePhase + 0.04) % 1000.0
+                        wavyCard.wavePhase += frameTime * 0.88
                         waveCanvas.requestPaint()
                     }
                 }

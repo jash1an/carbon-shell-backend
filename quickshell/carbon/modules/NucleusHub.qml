@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Shapes
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
@@ -31,12 +32,14 @@ Item {
     /* ── Signals ── */
     signal openLauncher()
     signal openWallpapers()
+    signal openPower()
+    signal requestLock()
     signal closingStarted()
     signal closeRequested()
 
     /* ── Properties & State ── */
     property bool hubOpen: false
-    property string activeMode: "hub" // "hub" | "wallpapers" | "appsearch" | "wifi" | "bluetooth"
+    property string activeMode: "hub" // "hub" | "wallpapers" | "appsearch" | "wifi" | "bluetooth" | "power"
     property string focusedLobe: ""    // "" | "connect" | "launch" | "spaces" | "alerts"
 
     /* External IPC Triggers */
@@ -117,8 +120,18 @@ Item {
         if (!root.hubOpen) root.open()
         root.activeMode = "wallpapers"
         root.focusedLobe = ""
-        wpSearchInput.text = ""
-        fetchWallpapers()
+        root.loadWallpapersForCurrentSource()
+    }
+
+    function openPowerMode() {
+        closeFinishTimer.stop()
+        if (!root.hubOpen) {
+            root.randomizeOrbitalPositions()
+            root.hubOpen = true
+        }
+        root.activeMode = "power"
+        root.focusedLobe = ""
+        root.randomizePowerPositions()
     }
 
     Timer {
@@ -194,6 +207,79 @@ Item {
             lobe.targetAngle = angle
             lobe.orbitalRadius = dist
         }
+    }
+
+    /* ── Randomize Power Satellites Across Full 360° Circle ── */
+    property var powerOrbData: [
+        { id: "lock", icon: "lock", deg: 205, dist: 114, iconColor: "#FFFFFF" },
+        { id: "sleep", icon: "bedtime", deg: 302, dist: 114, iconColor: "#FFFFFF" },
+        { id: "reboot", icon: "restart_alt", deg: 38, dist: 114, iconColor: "#FFFFFF" },
+        { id: "shutdown", icon: "power_settings_new", deg: 114, dist: 114, iconColor: "#F28B82" }
+    ]
+
+    function randomizePowerPositions() {
+        var baseSectors = [
+            { min: 15, max: 75 },
+            { min: 105, max: 165 },
+            { min: 195, max: 255 },
+            { min: 285, max: 345 }
+        ]
+        var order = [0, 1, 2, 3]
+        for (var i = order.length - 1; i > 0; i--) {
+            var j = Math.floor(Math.random() * (i + 1))
+            var temp = order[i]
+            order[i] = order[j]
+            order[j] = temp
+        }
+        var baseItems = [
+            {
+                id: "lock",
+                icon: "lock",
+                iconColor: "#FFFFFF",
+                action: function() {
+                    root.close()
+                    root.requestLock()
+                }
+            },
+            {
+                id: "sleep",
+                icon: "bedtime",
+                iconColor: "#FFFFFF",
+                action: function() {
+                    root.close()
+                    Quickshell.execDetached(["systemctl", "suspend"])
+                }
+            },
+            {
+                id: "reboot",
+                icon: "restart_alt",
+                iconColor: "#FFFFFF",
+                action: function() {
+                    root.close()
+                    Quickshell.execDetached(["sh", "-c", "systemctl reboot || loginctl reboot"])
+                }
+            },
+            {
+                id: "shutdown",
+                icon: "power_settings_new",
+                iconColor: "#F28B82",
+                action: function() {
+                    root.close()
+                    Quickshell.execDetached(["sh", "-c", "systemctl poweroff || loginctl poweroff"])
+                }
+            }
+        ]
+        var out = []
+        for (var k = 0; k < 4; k++) {
+            var sec = baseSectors[order[k]]
+            var angle = sec.min + (Math.random() * (sec.max - sec.min))
+            var dist = Math.round(106.0 + Math.random() * 24.0)
+            var orb = baseItems[k]
+            orb.deg = angle
+            orb.dist = dist
+            out.push(orb)
+        }
+        root.powerOrbData = out
     }
 
     /* ── Colors / Theme Tokens ── */
@@ -336,7 +422,13 @@ Item {
 
         MouseArea {
             anchors.fill: parent
-            onClicked: root.close()
+            onClicked: {
+                if (root.activeMode === "power") {
+                    root.activeMode = "hub"
+                } else {
+                    root.close()
+                }
+            }
         }
     }
 
@@ -349,7 +441,7 @@ Item {
                 controlRing.closeRing()
             } else if (root.activeMode === "wifi" || root.activeMode === "bluetooth") {
                 if (connectivityPicker) connectivityPicker.goBack()
-            } else if (root.activeMode === "wallpapers" || root.activeMode === "appsearch") {
+            } else if (root.activeMode === "wallpapers" || root.activeMode === "appsearch" || root.activeMode === "power") {
                 root.activeMode = "hub"
             } else if (root.focusedLobe !== "") {
                 root.focusedLobe = ""
@@ -358,7 +450,38 @@ Item {
             }
         }
         Keys.onPressed: (event) => {
-            if (root.activeMode === "hub" && event.text && event.text.length > 0 && (!event.modifiers || event.modifiers === Qt.ShiftModifier)) {
+            if (root.activeMode === "wallpapers") {
+                if (event.key === Qt.Key_Tab) {
+                    root.cycleWallpaperSource()
+                    event.accepted = true
+                    return
+                }
+                if (event.key === Qt.Key_Left) {
+                    root.stepWallpaperCarousel(-1)
+                    event.accepted = true
+                    return
+                }
+                if (event.key === Qt.Key_Right) {
+                    root.stepWallpaperCarousel(1)
+                    event.accepted = true
+                    return
+                }
+                if (event.key === Qt.Key_Up) {
+                    root.stepWallpaperCarousel(-2)
+                    event.accepted = true
+                    return
+                }
+                if (event.key === Qt.Key_Down) {
+                    root.stepWallpaperCarousel(2)
+                    event.accepted = true
+                    return
+                }
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    root.applyCurrentWallpaper()
+                    event.accepted = true
+                    return
+                }
+            } else if (root.activeMode === "hub" && event.text && event.text.length > 0 && (!event.modifiers || event.modifiers === Qt.ShiftModifier)) {
                 const ch = event.text
                 if (ch.trim().length > 0) {
                     root.openLauncherMode(ch)
@@ -413,7 +536,8 @@ Item {
                 property real idleDistOffset: 0.0
 
                 SequentialAnimation {
-                    running: root.hubOpen && !lobeItem.isThisFocused
+                    running: true
+                    paused: !(root.hubOpen && !lobeItem.isThisFocused)
                     loops: Animation.Infinite
                     PauseAnimation { duration: lobeItem.idlePhaseDelay }
                     ParallelAnimation {
@@ -632,26 +756,10 @@ Item {
                             readonly property real relRad: relDeg * (Math.PI / 180.0)
                             readonly property real satRadius: 66
 
-                            property real satPop: 0.0
-
-                            Connections {
-                                target: lobeItem
-                                function onIsThisFocusedChanged() {
-                                    if (!lobeItem.isThisFocused) {
-                                        satPop = 0.0
-                                    }
-                                }
-                            }
-
-                            SequentialAnimation {
-                                running: lobeItem.isThisFocused
-                                PauseAnimation { duration: index * 42 }
+                            property real satPop: lobeItem.isThisFocused ? 1.0 : 0.0
+                            Behavior on satPop {
                                 NumberAnimation {
-                                    target: satDelegateItem
-                                    property: "satPop"
-                                    from: 0.0
-                                    to: 1.0
-                                    duration: 320
+                                    duration: 280
                                     easing.type: Easing.OutCubic
                                 }
                             }
@@ -949,11 +1057,9 @@ Item {
                 border.width: 1
 
                 Item {
+                    id: hubRing1Orbit
                     anchors.centerIn: parent
                     width: parent.width; height: parent.height
-                    NumberAnimation on rotation {
-                        from: 0; to: 360; duration: 18000; loops: Animation.Infinite; running: hubRestingElectrons.visible
-                    }
                     Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
                         y: -3.5; width: 6; height: 6; radius: 3; color: root.colTeal
@@ -974,12 +1080,10 @@ Item {
                 border.width: 1
 
                 Item {
+                    id: hubRing2Orbit
                     anchors.centerIn: parent
                     width: parent.width; height: parent.height
                     rotation: 45
-                    NumberAnimation on rotation {
-                        from: 45; to: -315; duration: 28000; loops: Animation.Infinite; running: hubRestingElectrons.visible
-                    }
                     Repeater {
                         model: 4
                         delegate: Item {
@@ -993,6 +1097,14 @@ Item {
                     }
                 }
             }
+
+            FrameAnimation {
+                running: hubRestingElectrons.visible
+                onTriggered: {
+                    hubRing1Orbit.rotation += frameTime * (360.0 / 18.0)
+                    hubRing2Orbit.rotation -= frameTime * (360.0 / 28.0)
+                }
+            }
         }
 
         Item {
@@ -1000,8 +1112,9 @@ Item {
             anchors.centerIn: parent
             width: root.hubOpen ? 58 : 16
             height: width
-            visible: root.activeMode === "hub"
-            opacity: (root.activeMode === "hub") ? 1.0 : 0.0
+            z: 10
+            visible: (root.activeMode === "hub" || root.activeMode === "wallpapers" || root.activeMode === "power")
+            opacity: (root.activeMode === "hub" || root.activeMode === "wallpapers" || root.activeMode === "power") ? 1.0 : 0.0
             Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
             Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
 
@@ -1014,7 +1127,7 @@ Item {
                 height: width
                 radius: width / 2
                 color: Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.42)
-                opacity: root.hubOpen ? 0.70 : 0.45
+                opacity: (root.activeMode === "power") ? 0.0 : (root.hubOpen ? 0.70 : 0.45)
                 Behavior on opacity { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
                 Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
             }
@@ -1040,17 +1153,21 @@ Item {
                 anchors.fill: parent
                 radius: width / 2
                 color: "#FFFFFF"
-                border.color: root.colTeal
-                border.width: root.hubOpen ? 2.4 : 1.5
+                border.color: (root.activeMode === "power") ? "transparent" : root.colTeal
+                border.width: (root.activeMode === "power") ? 0 : (root.hubOpen ? 2.4 : 1.5)
                 Behavior on border.width { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
 
-                // Time readout inside disc when open (or volume/brightness readout when control ring is open)
+                // Time readout inside disc when open (or volume/brightness readout when control ring is open, or wallpaper glyph in wallpaper mode)
                 Text {
                     anchors.centerIn: parent
                     visible: opacity > 0.01
                     opacity: root.hubProgress
-                    text: (controlRing && controlRing.isOpen) ? controlRing.centerReadoutText : root.timeStr
-                    font.family: "Valley Sans"
+                    text: {
+                        if (controlRing && controlRing.isOpen) return controlRing.centerReadoutText
+                        if (root.activeMode === "wallpapers") return (wallpaperModel.count > 0 ? wallpaperModel.count : "✦")
+                        return root.timeStr
+                    }
+                    font.family: (root.activeMode === "wallpapers" && wallpaperModel.count === 0) ? Theme.fontIcon : "Valley Sans"
                     font.pixelSize: (controlRing && controlRing.isOpen) ? 15 : 13
                     font.bold: true
                     color: "#0b0e14"
@@ -1060,6 +1177,7 @@ Item {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     acceptedButtons: Qt.LeftButton
+                    pressAndHoldInterval: 350
                     onClicked: {
                         if (controlRing && controlRing.isOpen) {
                             if (controlRing.kind === "volume") {
@@ -1070,9 +1188,18 @@ Item {
                         } else if (root.activeMode === "wifi" || root.activeMode === "bluetooth") {
                             if (connectivityPicker) connectivityPicker.goBack()
                         } else if (root.activeMode === "wallpapers") {
-                            root.shuffleWallpaperQuery()
+                            root.cycleWallpaperSource()
+                        } else if (root.activeMode === "power") {
+                            root.activeMode = "hub"
                         } else {
                             root.toggle()
+                        }
+                    }
+                    onPressAndHold: {
+                        if (root.activeMode === "hub") {
+                            root.openPowerMode()
+                        } else if (root.activeMode === "power") {
+                            root.activeMode = "hub"
                         }
                     }
                     onWheel: wheel => {
@@ -1186,6 +1313,14 @@ Item {
                     }
                 }
 
+                onPressed: (mouse) => {
+                    const dx = mouse.x - width / 2;
+                    const dy = mouse.y - height / 2;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 34) {
+                        mouse.accepted = false;
+                    }
+                }
                 onClicked: (mouse) => seekFromMouse(mouse)
                 onPositionChanged: (mouse) => {
                     if (pressed) seekFromMouse(mouse);
@@ -1422,12 +1557,12 @@ Item {
             id: dateLyricsCaption
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.bottom
-            anchors.topMargin: (root.activeMode === "wifi" || root.activeMode === "bluetooth") ? 134 : ((LyricsService.hasTrack && root.activeMode === "hub") ? 148 : 82)
+            anchors.topMargin: (root.activeMode === "wallpapers") ? 142 : ((root.activeMode === "wifi" || root.activeMode === "bluetooth" || root.activeMode === "power") ? 134 : ((LyricsService.hasTrack && root.activeMode === "hub") ? 148 : 82))
             Behavior on anchors.topMargin { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
-            visible: root.hubProgress > 0.1 && (root.activeMode === "hub" || root.activeMode === "wifi" || root.activeMode === "bluetooth") && !(controlRing && controlRing.isOpen)
-            opacity: ((root.activeMode === "hub" || root.activeMode === "wifi" || root.activeMode === "bluetooth") && !(controlRing && controlRing.isOpen)) ? root.hubProgress : 0.0
+            visible: root.hubProgress > 0.1 && (root.activeMode === "hub" || root.activeMode === "wifi" || root.activeMode === "bluetooth" || root.activeMode === "wallpapers") && !(controlRing && controlRing.isOpen)
+            opacity: ((root.activeMode === "hub" || root.activeMode === "wifi" || root.activeMode === "bluetooth" || root.activeMode === "wallpapers") && !(controlRing && controlRing.isOpen)) ? root.hubProgress : 0.0
             Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-            width: 360
+            width: (root.activeMode === "wallpapers") ? 420 : 360
             height: 24
             clip: true
 
@@ -1551,6 +1686,48 @@ Item {
                 Text {
                     anchors.centerIn: parent
                     text: connectivityPicker ? connectivityPicker.captionText : ""
+                    font.family: "Valley Sans"
+                    font.pixelSize: 12
+                    font.bold: true
+                    color: root.colFgDim
+                    elide: Text.ElideMiddle
+                    width: parent.width - 24
+                    horizontalAlignment: Text.AlignHCenter
+                }
+            }
+
+            // 4. Wallpaper Carousel Caption View (index / total · filename · res · source)
+            Item {
+                id: wallpaperCaptionView
+                anchors.fill: parent
+                visible: root.activeMode === "wallpapers"
+                opacity: (root.activeMode === "wallpapers") ? 1.0 : 0.0
+                Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+
+                Text {
+                    anchors.centerIn: parent
+                    text: root.wallpaperCaptionText
+                    font.family: "Valley Sans"
+                    font.pixelSize: 12
+                    font.bold: true
+                    color: root.colFgDim
+                    elide: Text.ElideMiddle
+                    width: parent.width - 24
+                    horizontalAlignment: Text.AlignHCenter
+                }
+            }
+
+            // 5. Power Orbit Caption View
+            Item {
+                id: powerCaptionView
+                anchors.fill: parent
+                visible: root.activeMode === "power"
+                opacity: (root.activeMode === "power") ? 1.0 : 0.0
+                Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "power actions / tap nucleus or Esc to return"
                     font.family: "Valley Sans"
                     font.pixelSize: 12
                     font.bold: true
@@ -1944,8 +2121,15 @@ Item {
         }
 
         /* ══════════════════════════════════════════════════════════════════════
-           PHASE 4: Special Wallhaven Circular Wallpaper Picker
-           16 circular thumbnail orbs: 6 inner (radius 62), 10 outer (radius 108, offset 18°)
+           PHASE 4: Special Concentric Dual PathView Carousel Wallpaper Picker
+           - Inner Ring: 6 circular delegates at radius 62 (guide diameter 124)
+           - Outer Ring: 10 circular delegates at radius 108 (guide diameter 216)
+           - Positioned by center: x = cx + r*cos(a) - w/2, y = cy + r*sin(a) - h/2
+           - Clipped circular thumbnail with radius = width/2, 1.5px border, sourceSize 44x44
+           - Bound to ONE shared ListModel (wallpaperModel) with continuous wrapping
+           - Opposing rotation directions with smooth inertia and snapping
+           - 3 small source switcher dots (Local / Online / Favorites) next to search pill
+           - Click applies, right-click toggles favorite, circular download progress arc
            ══════════════════════════════════════════════════════════════════════ */
         Item {
             id: wallpaperRingSystem
@@ -1954,137 +2138,332 @@ Item {
             opacity: root.activeMode === "wallpapers" ? 1.0 : 0.0
             Behavior on opacity { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
 
-            // Ring rotation angles with inertia
-            property real innerRingAngle: 0.0
-            property real outerRingAngle: 18.0
-
-            // Inner Ring Guides
+            // ── Faint Concentric Ring Guides ──
             Rectangle {
                 anchors.centerIn: parent
-                width: 184; height: 184; radius: 92
+                width: 124
+                height: 124
+                radius: 62
                 color: "transparent"
-                border.color: Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.15)
+                border.color: Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.20)
                 border.width: 1
             }
 
-            // Outer Ring Guides
             Rectangle {
                 anchors.centerIn: parent
-                width: 324; height: 324; radius: 162
+                width: 216
+                height: 216
+                radius: 108
                 color: "transparent"
-                border.color: Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.12)
+                border.color: Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.16)
                 border.width: 1
             }
 
-            // Drag MouseArea for horizontal inertia rotation
+            // ── Drag & Wheel Arena for Dual Ring Opposing Inertia Rotation ──
             MouseArea {
                 anchors.centerIn: parent
-                width: 440
-                height: 440
+                width: 320
+                height: 320
                 hoverEnabled: true
+                acceptedButtons: Qt.NoButton
                 property real lastX: 0
-                onPressed: mouse => lastX = mouse.x
-                onPositionChanged: mouse => {
-                    if (pressed) {
-                        var dx = mouse.x - lastX
-                        lastX = mouse.x
-                        wallpaperRingSystem.innerRingAngle += dx * 0.4
-                        wallpaperRingSystem.outerRingAngle -= dx * 0.28
+
+                onWheel: (wheel) => {
+                    var delta = (wheel.angleDelta.y > 0) ? 0.35 : -0.35
+                    root.stepWallpaperCarousel(delta > 0 ? 1 : -1)
+                }
+            }
+
+            // ── Drag Handler for Opposing Spin ──
+            Item {
+                anchors.centerIn: parent
+                width: 320
+                height: 320
+
+                DragHandler {
+                    id: ringDragHandler
+                    target: null
+                    property real prevX: 0
+                    onActiveChanged: {
+                        if (active) prevX = centroid.position.x
+                    }
+                    onCentroidChanged: {
+                        if (active) {
+                            var curX = centroid.position.x
+                            var dx = curX - prevX
+                            prevX = curX
+                            if (pvInner) pvInner.offset += dx * 0.015
+                            if (pvOuter) pvOuter.offset -= dx * 0.015
+                        }
                     }
                 }
             }
 
-            // ── Inner Ring: 6 Thumbnail Orbs (Radius 92) ──
-            Repeater {
-                model: 6
+            // ── Inner Ring: 6 Items at Radius 62 (PathView size 124x124) ──
+            PathView {
+                id: pvInner
+                anchors.centerIn: parent
+                width: 124
+                height: 124
+                model: wallpaperModel
+                pathItemCount: Math.min(6, wallpaperModel.count)
+                snapMode: PathView.SnapToItem
+                movementDirection: PathView.Positive
+                interactive: true
+
+                onCurrentIndexChanged: {
+                    if (currentIndex >= 0 && currentIndex < wallpaperModel.count) {
+                        root.currentWallpaperIndex = currentIndex
+                    }
+                }
+
+                path: Path {
+                    startX: 62; startY: 0
+                    PathArc { x: 62; y: 124; radiusX: 62; radiusY: 62; useLargeArc: true }
+                    PathArc { x: 62; y: 0; radiusX: 62; radiusY: 62; useLargeArc: true }
+                }
+
                 delegate: Item {
-                    required property int index
-                    readonly property real baseDeg: index * 60.0
-                    readonly property real curDeg: baseDeg + wallpaperRingSystem.innerRingAngle
-                    readonly property real rad: curDeg * (Math.PI / 180.0)
-                    readonly property var wpData: root.wallpapersList[index]
+                    id: innerDelegate
+                    width: 38
+                    height: 38
+                    property bool isSelected: (index === root.currentWallpaperIndex)
+                    property bool isHovered: innerMouse.containsMouse
 
-                    x: 92 * Math.cos(rad) - width / 2
-                    y: 92 * Math.sin(rad) - height / 2
-                    width: 52
-                    height: 52
-
-                    Rectangle {
+                    Item {
                         anchors.fill: parent
-                        radius: width / 2
-                        color: root.colBgDark
-                        border.color: root.colTeal
-                        border.width: 1.8
-                        clip: true
+                        scale: innerDelegate.isSelected ? 1.15 : (innerDelegate.isHovered ? 1.08 : 1.0)
+                        Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+
+                        Rectangle {
+                            id: innerMask
+                            anchors.fill: parent
+                            radius: width / 2
+                            layer.enabled: true
+                            visible: false
+                        }
 
                         Image {
+                            id: innerImg
                             anchors.fill: parent
-                            source: wpData ? wpData.thumb : ""
+                            source: model.thumb || ""
                             fillMode: Image.PreserveAspectCrop
                             asynchronous: true
-                            sourceSize.width: 104
-                            sourceSize.height: 104
+                            sourceSize: Qt.size(44, 44)
+                            smooth: true
+                            visible: false
+                        }
+
+                        MultiEffect {
+                            anchors.fill: parent
+                            source: innerImg
+                            maskEnabled: true
+                            maskSource: innerMask
+                        }
+
+                        // Border Ring
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: "transparent"
+                            border.color: innerDelegate.isSelected ? root.colTeal : (innerDelegate.isHovered ? Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.85) : Qt.rgba(1, 1, 1, 0.25))
+                            border.width: innerDelegate.isSelected ? 2.0 : 1.5
+                            Behavior on border.color { ColorAnimation { duration: 160 } }
+                        }
+
+                        // Favorite Star Badge
+                        Text {
+                            visible: model.is_favorite
+                            text: "★"
+                            font.pixelSize: 10
+                            color: "#FFD700"
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            anchors.topMargin: 2
+                            anchors.rightMargin: 2
+                        }
+
+                        // Circular Download Progress Arc
+                        Shape {
+                            anchors.fill: parent
+                            visible: root.isDownloadingWallpaper && (root.activeDownloadUrl === model.url)
+                            layer.enabled: true
+                            layer.samples: 4
+
+                            ShapePath {
+                                strokeWidth: 3
+                                strokeColor: root.colTeal
+                                fillColor: "transparent"
+                                capStyle: ShapePath.RoundCap
+                                PathAngleArc {
+                                    centerX: innerDelegate.width / 2
+                                    centerY: innerDelegate.height / 2
+                                    radiusX: innerDelegate.width / 2 - 2
+                                    radiusY: innerDelegate.height / 2 - 2
+                                    startAngle: -90
+                                    sweepAngle: 360 * root.downloadProgressValue
+                                }
+                            }
                         }
 
                         MouseArea {
+                            id: innerMouse
                             anchors.fill: parent
+                            hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (wpData) root.applyWallpaper(wpData)
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            onClicked: (mouse) => {
+                                root.currentWallpaperIndex = index
+                                if (mouse.button === Qt.RightButton) {
+                                    root.toggleFavoriteItem(model)
+                                } else {
+                                    root.applyWallpaper(model)
+                                }
+                            }
+                            onPressAndHold: {
+                                root.currentWallpaperIndex = index
+                                root.toggleFavoriteItem(model)
                             }
                         }
                     }
                 }
             }
 
-            // ── Outer Ring: 10 Thumbnail Orbs (Radius 162, offset 18°) ──
-            Repeater {
-                model: 10
+            // ── Outer Ring: 10 Items at Radius 108 (PathView size 216x216) ──
+            PathView {
+                id: pvOuter
+                anchors.centerIn: parent
+                width: 216
+                height: 216
+                model: wallpaperModel
+                pathItemCount: Math.min(10, wallpaperModel.count)
+                snapMode: PathView.SnapToItem
+                movementDirection: PathView.Negative
+                interactive: true
+
+                onCurrentIndexChanged: {
+                    if (currentIndex >= 0 && currentIndex < wallpaperModel.count) {
+                        root.currentWallpaperIndex = currentIndex
+                    }
+                }
+
+                path: Path {
+                    startX: 108; startY: 0
+                    PathArc { x: 108; y: 216; radiusX: 108; radiusY: 108; useLargeArc: true }
+                    PathArc { x: 108; y: 0; radiusX: 108; radiusY: 108; useLargeArc: true }
+                }
+
                 delegate: Item {
-                    required property int index
-                    readonly property real baseDeg: 18.0 + (index * 36.0)
-                    readonly property real curDeg: baseDeg + wallpaperRingSystem.outerRingAngle
-                    readonly property real rad: curDeg * (Math.PI / 180.0)
-                    readonly property var wpData: root.wallpapersList[6 + index]
+                    id: outerDelegate
+                    width: 42
+                    height: 42
+                    property bool isSelected: (index === root.currentWallpaperIndex)
+                    property bool isHovered: outerMouse.containsMouse
 
-                    x: 162 * Math.cos(rad) - width / 2
-                    y: 162 * Math.sin(rad) - height / 2
-                    width: 58
-                    height: 58
-
-                    Rectangle {
+                    Item {
                         anchors.fill: parent
-                        radius: width / 2
-                        color: root.colBgDark
-                        border.color: root.colTeal
-                        border.width: 1.8
-                        clip: true
+                        scale: outerDelegate.isSelected ? 1.15 : (outerDelegate.isHovered ? 1.08 : 1.0)
+                        Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+
+                        Rectangle {
+                            id: outerMask
+                            anchors.fill: parent
+                            radius: width / 2
+                            layer.enabled: true
+                            visible: false
+                        }
 
                         Image {
+                            id: outerImg
                             anchors.fill: parent
-                            source: wpData ? wpData.thumb : ""
+                            source: model.thumb || ""
                             fillMode: Image.PreserveAspectCrop
                             asynchronous: true
-                            sourceSize.width: 116
-                            sourceSize.height: 116
+                            sourceSize: Qt.size(44, 44)
+                            smooth: true
+                            visible: false
+                        }
+
+                        MultiEffect {
+                            anchors.fill: parent
+                            source: outerImg
+                            maskEnabled: true
+                            maskSource: outerMask
+                        }
+
+                        // Border Ring
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: "transparent"
+                            border.color: outerDelegate.isSelected ? root.colTeal : (outerDelegate.isHovered ? Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.85) : Qt.rgba(1, 1, 1, 0.25))
+                            border.width: outerDelegate.isSelected ? 2.0 : 1.5
+                            Behavior on border.color { ColorAnimation { duration: 160 } }
+                        }
+
+                        // Favorite Star Badge
+                        Text {
+                            visible: model.is_favorite
+                            text: "★"
+                            font.pixelSize: 10
+                            color: "#FFD700"
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            anchors.topMargin: 2
+                            anchors.rightMargin: 2
+                        }
+
+                        // Circular Download Progress Arc
+                        Shape {
+                            anchors.fill: parent
+                            visible: root.isDownloadingWallpaper && (root.activeDownloadUrl === model.url)
+                            layer.enabled: true
+                            layer.samples: 4
+
+                            ShapePath {
+                                strokeWidth: 3
+                                strokeColor: root.colTeal
+                                fillColor: "transparent"
+                                capStyle: ShapePath.RoundCap
+                                PathAngleArc {
+                                    centerX: outerDelegate.width / 2
+                                    centerY: outerDelegate.height / 2
+                                    radiusX: outerDelegate.width / 2 - 2
+                                    radiusY: outerDelegate.height / 2 - 2
+                                    startAngle: -90
+                                    sweepAngle: 360 * root.downloadProgressValue
+                                }
+                            }
                         }
 
                         MouseArea {
+                            id: outerMouse
                             anchors.fill: parent
+                            hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (wpData) root.applyWallpaper(wpData)
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            onClicked: (mouse) => {
+                                root.currentWallpaperIndex = index
+                                if (mouse.button === Qt.RightButton) {
+                                    root.toggleFavoriteItem(model)
+                                } else {
+                                    root.applyWallpaper(model)
+                                }
+                            }
+                            onPressAndHold: {
+                                root.currentWallpaperIndex = index
+                                root.toggleFavoriteItem(model)
                             }
                         }
                     }
                 }
             }
 
-            // Bottom Search Field Pill
+            // ── Bottom Search & Source Filter Pill ──
             Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
-                y: 205
-                width: 280
+                y: 182
+                width: 310
                 height: 36
                 radius: 18
                 color: Qt.rgba(root.colBgDark.r, root.colBgDark.g, root.colBgDark.b, 0.92)
@@ -2094,13 +2473,13 @@ Item {
                 RowLayout {
                     anchors.fill: parent
                     anchors.leftMargin: 12
-                    anchors.rightMargin: 12
-                    spacing: 6
+                    anchors.rightMargin: 10
+                    spacing: 8
 
                     Text {
                         text: "search"
                         font.family: Theme.fontIcon
-                        font.pixelSize: 13
+                        font.pixelSize: 14
                         color: root.colTeal
                     }
 
@@ -2111,8 +2490,84 @@ Item {
                         font.pixelSize: 11
                         color: "#ffffff"
                         clip: true
+                        selectByMouse: true
+                        selectionColor: Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.5)
+
+                        Text {
+                            text: (root.currentWallpaperSource === "local") ? "Filter local wallpapers..." : (root.currentWallpaperSource === "favorites" ? "Filter favorites..." : "Search Wallhaven (toplist)...")
+                            font.family: "Valley Sans"
+                            font.pixelSize: 11
+                            color: Qt.rgba(1, 1, 1, 0.35)
+                            visible: !wpSearchInput.text && !wpSearchInput.inputMethodComposing
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
                         onTextChanged: wpDebounce.restart()
-                        Keys.onReturnPressed: root.fetchWallpapers(text)
+                        Keys.onReturnPressed: {
+                            if (root.currentWallpaperSource === "online") {
+                                root.fetchOnlineWallpapers(text)
+                            } else if (root.currentWallpaperSource === "local") {
+                                root.fetchLocalWallpapers(text)
+                            }
+                        }
+                        Keys.onTabPressed: (event) => {
+                            root.cycleWallpaperSource()
+                            event.accepted = true
+                        }
+                    }
+
+                    // ── 3 Small Source Indicator Dots (Local / Online / Favorites) ──
+                    RowLayout {
+                        spacing: 5
+                        Layout.alignment: Qt.AlignVCenter
+
+                        // Dot 1: Local
+                        Rectangle {
+                            width: (root.currentWallpaperSource === "local") ? 14 : 7
+                            height: 7
+                            radius: 3.5
+                            color: (root.currentWallpaperSource === "local") ? root.colTeal : Qt.rgba(1, 1, 1, 0.35)
+                            Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                            Behavior on color { ColorAnimation { duration: 180 } }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.setWallpaperSource("local")
+                            }
+                        }
+
+                        // Dot 2: Online
+                        Rectangle {
+                            width: (root.currentWallpaperSource === "online") ? 14 : 7
+                            height: 7
+                            radius: 3.5
+                            color: (root.currentWallpaperSource === "online") ? root.colTeal : Qt.rgba(1, 1, 1, 0.35)
+                            Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                            Behavior on color { ColorAnimation { duration: 180 } }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.setWallpaperSource("online")
+                            }
+                        }
+
+                        // Dot 3: Favorites
+                        Rectangle {
+                            width: (root.currentWallpaperSource === "favorites") ? 14 : 7
+                            height: 7
+                            radius: 3.5
+                            color: (root.currentWallpaperSource === "favorites") ? root.colTeal : Qt.rgba(1, 1, 1, 0.35)
+                            Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                            Behavior on color { ColorAnimation { duration: 180 } }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.setWallpaperSource("favorites")
+                            }
+                        }
                     }
                 }
             }
@@ -2150,10 +2605,144 @@ Item {
                 }
             }
         }
+
+        /* ══════════════════════════════════════════════════════════════════════
+           PHASE 7: Radial Orbital Power Menu (Vanish Mode Nucleus Power Satellites)
+           ══════════════════════════════════════════════════════════════════════ */
+        Item {
+            id: powerOrbitLayer
+            anchors.centerIn: parent
+            width: 320
+            height: 320
+            z: 2
+            visible: opacity > 0.005
+            opacity: (root.activeMode === "power" && root.hubOpen) ? 1.0 : 0.0
+            scale: (root.activeMode === "power" && root.hubOpen) ? 1.0 : 0.3
+            Behavior on opacity { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+            Behavior on scale { NumberAnimation { duration: 320; easing.type: Easing.OutBack; easing.overshoot: 1.15 } }
+
+            // 4 Circular Satellite Action Buttons (randomized across 360°, continuously roaming around anchor position)
+            Repeater {
+                model: root.powerOrbData
+
+                delegate: Item {
+                    id: powerOrbItem
+                    required property var modelData
+                    required property int index
+
+                    // Base anchor position from randomized sector
+                    readonly property real orbitRadius: modelData.dist !== undefined ? modelData.dist : 114.0
+                    readonly property real rad: (modelData.deg !== undefined ? modelData.deg : 0.0) * (Math.PI / 180.0)
+                    readonly property real targetX: (powerOrbitLayer.width / 2) + (orbitRadius * Math.cos(rad)) - (width / 2)
+                    readonly property real targetY: (powerOrbitLayer.height / 2) + (orbitRadius * Math.sin(rad)) - (height / 2)
+
+                    x: targetX
+                    y: targetY
+                    width: 48
+                    height: 48
+
+                    Behavior on x { NumberAnimation { duration: 380; easing.type: Easing.OutBack; easing.overshoot: 1.1 } }
+                    Behavior on y { NumberAnimation { duration: 380; easing.type: Easing.OutBack; easing.overshoot: 1.1 } }
+
+                    // Continuous, organic roaming around anchor position
+                    // Multi-sine frequencies and phases give each orb distinct floating wander
+                    property real roamX: 0.0
+                    property real roamY: 0.0
+
+                    FrameAnimation {
+                        running: root.activeMode === "power" && root.hubOpen && !orbMouse.containsMouse
+                        readonly property real f1: 1.35 + index * 0.32
+                        readonly property real f2: 1.05 + (3 - index) * 0.38
+                        readonly property real phaseOffset: index * 1.5708
+
+                        property real roamTimer: 0.0
+                        onTriggered: {
+                            roamTimer += frameTime
+                            // Organic floating drift with ~9-12px visible wander
+                            var rx = Math.sin(roamTimer * f1 + phaseOffset) * 9.5 + Math.cos(roamTimer * 0.72 + phaseOffset) * 3.5
+                            var ry = Math.cos(roamTimer * f2 + phaseOffset) * 8.5 + Math.sin(roamTimer * 0.65 + phaseOffset) * 3.5
+                            powerOrbItem.roamX = rx
+                            powerOrbItem.roamY = ry
+                        }
+                    }
+
+                    transform: Translate {
+                        x: powerOrbItem.roamX
+                        y: powerOrbItem.roamY
+                    }
+
+                    scale: orbMouse.containsMouse ? 1.14 : 1.0
+                    Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+
+                    // Circular satellite disk
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: width / 2
+                        color: "#141418"
+                        border.color: orbMouse.containsMouse
+                            ? Qt.rgba(1, 1, 1, 0.75)
+                            : Qt.rgba(1, 1, 1, 0.32)
+                        border.width: 1.5
+                        Behavior on border.color { ColorAnimation { duration: 160 } }
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: powerOrbItem.modelData.icon
+                            font.family: Theme.fontIcon
+                            font.pixelSize: 24
+                            color: powerOrbItem.modelData.iconColor
+                        }
+                    }
+
+                    MouseArea {
+                        id: orbMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (powerOrbItem.modelData.action) {
+                                powerOrbItem.modelData.action()
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    /* ── Wallpaper Backend Processes (Reusing Wallhaven.py) ── */
+    /* ── Wallpaper Carousel Model & Backend State (Local / Online / Favorites) ── */
     property var wallpapersList: []
+    property string currentWallpaperSource: "local" // "local" | "online" | "favorites"
+    property int currentWallpaperIndex: 0
+    property string activeDownloadUrl: ""
+    property real downloadProgressValue: 0.0
+    property bool isDownloadingWallpaper: false
+
+    readonly property var currentWallpaperItem: {
+        if (wallpaperModel.count === 0) return null
+        var idx = Math.max(0, Math.min(wallpaperModel.count - 1, root.currentWallpaperIndex))
+        return wallpaperModel.get(idx)
+    }
+
+    readonly property string wallpaperCaptionText: {
+        if (wallpaperModel.count === 0) {
+            if (wpSearchProc.running || wpFavoritesProc.running) return "Loading wallpapers · · ·"
+            return "No wallpapers found"
+        }
+        var item = root.currentWallpaperItem
+        if (!item) return ""
+        var idxStr = (root.currentWallpaperIndex + 1) + " / " + wallpaperModel.count
+        var nameStr = item.name || item.filename || "Wallpaper"
+        var resStr = item.resolution || "HD"
+        var srcStr = (root.currentWallpaperSource === "local") ? "Local" : (root.currentWallpaperSource === "favorites" ? "Favorite" : "Wallhaven")
+        var favIndicator = item.is_favorite ? " ★" : ""
+        return idxStr + "  ·  " + nameStr + favIndicator + "  ·  " + resStr + "  ·  " + srcStr
+    }
+
+    ListModel {
+        id: wallpaperModel
+    }
+
     readonly property string wallhavenScript: {
         const home = Quickshell.env("HOME") || ""
         const carbonDir = Quickshell.env("CARBON_CONFIG_DIR") || (home + "/.config/carbon")
@@ -2162,11 +2751,53 @@ Item {
 
     Timer {
         id: wpDebounce
-        interval: 700
-        onTriggered: root.fetchWallpapers(wpSearchInput.text)
+        interval: 650
+        onTriggered: {
+            if (root.activeMode === "wallpapers" && root.currentWallpaperSource === "online") {
+                root.fetchOnlineWallpapers(wpSearchInput ? wpSearchInput.text : "")
+            } else if (root.activeMode === "wallpapers" && root.currentWallpaperSource === "local") {
+                root.fetchLocalWallpapers(wpSearchInput ? wpSearchInput.text : "")
+            }
+        }
     }
 
-    function fetchWallpapers(query) {
+    function setWallpaperSource(src) {
+        if (root.currentWallpaperSource === src && wallpaperModel.count > 0) return
+        root.currentWallpaperSource = src
+        if (wpSearchInput) wpSearchInput.text = ""
+        loadWallpapersForCurrentSource()
+    }
+
+    function cycleWallpaperSource() {
+        if (root.currentWallpaperSource === "local") {
+            setWallpaperSource("online")
+        } else if (root.currentWallpaperSource === "online") {
+            setWallpaperSource("favorites")
+        } else {
+            setWallpaperSource("local")
+        }
+    }
+
+    function loadWallpapersForCurrentSource() {
+        if (root.currentWallpaperSource === "local") {
+            fetchLocalWallpapers()
+        } else if (root.currentWallpaperSource === "favorites") {
+            fetchFavorites()
+        } else {
+            fetchOnlineWallpapers()
+        }
+    }
+
+    function fetchLocalWallpapers(query) {
+        var args = ["python3", root.wallhavenScript, "list-local"]
+        if (query && query.trim().length > 0) {
+            args.push("--query", query.trim())
+        }
+        wpSearchProc.command = args
+        wpSearchProc.running = true
+    }
+
+    function fetchOnlineWallpapers(query) {
         var args = ["python3", root.wallhavenScript, "search", "--sort", "toplist", "--page", "1"]
         if (query && query.trim().length > 0) {
             args.push("--query", query.trim())
@@ -2175,11 +2806,41 @@ Item {
         wpSearchProc.running = true
     }
 
+    function fetchFavorites() {
+        wpFavoritesProc.command = ["python3", root.wallhavenScript, "list-favorites"]
+        wpFavoritesProc.running = true
+    }
+
     function shuffleWallpaperQuery() {
         var queries = ["cyberpunk", "minimalism", "space", "anime", "nature", "neon", "abstract"]
         var q = queries[Math.floor(Math.random() * queries.length)]
-        wpSearchInput.text = q
-        fetchWallpapers(q)
+        if (wpSearchInput) wpSearchInput.text = q
+        if (root.currentWallpaperSource !== "online") root.currentWallpaperSource = "online"
+        fetchOnlineWallpapers(q)
+    }
+
+    function populateWallpaperModel(items) {
+        wallpaperModel.clear()
+        if (!items || !items.length) return
+        for (var i = 0; i < items.length; ++i) {
+            var it = items[i]
+            wallpaperModel.append({
+                "id": String(it.id || ("wp_" + i)),
+                "name": String(it.name || it.filename || "Wallpaper"),
+                "filename": String(it.filename || ""),
+                "resolution": String(it.resolution || "HD"),
+                "category": String(it.category || ""),
+                "thumb": String(it.thumb || ""),
+                "url": String(it.url || ""),
+                "path": String(it.path || ""),
+                "is_local": Boolean(it.is_local),
+                "is_live": Boolean(it.is_live),
+                "is_favorite": Boolean(it.is_favorite)
+            })
+        }
+        root.currentWallpaperIndex = 0
+        if (pvInner) pvInner.currentIndex = 0
+        if (pvOuter) pvOuter.currentIndex = 0
     }
 
     Process {
@@ -2192,7 +2853,7 @@ Item {
                 try {
                     var res = JSON.parse(buffer)
                     if (res && res.success && Array.isArray(res.data)) {
-                        root.wallpapersList = res.data
+                        root.populateWallpaperModel(res.data)
                     }
                 } catch (e) {}
             }
@@ -2202,25 +2863,97 @@ Item {
         }
     }
 
+    Process {
+        id: wpFavoritesProc
+        property string buffer: ""
+        onRunningChanged: {
+            if (running) {
+                buffer = ""
+            } else if (buffer.trim().length > 0) {
+                try {
+                    var res = JSON.parse(buffer)
+                    if (res && res.success && Array.isArray(res.data)) {
+                        root.populateWallpaperModel(res.data)
+                    }
+                } catch (e) {}
+            }
+        }
+        stdout: SplitParser {
+            onRead: chunk => wpFavoritesProc.buffer += chunk + "\n"
+        }
+    }
+
+    function toggleFavoriteItem(item) {
+        if (!item) return
+        var target = item.path || item.url || item.id
+        if (!target) return
+        item.is_favorite = !item.is_favorite
+        wpToggleFavProc.command = ["python3", root.wallhavenScript, "toggle-favorite", target]
+        wpToggleFavProc.running = true
+    }
+
+    Process {
+        id: wpToggleFavProc
+        command: []
+    }
+
+    function stepWallpaperCarousel(step) {
+        if (wallpaperModel.count === 0) return
+        var nextIdx = (root.currentWallpaperIndex + step) % wallpaperModel.count
+        if (nextIdx < 0) nextIdx += wallpaperModel.count
+        root.currentWallpaperIndex = nextIdx
+        if (pvInner) pvInner.offset = (pvInner.offset + step * 0.35)
+        if (pvOuter) pvOuter.offset = (pvOuter.offset - step * 0.35)
+    }
+
+    function applyCurrentWallpaper() {
+        var item = root.currentWallpaperItem
+        if (item) applyWallpaper(item)
+    }
+
     function applyWallpaper(item) {
         if (!item) return
         if (item.is_local) {
             wpApplyProc.command = ["python3", root.wallhavenScript, "apply", item.path]
             wpApplyProc.running = true
+            root.close()
         } else {
+            root.activeDownloadUrl = item.url
+            root.isDownloadingWallpaper = true
+            root.downloadProgressValue = 0.05
+            wpDownloadSimTimer.restart()
             wpDownloadProc.command = ["python3", root.wallhavenScript, "download", item.url, item.filename]
             wpDownloadProc.running = true
         }
-        root.close()
+    }
+
+    Timer {
+        id: wpDownloadSimTimer
+        interval: 100
+        repeat: true
+        running: root.isDownloadingWallpaper
+        onTriggered: {
+            if (root.downloadProgressValue < 0.90) {
+                root.downloadProgressValue += 0.05
+            }
+        }
     }
 
     Process {
         id: wpApplyProc
         command: []
     }
+
     Process {
         id: wpDownloadProc
         command: []
+        onRunningChanged: {
+            if (!running) {
+                root.downloadProgressValue = 1.0
+                root.isDownloadingWallpaper = false
+                root.close()
+            }
+        }
     }
 
     /* ── App Scanning & Filtering Logic (Reusing DesktopEntries) ── */

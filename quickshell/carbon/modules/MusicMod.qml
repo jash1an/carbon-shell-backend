@@ -149,7 +149,7 @@ Item {
     Timer {
         id: positionTracker
         interval: 250
-        running: root.isPlaying
+        running: root.isPlaying && root.visible
         repeat: true
         triggeredOnStart: true
         onTriggered: {
@@ -159,11 +159,9 @@ Item {
         }
     }
 
-    Timer {
-        interval: 33
-        repeat: true
-        running: root.isPlaying
-        onTriggered: root.visualizerPhase += 0.18
+    FrameAnimation {
+        running: root.isPlaying && root.visible
+        onTriggered: root.visualizerPhase += frameTime * 5.45
     }
 
     /* ── Playback Controls ───────────────────────────────────────────────── */

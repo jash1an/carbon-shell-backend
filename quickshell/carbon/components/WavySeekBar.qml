@@ -79,7 +79,7 @@ Item {
             var energy = root.playEnergy
             if (energy <= 0.03) return
 
-            var now = Date.now() / 300.0
+            var now = waveCanvas.wavePhase
             var step = 3
 
             /* Background softer wave (layered fluid depth) */
@@ -138,11 +138,13 @@ Item {
             ctx.fill()
         }
 
-        Timer {
-            interval: 33 // ~30 fps fluid ripple animation
-            repeat: true
+        property real wavePhase: 0.0
+        FrameAnimation {
             running: waveCanvas.shouldAnimate
-            onTriggered: waveCanvas.requestPaint()
+            onTriggered: {
+                waveCanvas.wavePhase += frameTime * 3.33
+                waveCanvas.requestPaint()
+            }
         }
     }
 

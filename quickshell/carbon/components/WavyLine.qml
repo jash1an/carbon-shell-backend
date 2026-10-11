@@ -34,7 +34,7 @@ Canvas {
         var amp = Math.min(
             root.lineWidth * root.amplitudeMultiplier,
             Math.max(1, root.height / 2 - root.lineWidth / 2 - 0.5))
-        var phase = Date.now() / 400
+        var phase = root.phase
         var centerY = root.height / 2
         var span = Math.max(1, root.fullLength)
 
@@ -56,10 +56,12 @@ Canvas {
         ctx.stroke()
     }
 
-    Timer {
-        interval: 33
-        repeat: true
+    property real phase: 0.0
+    FrameAnimation {
         running: root.shouldAnimate
-        onTriggered: root.requestPaint()
+        onTriggered: {
+            root.phase += frameTime * 2.5
+            root.requestPaint()
+        }
     }
 }

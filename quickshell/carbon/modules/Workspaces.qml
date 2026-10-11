@@ -47,11 +47,13 @@ Item {
     implicitWidth: 42
     implicitHeight: (range.length ? range.length * 34 + 10 : 0) + 6
 
+    property var knownIds: [1]
+
     function rebuild() {
         var out = [];
-        for (var i = 0; i < monProbe.ids.length; i++)
-            if (out.indexOf(monProbe.ids[i]) === -1)
-                out.push(monProbe.ids[i]);
+        for (var i = 0; i < root.knownIds.length; i++)
+            if (out.indexOf(root.knownIds[i]) === -1)
+                out.push(root.knownIds[i]);
         var a = parseInt(root.activeName, 10);
         if (a >= 1 && out.indexOf(a) === -1)
             out.push(a);
@@ -64,30 +66,23 @@ Item {
             root.range = out;
     }
 
-    Process {
-        id: monProbe
-        property var ids: []
-
-        command: ["sh", "-c", "hyprctl monitors -j | jq -r '.[0].activeWorkspace.id' 2>/dev/null || echo 0"]
-        running: false
-        stdout: SplitParser {
-            onRead: (line) => {
-                var v = line.trim();
-                if (v.length === 0) return;
-                var id = parseInt(v, 10);
-                if (isNaN(id)) return;
-                root.activeName = String(id);
-                root.rebuild();
+    Connections {
+        target: Hyprland.focusedMonitor
+        function onActiveWorkspaceChanged() {
+            if (Hyprland.focusedMonitor && Hyprland.focusedMonitor.activeWorkspace) {
+                root.activeName = String(Hyprland.focusedMonitor.activeWorkspace.id)
+                root.rebuild()
             }
         }
     }
 
-    Timer {
-        interval: 500
-        repeat: true
-        running: true
-        triggeredOnStart: true
-        onTriggered: monProbe.running = true
+    Connections {
+        target: Hyprland
+        function onRawEvent(name, data) {
+            if (name.indexOf("workspace") !== -1 || name.indexOf("monitor") !== -1) {
+                if (!listProbe.running) listProbe.running = true
+            }
+        }
     }
 
     Process {
@@ -100,19 +95,18 @@ Item {
                 if (v.length === 0) return;
                 var id = parseInt(v, 10);
                 if (isNaN(id) || id < 1) return;
-                if (monProbe.ids.indexOf(id) === -1)
-                    monProbe.ids = monProbe.ids.concat([id]);
+                if (root.knownIds.indexOf(id) === -1)
+                    root.knownIds = root.knownIds.concat([id]);
                 root.rebuild();
             }
         }
     }
 
-    Timer {
-        interval: 1500
-        repeat: true
-        running: true
-        triggeredOnStart: true
-        onTriggered: listProbe.running = true
+    Component.onCompleted: {
+        if (Hyprland.focusedMonitor && Hyprland.focusedMonitor.activeWorkspace) {
+            root.activeName = String(Hyprland.focusedMonitor.activeWorkspace.id)
+        }
+        listProbe.running = true
     }
 
     Column {

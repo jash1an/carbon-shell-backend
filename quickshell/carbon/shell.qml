@@ -1182,8 +1182,14 @@ ShellRoot {
                         root.toggleWifi()
                     else if (cmd === "bt" || cmd === "bluetooth")
                         root.toggleBt()
-                    else if (cmd === "power")
-                        root.togglePower()
+                    else if (cmd === "power" || cmd === "powermenu") {
+                        console.log("[IPC powermenu] barMode=" + root.barMode + " nucleusHubItem=" + Boolean(root.nucleusHubItem))
+                        if (root.barMode === "nucleus" && root.nucleusHubItem) {
+                            root.nucleusHubItem.openPowerMode()
+                        } else {
+                            root.togglePower()
+                        }
+                    }
                     else if (cmd === "tray" || cmd === "toggle-tray")
                         root.toggleTray()
                     else if (cmd === "close-power")
@@ -1192,8 +1198,15 @@ ShellRoot {
                         root.closePower()
                         sessionLock.lock()
                     }
+                    else if (cmd === "lock-test") {
+                        root.closePower()
+                        LockTransition.testLock()
+                    }
                     else if (cmd === "unlock") {
-                        sessionLock.locked = false
+                        sessionLock.unlock()
+                    }
+                    else if (cmd === "unlock-test") {
+                        LockTransition.testUnlock()
                     }
                     else if (cmd === "notifications" || cmd === "notif")
                         root.toggleNotif()
@@ -1334,8 +1347,14 @@ ShellRoot {
                     else if (cmd === "lock") {
                         sessionLock.lock()
                     }
+                    else if (cmd === "lock-test") {
+                        LockTransition.testLock()
+                    }
                     else if (cmd === "unlock") {
                         sessionLock.unlock()
+                    }
+                    else if (cmd === "unlock-test") {
+                        LockTransition.testUnlock()
                     }
                     else if (cmd === "lock-test-notif") {
                         sessionLock.testNotif()
@@ -1383,12 +1402,18 @@ ShellRoot {
             color: "transparent"
             WlrLayershell.namespace: "carbon-lock-transition"
             WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+            WlrLayershell.keyboardFocus: (LockTransition.phase === "locking" && LockTransition.t < 780.0) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             exclusionMode: ExclusionMode.Ignore
             aboveWindows: true
             anchors { top: true; bottom: true; left: true; right: true }
 
-            visible: LockTransition.phase === "locking"
+            visible: LockTransition.phase === "locking" || LockTransition.phase === "post_unlock" || (LockTransition.phase === "unlocking" && LockTransition.u >= 900.0)
+
+            MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                preventStealing: true
+            }
 
             LockTransitionOverlay {
                 anchors.fill: parent
@@ -2298,6 +2323,12 @@ ShellRoot {
             hubOpen = true
             bluetoothModeRequested()
         }
+        signal powerModeRequested()
+        function openPowerMode() {
+            isClosing = false
+            hubOpen = true
+            powerModeRequested()
+        }
         signal volumeActionRequested(string action, bool wasClosed)
         signal brightnessActionRequested(string action, bool wasClosed)
         function volumeAction(action) {
@@ -2417,11 +2448,15 @@ ShellRoot {
                     color: Theme.accent
                     border.color: "#FFFFFF"
                     border.width: 1.0
+                }
 
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.nucleusHubItem.open()
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    pressAndHoldInterval: 350
+                    onClicked: root.nucleusHubItem.open()
+                    onPressAndHold: {
+                        if (root.nucleusHubItem) root.nucleusHubItem.openPowerMode()
                     }
                 }
             }
@@ -2450,13 +2485,15 @@ ShellRoot {
                 right: true
             }
 
-            visible: root.barMode === "nucleus" && root.nucleusHubItem.hubOpen
+            visible: root.barMode === "nucleus" && (root.nucleusHubItem.hubOpen || root.nucleusHubItem.isClosing)
 
             NucleusHub {
                 id: nucleusHubItemInstance
                 anchors.fill: parent
                 onOpenLauncher: root.openLauncher()
                 onOpenWallpapers: root.openWallpaperPicker()
+                onOpenPower: root.openPower()
+                onRequestLock: sessionLock.lock()
                 onClosingStarted: {
                     root.nucleusHubItem.isClosing = true
                 }
@@ -2476,6 +2513,7 @@ ShellRoot {
                     function onToggleLyricsRequested() { nucleusHubItemInstance.toggleLyrics() }
                     function onWifiModeRequested() { nucleusHubItemInstance.openWifiMode() }
                     function onBluetoothModeRequested() { nucleusHubItemInstance.openBluetoothMode() }
+                    function onPowerModeRequested() { nucleusHubItemInstance.openPowerMode() }
                     function onVolumeActionRequested(action, wasClosed) {
                         if (wasClosed && action !== "open") {
                             nucleusHubItemInstance.osdOpenedHub = true

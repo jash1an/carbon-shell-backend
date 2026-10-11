@@ -2,8 +2,10 @@
 """
 Wallhaven & Local Wallpaper helper for Carbon Shell.
 Subcommands:
-  search [--sort toplist|date_added] [--query <query>] [--page <n>]
+  search [--sort toplist|date_added|random] [--query <query>] [--page <n>] [--seed <seed>]
   list-local [--query <query>]
+  list-favorites
+  toggle-favorite <path_or_url>
   download <url> <filename>
   apply <path>
 """
@@ -12,11 +14,21 @@ import sys
 import os
 import re
 import json
+import time
+import hashlib
 import urllib.request
 import urllib.parse
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 
 CARBON_CONFIG_DIR = os.environ.get("CARBON_CONFIG_DIR", os.path.expanduser("~/.config/carbon"))
+WALLPAPER_DIR = os.path.expanduser("~/Pictures/Wallpapers")
+LIVE_WALLPAPER_DIR = os.path.expanduser("~/Pictures/Live_Wallpapers")
+THUMB_CACHE_DIR = os.path.expanduser("~/.cache/carbon/thumbs")
+WALLPAPER_CACHE_DIR = os.path.expanduser("~/.cache/carbon/wallpapers")
+FAVORITES_FILE = os.path.join(CARBON_CONFIG_DIR, "wallpaper_favorites.json")
+RATE_LIMIT_FILE = os.path.join(os.path.expanduser("~/.cache/carbon"), "wallhaven_last_req.txt")
+
 WP_APPLY_SCRIPT = os.path.join(CARBON_CONFIG_DIR, "scripts", "wp-apply.sh")
 if not os.path.isfile(WP_APPLY_SCRIPT):
     WP_APPLY_SCRIPT = os.path.expanduser("~/.config/hypr/scripts/wp-apply.sh")
@@ -26,9 +38,141 @@ if not os.path.isfile(WP_APPLY_SCRIPT):
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"
 
 
-def search(sort="toplist", query="", page=1):
+def get_configured_dirs():
+    """Retrieve list of wallpaper directories to scan."""
+    dirs_file = os.path.join(CARBON_CONFIG_DIR, "wallpaper_dirs.json")
+    custom_dirs = []
+    if os.path.isfile(dirs_file):
+        try:
+            with open(dirs_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    custom_dirs = [os.path.expanduser(p) for p in data]
+                elif isinstance(data, dict) and "dirs" in data:
+                    custom_dirs = [os.path.expanduser(p) for p in data["dirs"]]
+        except Exception:
+            pass
+    if not custom_dirs:
+        custom_dirs = [WALLPAPER_DIR, LIVE_WALLPAPER_DIR]
+    return [d for d in custom_dirs if os.path.isdir(d)]
+
+
+def get_favorites():
+    """Load list of favorite wallpaper identifiers/paths."""
+    if os.path.isfile(FAVORITES_FILE):
+        try:
+            with open(FAVORITES_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return data
+        except Exception:
+            pass
+    return []
+
+
+def save_favorites(favs):
+    """Save favorite wallpaper identifiers/paths."""
+    os.makedirs(CARBON_CONFIG_DIR, exist_ok=True)
+    try:
+        with open(FAVORITES_FILE, "w", encoding="utf-8") as f:
+            json.dump(favs, f, indent=2)
+    except Exception:
+        pass
+
+
+def toggle_favorite(identifier):
+    """Toggle favorite status for an item (by path or URL)."""
+    favs = get_favorites()
+    is_fav = False
+    existing_idx = -1
+    for i, item in enumerate(favs):
+        target = item if isinstance(item, str) else item.get("path") or item.get("url") or item.get("id")
+        if target == identifier:
+            existing_idx = i
+            break
+
+    if existing_idx >= 0:
+        favs.pop(existing_idx)
+        is_fav = False
+    else:
+        favs.append(identifier)
+        is_fav = True
+
+    save_favorites(favs)
+    print(json.dumps({"success": True, "identifier": identifier, "is_favorite": is_fav}))
+
+
+def get_thumb_path(file_path, mtime):
+    """Return cache path for 256px thumbnail based on hash of path and mtime."""
+    hash_key = hashlib.sha1(f"{file_path}:{mtime}".encode("utf-8")).hexdigest()[:16]
+    return os.path.join(THUMB_CACHE_DIR, f"{hash_key}.jpg")
+
+
+def ensure_thumbnail(file_path, mtime, is_video=False):
+    """Generate 256px thumbnail if not already present in cache."""
+    os.makedirs(THUMB_CACHE_DIR, exist_ok=True)
+    thumb_path = get_thumb_path(file_path, mtime)
+    if os.path.isfile(thumb_path) and os.path.getsize(thumb_path) > 0:
+        return f"file://{thumb_path}"
+
+    temp_thumb = f"{thumb_path}.tmp.{os.getpid()}.jpg"
+    try:
+        if is_video:
+            cmd = [
+                "ffmpeg", "-y", "-ss", "00:00:00.500", "-i", file_path,
+                "-vframes", "1", "-vf", "scale=256:256:force_original_aspect_ratio=increase,crop=256:256",
+                temp_thumb
+            ]
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+        else:
+            cmd = [
+                "magick", f"{file_path}[0]",
+                "-strip", "-auto-orient",
+                "-resize", "256x256^", "-gravity", "center", "-extent", "256x256",
+                "-quality", "85", temp_thumb
+            ]
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+
+        if os.path.isfile(temp_thumb) and os.path.getsize(temp_thumb) > 0:
+            os.replace(temp_thumb, thumb_path)
+            return f"file://{thumb_path}"
+        else:
+            if os.path.isfile(temp_thumb):
+                os.remove(temp_thumb)
+    except Exception:
+        if os.path.isfile(temp_thumb):
+            try:
+                os.remove(temp_thumb)
+            except Exception:
+                pass
+
+    return f"file://{file_path}"
+
+
+def rate_limit_guard():
+    """Ensure at least 1.35s between requests to stay safely under 45 req/min."""
+    os.makedirs(os.path.dirname(RATE_LIMIT_FILE), exist_ok=True)
+    now = time.time()
+    try:
+        if os.path.isfile(RATE_LIMIT_FILE):
+            with open(RATE_LIMIT_FILE, "r") as f:
+                last_time = float(f.read().strip())
+                elapsed = now - last_time
+                if elapsed < 1.35:
+                    time.sleep(1.35 - elapsed)
+    except Exception:
+        pass
+    try:
+        with open(RATE_LIMIT_FILE, "w") as f:
+            f.write(str(time.time()))
+    except Exception:
+        pass
+
+
+def search(sort="toplist", query="", page=1, seed=None):
     os.makedirs(WALLPAPER_DIR, exist_ok=True)
-    
+    os.makedirs(WALLPAPER_CACHE_DIR, exist_ok=True)
+
     params = {
         "purity": "100",  # SFW
         "sorting": sort,
@@ -37,13 +181,24 @@ def search(sort="toplist", query="", page=1):
     }
     if query and query.strip():
         params["q"] = query.strip()
-    
+    if seed and sort == "random":
+        params["seed"] = seed
+
     url = f"https://wallhaven.cc/api/v1/search?{urllib.parse.urlencode(params)}"
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    
+
+    rate_limit_guard()
+
+    fav_list = set()
+    for item in get_favorites():
+        ident = item if isinstance(item, str) else item.get("path") or item.get("url") or item.get("id")
+        if ident:
+            fav_list.add(ident)
+
     try:
         with urllib.request.urlopen(req, timeout=8) as response:
             data = json.loads(response.read().decode("utf-8"))
+            meta = data.get("meta", {})
             items = []
             for entry in data.get("data", []):
                 wall_id = entry.get("id")
@@ -52,28 +207,42 @@ def search(sort="toplist", query="", page=1):
                 file_type = entry.get("file_type", "image/jpeg")
                 ext = "png" if "png" in file_type else "jpg"
                 filename = f"wallhaven-{wall_id}.{ext}"
-                
+
+                cached_wall = os.path.join(WALLPAPER_DIR, filename)
+                alt_cached = os.path.join(WALLPAPER_CACHE_DIR, filename)
+                exists = os.path.isfile(cached_wall) or os.path.isfile(alt_cached)
+
                 thumbs = entry.get("thumbs", {})
                 thumb_url = thumbs.get("large") or thumbs.get("small") or full_path
-                
+
+                is_fav = (str(wall_id) in fav_list) or (full_path in fav_list) or (filename in fav_list)
+
                 items.append({
-                    "id": wall_id,
+                    "id": str(wall_id),
                     "resolution": res,
                     "category": entry.get("category", "general"),
                     "thumb": thumb_url,
                     "url": full_path,
                     "filename": filename,
+                    "name": f"Wallhaven #{wall_id}",
                     "is_local": False,
-                    "exists": os.path.isfile(os.path.join(WALLPAPER_DIR, filename))
+                    "is_favorite": is_fav,
+                    "exists": exists
                 })
-            
-            print(json.dumps({"success": True, "data": items}))
+
+            print(json.dumps({
+                "success": True,
+                "data": items,
+                "meta": {
+                    "current_page": meta.get("current_page", page),
+                    "last_page": meta.get("last_page", 1),
+                    "total": meta.get("total", len(items)),
+                    "seed": meta.get("seed", seed)
+                }
+            }))
     except Exception as e:
-        # Wallhaven API outage / Cloudflare 503 fallback
-        # Serve the user's cached library of downloaded Wallhaven wallpapers so the UI doesn't break
-        cache_dir = os.path.expanduser("~/.cache/carbon/wp-thumbs")
+        cached_items = []
         valid_exts = {".jpg", ".jpeg", ".png", ".webp"}
-        fallback_items = []
         try:
             for fname in os.listdir(WALLPAPER_DIR):
                 if not fname.startswith("wallhaven-"):
@@ -87,16 +256,17 @@ def search(sort="toplist", query="", page=1):
                 if query and query.strip().lower() not in fname.lower():
                     continue
 
-                safe_thumb = fname.replace(".", "_") + ".png"
-                thumb_path = os.path.join(cache_dir, safe_thumb)
-                thumb_url = f"file://{thumb_path}" if os.path.isfile(thumb_path) else f"file://{full_path}"
-                
+                mtime = os.path.getmtime(full_path)
+                thumb_url = ensure_thumbnail(full_path, mtime, is_video=False)
+
                 res = "HD"
                 m = re.search(r"(\d{3,5}x\d{3,5})", fname)
                 if m:
                     res = m.group(1)
 
-                fallback_items.append({
+                is_fav = (fname in fav_list) or (full_path in fav_list)
+
+                cached_items.append({
                     "id": fname,
                     "resolution": res,
                     "category": "wallhaven (cached)",
@@ -104,176 +274,160 @@ def search(sort="toplist", query="", page=1):
                     "url": f"file://{full_path}",
                     "path": full_path,
                     "filename": fname,
-                    "mtime": os.path.getmtime(full_path),
+                    "name": fname.replace("wallhaven-", "").rsplit(".", 1)[0],
+                    "mtime": mtime,
                     "is_local": True,
+                    "is_favorite": is_fav,
                     "exists": True
                 })
-            fallback_items.sort(key=lambda x: x["mtime"], reverse=True)
+            cached_items.sort(key=lambda x: x["mtime"], reverse=True)
         except Exception:
             pass
 
-        # Return the cached collection with notice
         print(json.dumps({
             "success": True,
-            "data": fallback_items,
+            "data": cached_items,
             "offline_fallback": True,
-            "notice": "Wallhaven servers are currently undergoing maintenance (503). Showing your downloaded Wallhaven library.",
+            "meta": {"current_page": 1, "last_page": 1, "total": len(cached_items)},
+            "notice": "Online Wallhaven service unavailable. Showing your downloaded library.",
             "error": str(e)
         }))
 
 
 def list_local(query=""):
-    os.makedirs(WALLPAPER_DIR, exist_ok=True)
-    cache_dir = os.path.expanduser("~/.cache/carbon/wp-thumbs")
-    
-    valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+    valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif", ".mp4", ".mkv", ".webm"}
+    video_exts = {".mp4", ".mkv", ".webm"}
+    dirs = get_configured_dirs()
+
+    fav_list = set()
+    for item in get_favorites():
+        ident = item if isinstance(item, str) else item.get("path") or item.get("url") or item.get("id")
+        if ident:
+            fav_list.add(ident)
+
+    found_files = []
+    for d in dirs:
+        for root_dir, _, files in os.walk(d):
+            for fname in files:
+                ext = os.path.splitext(fname)[1].lower()
+                if ext in valid_exts:
+                    full_path = os.path.join(root_dir, fname)
+                    if os.path.isfile(full_path):
+                        if query and query.strip().lower() not in fname.lower():
+                            continue
+                        try:
+                            mtime = os.path.getmtime(full_path)
+                        except OSError:
+                            mtime = 0
+                        found_files.append((full_path, fname, ext, mtime))
+
+    found_files.sort(key=lambda x: x[3], reverse=True)
+
     entries = []
-    
-    try:
-        filenames = os.listdir(WALLPAPER_DIR)
-    except OSError:
-        filenames = []
-        
-    for fname in filenames:
-        ext = os.path.splitext(fname)[1].lower()
-        if ext not in valid_exts:
-            continue
-        
-        full_path = os.path.join(WALLPAPER_DIR, fname)
-        if not os.path.isfile(full_path):
-            continue
-            
-        if query and query.strip().lower() not in fname.lower():
-            continue
-            
-        try:
-            mtime = os.path.getmtime(full_path)
-        except OSError:
-            mtime = 0
-            
-        # Check thumbnail cache
-        safe_thumb_name = fname.replace(".", "_") + ".png"
-        thumb_cached_path = os.path.join(cache_dir, safe_thumb_name)
-        if os.path.isfile(thumb_cached_path) and os.path.getsize(thumb_cached_path) > 0:
-            thumb_url = f"file://{thumb_cached_path}"
+    to_thumb = [(p, mt, ext in video_exts) for p, fn, ext, mt in found_files[:40]]
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        thumb_results = list(executor.map(lambda args: ensure_thumbnail(*args), to_thumb))
+
+    for i, (full_path, fname, ext, mtime) in enumerate(found_files):
+        is_video = ext in video_exts
+        if i < len(thumb_results):
+            thumb_url = thumb_results[i]
         else:
-            thumb_url = f"file://{full_path}"
-            
-        # Check if resolution is in filename
-        res = "HD"
+            cached_p = get_thumb_path(full_path, mtime)
+            thumb_url = f"file://{cached_p}" if os.path.isfile(cached_p) else f"file://{full_path}"
+
+        res = "LIVE" if is_video else "HD"
         m = re.search(r"(\d{3,5}x\d{3,5})", fname)
         if m:
             res = m.group(1)
-            
+
+        is_fav = (full_path in fav_list) or (fname in fav_list)
+
         entries.append({
             "id": fname,
             "resolution": res,
-            "category": "local",
+            "category": "live" if is_video else "local",
             "thumb": thumb_url,
             "url": f"file://{full_path}",
             "path": full_path,
             "filename": fname,
-            "mtime": mtime,
-            "is_local": True
-        })
-        
-    entries.sort(key=lambda x: x["mtime"], reverse=True)
-    print(json.dumps({"success": True, "data": entries}))
-
-
-LIVE_WALLPAPER_DIR = os.path.expanduser("~/Pictures/Live_Wallpapers")
-
-def list_live(query=""):
-    os.makedirs(LIVE_WALLPAPER_DIR, exist_ok=True)
-    cache_dir = os.path.expanduser("~/.cache/carbon/wp-thumbs")
-    os.makedirs(cache_dir, exist_ok=True)
-
-    valid_exts = {".mp4", ".gif", ".m4v", ".webm", ".mkv"}
-    entries = []
-
-    try:
-        filenames = os.listdir(LIVE_WALLPAPER_DIR)
-    except OSError:
-        filenames = []
-
-    for fname in filenames:
-        ext = os.path.splitext(fname)[1].lower()
-        if ext not in valid_exts:
-            continue
-
-        full_path = os.path.join(LIVE_WALLPAPER_DIR, fname)
-        if not os.path.isfile(full_path):
-            continue
-
-        if query and query.strip().lower() not in fname.lower():
-            continue
-
-        try:
-            mtime = os.path.getmtime(full_path)
-        except OSError:
-            mtime = 0
-
-        # Thumbnail extraction for live wallpaper
-        safe_thumb_name = "live_" + fname.replace(".", "_") + ".png"
-        thumb_cached_path = os.path.join(cache_dir, safe_thumb_name)
-        if not (os.path.isfile(thumb_cached_path) and os.path.getsize(thumb_cached_path) > 0):
-            try:
-                if ext in {".mp4", ".m4v", ".webm", ".mkv"}:
-                    subprocess.run(
-                        ["ffmpeg", "-y", "-i", full_path, "-vframes", "1", "-ss", "00:00:00.500", "-vf", "scale=400:-1", thumb_cached_path],
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4
-                    )
-                elif ext == ".gif":
-                    subprocess.run(
-                        ["magick", f"{full_path}[0]", "-resize", "400x", thumb_cached_path],
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4
-                    )
-            except Exception:
-                pass
-
-        if os.path.isfile(thumb_cached_path) and os.path.getsize(thumb_cached_path) > 0:
-            thumb_url = f"file://{thumb_cached_path}"
-        else:
-            thumb_url = f"file://{full_path}"
-
-        res = "LIVE"
-        m = re.search(r"(\d{3,5}x\d{3,5})", fname)
-        if m:
-            res = m.group(1)
-
-        entries.append({
-            "id": "live_" + fname,
-            "resolution": res,
-            "category": "live",
-            "thumb": thumb_url,
-            "url": f"file://{full_path}",
-            "path": full_path,
-            "filename": fname,
+            "name": os.path.splitext(fname)[0],
             "mtime": mtime,
             "is_local": True,
-            "is_live": True
+            "is_live": is_video,
+            "is_favorite": is_fav,
+            "exists": True
         })
 
-    entries.sort(key=lambda x: x["mtime"], reverse=True)
-    print(json.dumps({"success": True, "data": entries}))
+    print(json.dumps({"success": True, "data": entries, "total": len(entries)}))
+
+
+def list_favorites():
+    """Return all favorites that exist locally, plus remote ones."""
+    favs = get_favorites()
+    entries = []
+    valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif", ".mp4", ".mkv", ".webm"}
+    video_exts = {".mp4", ".mkv", ".webm"}
+
+    for item in favs:
+        p = item if isinstance(item, str) else item.get("path") or item.get("url")
+        if not p:
+            continue
+        if os.path.isfile(p):
+            fname = os.path.basename(p)
+            ext = os.path.splitext(fname)[1].lower()
+            mtime = os.path.getmtime(p)
+            is_video = ext in video_exts
+            thumb = ensure_thumbnail(p, mtime, is_video)
+            res = "LIVE" if is_video else "HD"
+            m = re.search(r"(\d{3,5}x\d{3,5})", fname)
+            if m:
+                res = m.group(1)
+            entries.append({
+                "id": fname,
+                "resolution": res,
+                "category": "favorite",
+                "thumb": thumb,
+                "url": f"file://{p}",
+                "path": p,
+                "filename": fname,
+                "name": os.path.splitext(fname)[0],
+                "mtime": mtime,
+                "is_local": True,
+                "is_live": is_video,
+                "is_favorite": True,
+                "exists": True
+            })
+        elif isinstance(item, dict):
+            item["is_favorite"] = True
+            entries.append(item)
+
+    print(json.dumps({"success": True, "data": entries, "total": len(entries)}))
 
 
 def download(url, filename):
     os.makedirs(WALLPAPER_DIR, exist_ok=True)
+    os.makedirs(WALLPAPER_CACHE_DIR, exist_ok=True)
     dest_path = os.path.join(WALLPAPER_DIR, os.path.basename(filename))
-    
+
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        with urllib.request.urlopen(req, timeout=25) as response, open(dest_path, "wb") as out_file:
+        with urllib.request.urlopen(req, timeout=30) as response, open(dest_path, "wb") as out_file:
             while True:
                 chunk = response.read(65536)
                 if not chunk:
                     break
                 out_file.write(chunk)
-        
+
+        try:
+            mtime = os.path.getmtime(dest_path)
+            ensure_thumbnail(dest_path, mtime, is_video=False)
+        except Exception:
+            pass
+
         if os.path.isfile(WP_APPLY_SCRIPT):
             subprocess.run(["sh", WP_APPLY_SCRIPT, dest_path], check=False)
-            
+
         print(json.dumps({"success": True, "path": dest_path}))
     except Exception as e:
         print(json.dumps({"success": False, "error": str(e)}))
@@ -289,7 +443,7 @@ def apply_local(path):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: wallhaven.py <search|list-local|download|apply> [args...]")
+        print("Usage: wallhaven.py <search|list-local|list-favorites|toggle-favorite|download|apply> [args...]")
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -297,7 +451,8 @@ def main():
         sort = "toplist"
         query = ""
         page = 1
-        
+        seed = None
+
         i = 2
         while i < len(sys.argv):
             if sys.argv[i] == "--sort" and i + 1 < len(sys.argv):
@@ -312,9 +467,12 @@ def main():
                 except ValueError:
                     page = 1
                 i += 2
+            elif sys.argv[i] == "--seed" and i + 1 < len(sys.argv):
+                seed = sys.argv[i + 1]
+                i += 2
             else:
                 i += 1
-        search(sort=sort, query=query, page=page)
+        search(sort=sort, query=query, page=page, seed=seed)
 
     elif cmd in ("list-local", "local"):
         query = ""
@@ -324,21 +482,20 @@ def main():
             query = sys.argv[2]
         list_local(query=query)
 
-    elif cmd in ("list-live", "live"):
-        query = ""
-        if len(sys.argv) > 2 and sys.argv[2] == "--query" and len(sys.argv) > 3:
-            query = sys.argv[3]
-        elif len(sys.argv) > 2:
-            query = sys.argv[2]
-        list_live(query=query)
+    elif cmd in ("list-favorites", "favorites"):
+        list_favorites()
+
+    elif cmd in ("toggle-favorite", "fav"):
+        if len(sys.argv) < 3:
+            print(json.dumps({"success": False, "error": "Missing identifier"}))
+            sys.exit(1)
+        toggle_favorite(sys.argv[2])
 
     elif cmd == "download":
         if len(sys.argv) < 4:
             print(json.dumps({"success": False, "error": "Missing url or filename"}))
             sys.exit(1)
-        url = sys.argv[2]
-        filename = sys.argv[3]
-        download(url, filename)
+        download(sys.argv[2], sys.argv[3])
 
     elif cmd == "apply":
         if len(sys.argv) < 3:
@@ -353,3 +510,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

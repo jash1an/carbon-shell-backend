@@ -49,23 +49,18 @@ Item {
 
     onPlayingChanged: {
         if (playing) {
-            lastFrameMs = Date.now()
             isAnimating = true
         }
     }
 
-    Timer {
-        id: frameTimer
-        interval: 16
-        repeat: true
-        running: root.isAnimating
-        onTriggered: root.updateFrame()
+    FrameAnimation {
+        id: frameAnim
+        running: root.isAnimating && root.visible
+        onTriggered: root.updateFrame(frameTime)
     }
 
-    function updateFrame() {
-        var now = Date.now()
-        var dt = (root.lastFrameMs > 0) ? Math.min(32.0, Math.max(10.0, now - root.lastFrameMs)) : 16.0
-        root.lastFrameMs = now
+    function updateFrame(dtSec) {
+        var dt = (dtSec && dtSec > 0.0) ? Math.min(32.0, Math.max(8.0, dtSec * 1000.0)) : 16.0
 
         /* 1. Extract Raw Energies from 48 Cava Bands */
         var rawBass = 0.0
@@ -121,20 +116,19 @@ Item {
             root.speedFactor += (0.0 - root.speedFactor) * 0.08
         }
 
-        /* 4. Phase Drift (alternating directions per harmonic) */
-        var twoPi = 2.0 * Math.PI
+        /* 4. Phase Drift (continuous monotonic advance, never wraps, never snaps) */
         if (!root.reducedMotion && root.speedFactor > 0.0001) {
             // Layer 1 (bass, m=2, 3)
-            root.phase1_1 = (root.phase1_1 + root.speedFactor * 0.0007 * (1.0 + root.drawBass) * dt) % twoPi
-            root.phase1_2 = (root.phase1_2 - root.speedFactor * 0.0005 * (1.0 + root.drawBass) * dt) % twoPi
+            root.phase1_1 += root.speedFactor * 0.70 * (1.0 + root.drawBass) * (dt / 1000.0)
+            root.phase1_2 -= root.speedFactor * 0.50 * (1.0 + root.drawBass) * (dt / 1000.0)
 
             // Layer 2 (mids, m=3, 5)
-            root.phase2_1 = (root.phase2_1 - root.speedFactor * 0.0008 * (1.0 + root.drawMids) * dt) % twoPi
-            root.phase2_2 = (root.phase2_2 + root.speedFactor * 0.0006 * (1.0 + root.drawMids) * dt) % twoPi
+            root.phase2_1 -= root.speedFactor * 0.80 * (1.0 + root.drawMids) * (dt / 1000.0)
+            root.phase2_2 += root.speedFactor * 0.60 * (1.0 + root.drawMids) * (dt / 1000.0)
 
             // Layer 3 (treble, m=4, 2)
-            root.phase3_1 = (root.phase3_1 + root.speedFactor * 0.0009 * (1.0 + root.drawTreble) * dt) % twoPi
-            root.phase3_2 = (root.phase3_2 - root.speedFactor * 0.0007 * (1.0 + root.drawTreble) * dt) % twoPi
+            root.phase3_1 += root.speedFactor * 0.90 * (1.0 + root.drawTreble) * (dt / 1000.0)
+            root.phase3_2 -= root.speedFactor * 0.70 * (1.0 + root.drawTreble) * (dt / 1000.0)
         }
 
         /* 5. Silence / Pause Settling Check */

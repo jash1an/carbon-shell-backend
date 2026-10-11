@@ -195,12 +195,9 @@ Item {
 
     /* Continuous subatomic spin animation tick */
     property real quantumPhase: 0.0
-    NumberAnimation on quantumPhase {
-        from: 0.0
-        to: 360.0
-        duration: 9000
-        loops: Animation.Infinite
-        running: true
+    FrameAnimation {
+        running: root.visible && root.opacity > 0.01
+        onTriggered: root.quantumPhase += frameTime * 40.0
     }
 
     /* ================================================================= */

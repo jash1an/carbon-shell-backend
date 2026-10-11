@@ -93,124 +93,104 @@ Item {
     }
 
     /* ── Periodic Pulse & Shockwave (Heartbeat Effect) ────────────────────── */
-    Timer {
-        id: periodicPulseTimer
-        interval: 1850
-        running: root.shouldAnimate
-        repeat: true
-        onTriggered: periodicPulseAnim.restart()
-    }
-
-    ParallelAnimation {
+    SequentialAnimation {
         id: periodicPulseAnim
+        running: root.shouldAnimate
+        loops: Animation.Infinite
 
-        // Expanding circular shockwave ring from the outer circumcircle outwards
-        SequentialAnimation {
-            PropertyAction { target: impactRing; property: "scale"; value: 0.9 }
-            PropertyAction { target: impactRing; property: "opacity"; value: 0.85 }
+        ParallelAnimation {
+            // Expanding circular shockwave ring from the outer circumcircle outwards
+            SequentialAnimation {
+                PropertyAction { target: impactRing; property: "scale"; value: 0.9 }
+                PropertyAction { target: impactRing; property: "opacity"; value: 0.85 }
 
-            ParallelAnimation {
-                NumberAnimation {
-                    target: impactRing
-                    property: "scale"
-                    to: 2.3
-                    duration: 750
-                    easing.type: Easing.OutCubic
-                }
-                NumberAnimation {
-                    target: impactRing
-                    property: "opacity"
-                    to: 0.0
-                    duration: 750
-                    easing.type: Easing.OutQuad
+                ParallelAnimation {
+                    NumberAnimation {
+                        target: impactRing
+                        property: "scale"
+                        to: 2.3
+                        duration: 750
+                        easing.type: Easing.OutCubic
+                    }
+                    NumberAnimation {
+                        target: impactRing
+                        property: "opacity"
+                        to: 0.0
+                        duration: 750
+                        easing.type: Easing.OutQuad
+                    }
                 }
             }
-        }
 
-        // All 6 dots pulse with scale bounce
-        SequentialAnimation {
-            ParallelAnimation {
+            // All 6 dots pulse with scale bounce
+            SequentialAnimation {
+                ParallelAnimation {
+                    NumberAnimation {
+                        targets: [innerDotTop, innerDotBottom, dotTop, dotBottom, dotLeft, dotRight]
+                        property: "scale"
+                        to: 1.35
+                        duration: 180
+                        easing.type: Easing.OutQuad
+                    }
+                }
+                ParallelAnimation {
+                    NumberAnimation {
+                        targets: [innerDotTop, innerDotBottom, dotTop, dotBottom, dotLeft, dotRight]
+                        property: "scale"
+                        to: 1.0
+                        duration: 350
+                        easing.type: Easing.OutBack
+                    }
+                }
+            }
+
+            // Orbital rings flash brightly
+            SequentialAnimation {
                 NumberAnimation {
-                    targets: [innerDotTop, innerDotBottom, dotTop, dotBottom, dotLeft, dotRight]
-                    property: "scale"
-                    to: 1.35
+                    targets: [innerGlowRing, outerGlowRing]
+                    property: "opacity"
+                    to: 0.85
                     duration: 180
                     easing.type: Easing.OutQuad
                 }
-            }
-            ParallelAnimation {
                 NumberAnimation {
-                    targets: [innerDotTop, innerDotBottom, dotTop, dotBottom, dotLeft, dotRight]
-                    property: "scale"
-                    to: 1.0
-                    duration: 350
-                    easing.type: Easing.OutBack
+                    targets: [innerGlowRing, outerGlowRing]
+                    property: "opacity"
+                    to: 0.28
+                    duration: 550
+                    easing.type: Easing.OutQuad
+                }
+            }
+
+            // Central "C" glow surges
+            SequentialAnimation {
+                NumberAnimation {
+                    target: centerGlow
+                    property: "opacity"
+                    to: 0.50
+                    duration: 180
+                    easing.type: Easing.OutQuad
+                }
+                NumberAnimation {
+                    target: centerGlow
+                    property: "opacity"
+                    to: 0.18
+                    duration: 550
+                    easing.type: Easing.OutQuad
                 }
             }
         }
 
-        // Orbital rings flash brightly
-        SequentialAnimation {
-            NumberAnimation {
-                targets: [innerGlowRing, outerGlowRing]
-                property: "opacity"
-                to: 0.85
-                duration: 180
-                easing.type: Easing.OutQuad
-            }
-            NumberAnimation {
-                targets: [innerGlowRing, outerGlowRing]
-                property: "opacity"
-                to: 0.28
-                duration: 550
-                easing.type: Easing.OutQuad
-            }
-        }
-
-        // Central "C" glow surges
-        SequentialAnimation {
-            NumberAnimation {
-                target: centerGlow
-                property: "opacity"
-                to: 0.50
-                duration: 180
-                easing.type: Easing.OutQuad
-            }
-            NumberAnimation {
-                target: centerGlow
-                property: "opacity"
-                to: 0.18
-                duration: 550
-                easing.type: Easing.OutQuad
-            }
-        }
+        PauseAnimation { duration: 1100 }
     }
 
     /* ── Non-Simultaneous Independent Revolutions (Bohr Atom Dynamics) ────── */
-    // Layer 1 (Inner 2 dots): Clockwise rotation at 5.8s period
-    NumberAnimation {
-        id: innerOrbitAnim
-        target: innerOrbitGroup
-        property: "rotation"
-        from: 0
-        to: 360
-        duration: 5800
-        loops: Animation.Infinite
-        easing.type: Easing.Linear
+    FrameAnimation {
         running: root.shouldAnimate
-    }
-
-    // Layer 2 (Outer 4 dots): Counter-clockwise rotation at 9.4s period
-    NumberAnimation {
-        id: outerOrbitAnim
-        target: outerOrbitGroup
-        property: "rotation"
-        from: 360
-        to: 0
-        duration: 9400
-        loops: Animation.Infinite
-        easing.type: Easing.Linear
-        running: root.shouldAnimate
+        onTriggered: {
+            innerOrbitGroup.rotation += frameTime * (360.0 / 5.8)
+            outerOrbitGroup.rotation -= frameTime * (360.0 / 9.4)
+        }
     }
 
     /* ── Visual Elements ─────────────────────────────────────────────────── */

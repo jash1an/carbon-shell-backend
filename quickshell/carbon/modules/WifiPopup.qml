@@ -517,6 +517,7 @@ Item {
                     NumberAnimation on rotation {
                         from: 0; to: 360; duration: 900
                         loops: Animation.Infinite
+                        easing.type: Easing.Linear
                         running: root.scanning
                     }
                 }

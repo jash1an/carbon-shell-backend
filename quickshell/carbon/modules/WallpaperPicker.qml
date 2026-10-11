@@ -751,6 +751,7 @@ Item {
                         NumberAnimation on rotation {
                             from: 0; to: 360; duration: 800
                             loops: Animation.Infinite
+                            easing.type: Easing.Linear
                             running: root.isLoading
                         }
                     }
@@ -849,6 +850,7 @@ Item {
                         NumberAnimation on rotation {
                             from: 0; to: 360; duration: 1000
                             loops: Animation.Infinite
+                            easing.type: Easing.Linear
                             running: root.isLoading && root.wallpapers.length === 0
                         }
                     }
@@ -1039,6 +1041,7 @@ Item {
                                         NumberAnimation on rotation {
                                             from: 0; to: 360; duration: 900
                                             loops: Animation.Infinite
+                                            easing.type: Easing.Linear
                                             running: cardItem.isDownloading
                                         }
                                     }
@@ -1141,6 +1144,7 @@ Item {
                                         NumberAnimation on rotation {
                                             from: 0; to: 360; duration: 800
                                             loops: Animation.Infinite
+                                            easing.type: Easing.Linear
                                             running: root.isLoadingMore
                                         }
                                     }

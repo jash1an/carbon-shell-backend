@@ -67,30 +67,12 @@ Item {
     }
 
     /* ── Smooth Continuous Independent Revolutions (Bohr Atom Dynamics) ───── */
-    // Layer 1 (Inner 2 dots): Clockwise rotation at 5.8s period (Linear, constant)
-    NumberAnimation {
-        id: innerOrbitAnim
-        target: innerOrbitGroup
-        property: "rotation"
-        from: 0
-        to: 360
-        duration: 5800
-        loops: Animation.Infinite
-        easing.type: Easing.Linear
-        running: true
-    }
-
-    // Layer 2 (Outer 4 dots): Counter-clockwise rotation at 9.4s period (Linear, constant)
-    NumberAnimation {
-        id: outerOrbitAnim
-        target: outerOrbitGroup
-        property: "rotation"
-        from: 360
-        to: 0
-        duration: 9400
-        loops: Animation.Infinite
-        easing.type: Easing.Linear
-        running: true
+    FrameAnimation {
+        running: root.visible && root.opacity > 0.01
+        onTriggered: {
+            innerOrbitGroup.rotation += frameTime * (360.0 / 5.8)
+            outerOrbitGroup.rotation -= frameTime * (360.0 / 9.4)
+        }
     }
 
     /* ── Main Atom Container Centered at (130, 130) ───────────────────────── */

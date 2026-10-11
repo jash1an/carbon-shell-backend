@@ -286,7 +286,7 @@ NotchContainer {
                             height: root.isPlaying ? modelData.minH : 2.5
 
                             SequentialAnimation on height {
-                                running: root.isPlaying
+                                running: root.isPlaying && root.visible
                                 loops: Animation.Infinite
                                 NumberAnimation { to: eqBar.modelData.maxH; duration: eqBar.modelData.dur; easing.type: Easing.InOutQuad }
                                 NumberAnimation { to: eqBar.modelData.minH; duration: eqBar.modelData.dur * 0.85; easing.type: Easing.InOutQuad }

@@ -104,11 +104,9 @@ Item {
         onTriggered: root.animatingOut = false
     }
 
-    Timer {
-        id: orbitSmoothTimer
-        interval: 33 // ~30 fps smooth continuous second revolution
-        repeat: true
-        running: root.open && !root.minimalCalendarOnly && !centerCol.userDragging
+    FrameAnimation {
+        id: orbitSmoothAnim
+        running: root.open && !root.minimalCalendarOnly && !centerCol.userDragging && root.visible
         onTriggered: centerCol.syncClockAngle()
     }
 
@@ -1092,7 +1090,8 @@ Item {
                 SequentialAnimation {
                     id: levAnimItem
                     loops: Animation.Infinite
-                    running: root.open
+                    running: true
+                    paused: !(root.open && root.visible)
                     NumberAnimation { target: centerCol; property: "levitation"; from: 0; to: -5; duration: 4000; easing.type: Easing.InOutSine }
                     NumberAnimation { target: centerCol; property: "levitation"; from: -5; to: 0; duration: 4000; easing.type: Easing.InOutSine }
                 }
@@ -1102,7 +1101,8 @@ Item {
                 SequentialAnimation {
                     id: breathAnimItem
                     loops: Animation.Infinite
-                    running: root.open
+                    running: true
+                    paused: !(root.open && root.visible)
                     NumberAnimation { target: centerCol; property: "orbitBreath"; from: 1.0; to: 1.025; duration: 3500; easing.type: Easing.InOutSine }
                     NumberAnimation { target: centerCol; property: "orbitBreath"; from: 1.025; to: 1.0; duration: 3500; easing.type: Easing.InOutSine }
                 }

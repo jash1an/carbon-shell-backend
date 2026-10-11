@@ -108,6 +108,7 @@ Item {
         duration: 3400
         loops: Animation.Infinite
         easing.type: Easing.InOutQuad
+        running: root.visible && root.opacity > 0.01
     }
 
     /* ── Tri-Shard Cluster Row ── */

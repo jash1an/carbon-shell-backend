@@ -51,13 +51,18 @@ Item {
     implicitHeight: 52
 
     property bool revealed: false
-    opacity: revealed ? 1.0 : 0.0
+    opacity: {
+        if (LockTransition.phase === "unlocking") {
+            return Math.max(0.0, 1.0 - LockTransition.u / 250.0) * (cardRoot.revealed ? 1.0 : 0.0)
+        }
+        return cardRoot.revealed ? 1.0 : 0.0
+    }
     scale: revealed ? 1.0 : 0.82
     transform: Translate {
         y: cardRoot.revealed ? 0 : 28
         Behavior on y {
             NumberAnimation {
-                duration: cardRoot.revealed ? 420 : 240
+                duration: cardRoot.revealed ? 380 : 240
                 easing.type: cardRoot.revealed ? Easing.OutBack : Easing.InCubic
                 easing.overshoot: 1.35
             }
@@ -73,7 +78,7 @@ Item {
 
     Behavior on scale {
         NumberAnimation {
-            duration: cardRoot.revealed ? 420 : 220
+            duration: cardRoot.revealed ? 380 : 220
             easing.type: cardRoot.revealed ? Easing.OutBack : Easing.InCubic
             easing.overshoot: 1.4
         }
@@ -94,6 +99,11 @@ Item {
         forceActiveFocus()
     }
 
+    function restartIdleTimer(ms) {
+        idleHideTimer.interval = ms !== undefined ? ms : 3000
+        idleHideTimer.restart()
+    }
+
     function submitPassword() {
         if (buffer.length > 0 && !isAuthenticating) {
             isAuthenticating = true
@@ -103,14 +113,16 @@ Item {
         }
     }
 
-    /* ── Auto-Hide Idle Timer (5 seconds idle after typing) ────────── */
+    /* ── Auto-Hide Idle Timer (Hides back after user stops typing) ────────── */
     Timer {
         id: idleHideTimer
-        interval: 5000
+        interval: 3000
         repeat: false
         onTriggered: {
-            cardRoot.revealed = false
-            cardRoot.buffer = ""
+            if (!cardRoot.isAuthenticating) {
+                cardRoot.revealed = false
+                cardRoot.buffer = ""
+            }
         }
     }
 
@@ -119,11 +131,15 @@ Item {
 
         if (event.key === Qt.Key_Enter || event.key === Qt.Key_Return) {
             idleHideTimer.stop()
-            submitPassword()
+            if (buffer.length > 0) {
+                submitPassword()
+            } else {
+                cardRoot.restartIdleTimer(800)
+            }
             event.accepted = true
         } else if (event.key === Qt.Key_Backspace) {
             cardRoot.revealed = true
-            idleHideTimer.restart()
+            cardRoot.restartIdleTimer(3000)
             if (event.modifiers & Qt.ControlModifier) {
                 buffer = ""
             } else {
@@ -143,7 +159,7 @@ Item {
             const code = event.text.charCodeAt(0)
             if (code >= 32 && code !== 127) {
                 cardRoot.revealed = true
-                idleHideTimer.restart()
+                cardRoot.restartIdleTimer(3000)
                 buffer += event.text
                 isError = false
                 lockTiltAnim.restart()
@@ -151,9 +167,8 @@ Item {
             }
             event.accepted = true
         } else {
-            // Reveal on any other keypress as well so user sees the password card immediately
             cardRoot.revealed = true
-            idleHideTimer.restart()
+            cardRoot.restartIdleTimer(3000)
         }
     }
 
@@ -226,8 +241,9 @@ Item {
             } else {
                 cardRoot.isError = true
                 cardRoot.buffer = ""
-                shakeAnim.restart()
+                // Per spec: dots flash rose (#f38ba8) and clear (no shake), no handoff
                 errorTimer.restart()
+                cardRoot.restartIdleTimer(1400)
             }
         }
     }

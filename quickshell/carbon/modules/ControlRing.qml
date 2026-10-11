@@ -276,30 +276,29 @@ Item {
     property real phase2_1: 0.0
     property real phase2_2: 0.0
 
-    Timer {
-        id: frameTimer
-        interval: 16
-        repeat: true
-        running: root.isOpen || root.openProgress > 0.005
+    FrameAnimation {
+        id: frameAnim
+        running: (root.isOpen || root.openProgress > 0.005) && root.visible
         onTriggered: {
             var targetL = root.displayLevel
-            root.lagG0 += (targetL - root.lagG0) * 0.22
-            root.lagG1 += (targetL - root.lagG1) * 0.14
-            root.lagG2 += (targetL - root.lagG2) * 0.07
+            var dtSec = (frameTime && frameTime > 0.0) ? Math.min(0.05, Math.max(0.005, frameTime)) : 0.016
+            var lerpRate = Math.min(1.0, dtSec * 14.0)
+            root.lagG0 += (targetL - root.lagG0) * lerpRate
+            root.lagG1 += (targetL - root.lagG1) * (lerpRate * 0.65)
+            root.lagG2 += (targetL - root.lagG2) * (lerpRate * 0.32)
 
             // Soft decay of speed factor
-            root.speedFactor += (0.0 - root.speedFactor) * 0.05
+            root.speedFactor += (0.0 - root.speedFactor) * (dtSec * 3.0)
 
-            // Continuous calm phase drift: never stops, never jerks
-            var twoPi = 2.0 * Math.PI
-            var drift = 0.016 + 0.006 * root.speedFactor
+            // Continuous calm phase drift: never wraps, never jerks
+            var drift = (1.0 + 0.38 * root.speedFactor) * dtSec
 
-            root.phase0_1 = (root.phase0_1 + drift) % twoPi
-            root.phase0_2 = (root.phase0_2 - drift * 0.72) % twoPi
-            root.phase1_1 = (root.phase1_1 - drift * 1.15) % twoPi
-            root.phase1_2 = (root.phase1_2 + drift * 0.84) % twoPi
-            root.phase2_1 = (root.phase2_1 + drift * 1.28) % twoPi
-            root.phase2_2 = (root.phase2_2 - drift * 0.91) % twoPi
+            root.phase0_1 += drift
+            root.phase0_2 -= drift * 0.72
+            root.phase1_1 -= drift * 1.15
+            root.phase1_2 += drift * 0.84
+            root.phase2_1 += drift * 1.28
+            root.phase2_2 -= drift * 0.91
 
             trailPrune()
 
@@ -375,7 +374,7 @@ Item {
                 ctx.beginPath()
                 for (var s = 0; s <= numSamples; s++) {
                     var theta = (s / numSamples) * twoPi
-                    var r = r0 + A * (0.6 * Math.sin(l.m1 * theta + l.p1) + 0.4 * Math.sin(l.m2 * theta + 0.7 * l.p1 + i))
+                    var r = r0 + A * (0.6 * Math.sin(l.m1 * theta + l.p1) + 0.4 * Math.sin(l.m2 * theta + l.p2 + i))
                     var px = cx + r * Math.cos(theta)
                     var py = cy + r * Math.sin(theta)
                     if (s === 0) ctx.moveTo(px, py)
