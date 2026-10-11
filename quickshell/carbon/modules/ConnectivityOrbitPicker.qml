@@ -127,8 +127,18 @@ Item {
     property string passwordBuffer: ""
     property bool wrongPasswordActive: false
 
-    /* Loading State */
+    /* Loading & Animation State */
     property bool isLoading: false
+    property real animPhase: 0.0
+    property var savedWifiConnections: []
+    property double connectStartTime: 0.0
+
+    FrameAnimation {
+        running: !root.reducedMotion && (root.isLoading || root.wifiScanning || root.btScanning || root.state === "connecting")
+        onTriggered: {
+            root.animPhase = (root.animPhase + frameTime * 240.0) % 360.0
+        }
+    }
 
     Timer {
         id: wifiLoadTimer
@@ -236,6 +246,9 @@ Item {
         root.isLoading = true
         btLoadTimer.stop()
         wifiLoadTimer.restart()
+        if (!wifiSavedProc.running) {
+            wifiSavedProc.running = true
+        }
         root.rescanWifi()
     }
 
@@ -264,6 +277,7 @@ Item {
         wifiLoadTimer.stop()
         btLoadTimer.stop()
         delayClearStatusTimer.stop()
+        connectGuardTimer.stop()
         failureFlashAnim.stop()
         root.pickerMode = "none"
         root.state = "idle"
@@ -311,6 +325,28 @@ Item {
        ══════════════════════════════════════════════════════════════════════ */
     function shellQuote(s) {
         return "'" + String(s).replace(/'/g, "'\\''") + "'"
+    }
+
+    Process {
+        id: wifiSavedProc
+        command: ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"]
+        stdout: StdioCollector {
+            id: wifiSavedOut
+            waitForEnd: true
+        }
+        onExited: {
+            var lines = String(wifiSavedOut.text).split("\n")
+            var saved = []
+            for (var i = 0; i < lines.length; i++) {
+                var l = lines[i].trim()
+                if (!l) continue
+                var p = l.split(":")
+                if (p.length >= 2 && p[1] === "802-11-wireless") {
+                    saved.push(p[0])
+                }
+            }
+            root.savedWifiConnections = saved
+        }
     }
 
     Process {
@@ -366,6 +402,7 @@ Item {
 
             if (!ssid) continue
             var isSec = (secStr.length > 0 && secStr !== "--")
+            var isSaved = root.savedWifiConnections.indexOf(ssid) !== -1
 
             if (seen[ssid]) {
                 if (sig > seen[ssid].signal) {
@@ -379,6 +416,7 @@ Item {
                 ssid: ssid,
                 signal: sig,
                 isSecured: isSec,
+                isSaved: isSaved,
                 connected: inUse,
                 isWifi: true
             }
@@ -409,22 +447,52 @@ Item {
         }
     }
 
-    Process {
-        id: wifiConnectProc
-        stdout: StdioCollector { id: wifiConnOut; waitForEnd: true }
-        stderr: StdioCollector { id: wifiConnErr; waitForEnd: true }
-        onExited: {
-            var err = String(wifiConnErr.text) + " " + String(wifiConnOut.text)
-            if (exitCode === 0) {
+    property bool pendingConnectSuccess: false
+
+    Timer {
+        id: connectGuardTimer
+        repeat: false
+        onTriggered: {
+            if (root.pendingConnectSuccess) {
                 root.state = "done"
                 root.passwordBuffer = ""
                 root.wrongPasswordActive = false
                 root.triggerSuccessAnimation(0.0, -96.0)
             } else {
                 root.state = "pass"
+                root.passwordBuffer = ""
                 root.wrongPasswordActive = true
                 wrongPasswordTimer.restart()
                 root.statusMessage = "connection failed / try again"
+            }
+        }
+    }
+
+    Process {
+        id: wifiConnectProc
+        stdout: StdioCollector { id: wifiConnOut; waitForEnd: true }
+        stderr: StdioCollector { id: wifiConnErr; waitForEnd: true }
+        onExited: {
+            var isSuccess = (exitCode === 0)
+            root.pendingConnectSuccess = isSuccess
+            var elapsed = Date.now() - root.connectStartTime
+            var remaining = Math.max(0, 1400 - elapsed)
+            if (remaining > 0) {
+                connectGuardTimer.interval = remaining
+                connectGuardTimer.restart()
+            } else {
+                if (isSuccess) {
+                    root.state = "done"
+                    root.passwordBuffer = ""
+                    root.wrongPasswordActive = false
+                    root.triggerSuccessAnimation(0.0, -96.0)
+                } else {
+                    root.state = "pass"
+                    root.passwordBuffer = ""
+                    root.wrongPasswordActive = true
+                    wrongPasswordTimer.restart()
+                    root.statusMessage = "connection failed / try again"
+                }
             }
         }
     }
@@ -440,8 +508,11 @@ Item {
 
     function connectWifi(item, password) {
         root.state = "connecting"
+        root.connectStartTime = Date.now()
         var cmd = ""
-        if (item.isSecured && password && password.length > 0) {
+        if (item.isSaved && (!password || password.length === 0)) {
+            cmd = "nmcli connection up id " + root.shellQuote(item.ssid)
+        } else if (item.isSecured && password && password.length > 0) {
             cmd = "nmcli dev wifi connect " + root.shellQuote(item.ssid) + " password " + root.shellQuote(password)
         } else {
             cmd = "nmcli dev wifi connect " + root.shellQuote(item.ssid)
@@ -650,6 +721,32 @@ Item {
             }
         }
 
+        /* ── Thin Scanning Spinner Arc around Nucleus ── */
+        Item {
+            id: nucleusScanningSpinner
+            anchors.centerIn: parent
+            width: 58
+            height: 58
+            visible: (root.wifiScanning || root.btScanning) && !root.isLoading
+            opacity: visible ? 1.0 : 0.0
+            Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+            rotation: root.animPhase
+
+            Canvas {
+                anchors.fill: parent
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.reset()
+                    ctx.lineWidth = 1.2
+                    ctx.strokeStyle = root.colAccent
+                    ctx.beginPath()
+                    // r = 28 (width=58), sweep 60 degrees (Math.PI / 3)
+                    ctx.arc(29, 29, 28, 0, Math.PI / 3, false)
+                    ctx.stroke()
+                }
+            }
+        }
+
         /* ── Bohr Valence Electron Loading Orbs (Only on Initial Loading Screen) ── */
         Item {
             id: scanningOrbitSystem
@@ -659,15 +756,7 @@ Item {
             visible: (root.pickerMode === "bluetooth" || root.pickerMode === "wifi") && root.isLoading
             opacity: visible ? 1.0 : 0.0
             Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-
-            NumberAnimation on rotation {
-                from: 0
-                to: 360
-                duration: 5800
-                loops: Animation.Infinite
-                running: scanningOrbitSystem.visible
-                easing.type: Easing.Linear
-            }
+            rotation: (root.animPhase * 0.15) % 360.0
 
             Item {
                 x: -width / 2
@@ -788,14 +877,7 @@ Item {
                 width: 88
                 height: 88
                 visible: root.state === "connecting"
-
-                RotationAnimation on rotation {
-                    from: 0
-                    to: 360
-                    duration: 1200
-                    loops: Animation.Infinite
-                    running: root.state === "connecting"
-                }
+                rotation: root.animPhase
 
                 Canvas {
                     anchors.fill: parent
@@ -860,50 +942,8 @@ Item {
                 readonly property bool inPassMode: (root.pickerMode === "wifi") && (root.state === "pass" || root.state === "connecting" || root.state === "done")
 
                 // Target Coordinates:
-                property real idleAngleOffset: 0.0
-                property real idleDistOffset: 0.0
-
-                SequentialAnimation {
-                    running: !root.reducedMotion && !orbDelegate.inPassMode && !orbDelegate.isThisSelected && !orbMouse.containsMouse && (orbDelegate.spawnProgress >= 0.99)
-                    loops: Animation.Infinite
-                    PauseAnimation { duration: (index * 620) % 2400 }
-                    ParallelAnimation {
-                        NumberAnimation {
-                            target: orbDelegate
-                            property: "idleAngleOffset"
-                            from: -1.2
-                            to: 1.2
-                            duration: 2800
-                            easing.type: Easing.InOutSine
-                        }
-                        NumberAnimation {
-                            target: orbDelegate
-                            property: "idleDistOffset"
-                            from: -2.2
-                            to: 2.2
-                            duration: 2800
-                            easing.type: Easing.InOutSine
-                        }
-                    }
-                    ParallelAnimation {
-                        NumberAnimation {
-                            target: orbDelegate
-                            property: "idleAngleOffset"
-                            from: 1.2
-                            to: -1.2
-                            duration: 2800
-                            easing.type: Easing.InOutSine
-                        }
-                        NumberAnimation {
-                            target: orbDelegate
-                            property: "idleDistOffset"
-                            from: 2.2
-                            to: -2.2
-                            duration: 2800
-                            easing.type: Easing.InOutSine
-                        }
-                    }
-                }
+                readonly property real idleAngleOffset: 0.0
+                readonly property real idleDistOffset: 0.0
 
                 readonly property real finalAngleDeg: (modelData.angleDeg || 0.0) + (isThisSelected ? 0.0 : idleAngleOffset)
                 readonly property real baseRad: finalAngleDeg * (Math.PI / 180.0)
@@ -1017,15 +1057,7 @@ Item {
                     width: parent.width + 8
                     height: parent.height + 8
                     visible: root.state === "connecting" && orbDelegate.isThisSelected
-
-                    RotationAnimation on rotation {
-                        from: 0
-                        to: 360
-                        duration: 1100
-                        loops: Animation.Infinite
-                        running: parent.visible
-                        easing.type: Easing.Linear
-                    }
+                    rotation: root.animPhase
 
                     Canvas {
                         anchors.fill: parent
@@ -1176,11 +1208,11 @@ Item {
 
                             if (root.pickerMode === "wifi") {
                                 if (orbDelegate.isThisSelected) {
-                                    if (modelData.isSecured && !modelData.connected) {
+                                    if (modelData.isSaved || !modelData.isSecured || modelData.connected) {
+                                        root.connectWifi(modelData, "")
+                                    } else {
                                         root.state = "pass"
                                         root.passwordBuffer = ""
-                                    } else {
-                                        root.connectWifi(modelData, "")
                                     }
                                 } else {
                                     root.selectedItem = modelData
