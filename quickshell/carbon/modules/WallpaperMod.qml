@@ -135,7 +135,7 @@ Item {
     }
 
     Timer {
-        interval: 1500
+        interval: 10000
         running: true
         repeat: true
         onTriggered: {
@@ -217,7 +217,11 @@ Item {
 
         // Set incoming starting transform based on animation type
         incoming.opacity = 0.0
-        if (root.animType === "cinematic") {
+        if (root.animType === "circular-reveal") {
+            incoming.scale = 1.0
+            incoming.x = 0
+            incoming.y = 0
+        } else if (root.animType === "cinematic") {
             incoming.scale = 1.06
             incoming.x = 0
             incoming.y = 0
