@@ -1371,6 +1371,31 @@ ShellRoot {
         onPressed: sessionLock.lock()
     }
 
+    /* ── Fullscreen Desktop Lock Transition Overlay (0-780ms handoff to WlSessionLock) ── */
+    Variants {
+        model: Quickshell.screens
+
+        PanelWindow {
+            id: lockOverlayWindow
+            required property var modelData
+
+            screen: modelData
+            color: "transparent"
+            WlrLayershell.namespace: "carbon-lock-transition"
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+            exclusionMode: ExclusionMode.Ignore
+            aboveWindows: true
+            anchors { top: true; bottom: true; left: true; right: true }
+
+            visible: LockTransition.phase === "locking"
+
+            LockTransitionOverlay {
+                anchors.fill: parent
+            }
+        }
+    }
+
     /* Wallpaper: bottom-most fullscreen image, updated live by WallpaperMod */
     Variants {
         model: Quickshell.screens

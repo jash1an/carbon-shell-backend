@@ -45,3 +45,4 @@ NucleusHub NucleusHub.qml
 NucleusTransitionOverlay NucleusTransitionOverlay.qml
 ConnectivityOrbitPicker ConnectivityOrbitPicker.qml
 ControlRing ControlRing.qml
+LockTransitionOverlay LockTransitionOverlay.qml

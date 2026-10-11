@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
+import "../../Singletons"
 
 /**
  * LockScreen:
@@ -13,7 +14,21 @@ Scope {
     property var notificationServer: null
 
     function lock() {
-        sessionLock.locked = true
+        if (LockTransition.phase === "idle") {
+            LockTransition.startLock()
+        } else {
+            sessionLock.locked = true
+        }
+    }
+
+    Connections {
+        target: LockTransition
+        function onHandoffToSessionLock() {
+            sessionLock.locked = true
+        }
+        function onUnlockComplete() {
+            sessionLock.locked = false
+        }
     }
 
     signal testNotifRequested()

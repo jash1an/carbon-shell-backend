@@ -230,31 +230,16 @@ Item {
     }
 
     /* ── Non-Simultaneous Independent Revolutions (Bohr Atom Dynamics) ────── */
-    // Layer 1 (Inner 2 dots): Clockwise rotation at 5.8s period
-    NumberAnimation {
-        id: innerOrbitAnim
-        target: innerOrbitGroup
-        property: "rotation"
-        from: 0
-        to: 360
-        duration: 5800
-        loops: Animation.Infinite
-        easing.type: Easing.Linear
-        running: false
+    property bool isOrbiting: false
+    FrameAnimation {
+        running: root.isOrbiting && root.visible
+        onTriggered: {
+            innerOrbitGroup.rotation += frameTime * (360.0 / 5.8)
+            outerOrbitGroup.rotation -= frameTime * (360.0 / 9.4)
+        }
     }
-
-    // Layer 2 (Outer 4 dots): Counter-clockwise rotation at 9.4s period
-    NumberAnimation {
-        id: outerOrbitAnim
-        target: outerOrbitGroup
-        property: "rotation"
-        from: 360
-        to: 0
-        duration: 9400
-        loops: Animation.Infinite
-        easing.type: Easing.Linear
-        running: false
-    }
+    property var innerOrbitAnim: ({ stop: function() { root.isOrbiting = false }, restart: function() { root.isOrbiting = true } })
+    property var outerOrbitAnim: ({ stop: function() { root.isOrbiting = false }, restart: function() { root.isOrbiting = true } })
 
     /* ── Intro Converging Animation (All 6 Atoms Fly In) ─────────────────── */
     ParallelAnimation {

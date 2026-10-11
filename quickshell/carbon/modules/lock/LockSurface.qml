@@ -34,6 +34,7 @@ WlSessionLockSurface {
 
     function startUnlock() {
         topVisualizer.active = false
+        LockTransition.startUnlock()
         unlockAnim.restart()
     }
 

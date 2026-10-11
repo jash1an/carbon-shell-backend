@@ -78,15 +78,17 @@ Item {
     }
 
     /* ── Smooth Waveform Lerp & Decay Animation ──────────────────────────── */
-    Timer {
-        id: smoothTimer
-        interval: 35
-        repeat: true
+    FrameAnimation {
+        id: smoothAnim
         running: root.showing && root.active && root.visible
         onTriggered: {
             var targets = root.rawTargetValues
             var cur = root.smoothedValues
             if (!targets || !cur || targets.length < root.barsCount || cur.length < root.barsCount) return
+
+            var dt = (frameTime && frameTime > 0.0) ? Math.min(0.05, Math.max(0.005, frameTime)) : 0.016
+            var attackRate = Math.min(1.0, dt * 15.0)
+            var decayRate = Math.min(1.0, dt * 5.5)
 
             var changed = false
             for (var i = 0; i < root.barsCount; i++) {
@@ -95,9 +97,9 @@ Item {
                 var diff = t - c
                 if (Math.abs(diff) > 0.15) {
                     if (diff > 0) {
-                        cur[i] = c + diff * 0.45 // Quick attack
+                        cur[i] = c + diff * attackRate
                     } else {
-                        cur[i] = c + diff * 0.18 // Silky decay
+                        cur[i] = c + diff * decayRate
                     }
                     changed = true
                 } else if (c !== t) {

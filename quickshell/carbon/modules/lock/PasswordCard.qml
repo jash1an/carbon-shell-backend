@@ -158,13 +158,11 @@ Item {
     }
 
     /* ── Continuous Fluid Wave Rhythm for Password Shapes ────────────────── */
-    Timer {
+    FrameAnimation {
         id: waveTimer
-        interval: 16
-        running: cardRoot.buffer.length > 0
-        repeat: true
+        running: cardRoot.buffer.length > 0 && cardRoot.visible
         property real phase: 0
-        onTriggered: phase += 0.08
+        onTriggered: phase += frameTime * 5.0
     }
 
     /* ── Keypress Border Glow Flash ──────────────────────────────────────── */
