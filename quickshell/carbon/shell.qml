@@ -446,7 +446,7 @@ ShellRoot {
     }
 
     Timer {
-        interval: 3000
+        interval: 12000
         repeat: true
         running: true
         triggeredOnStart: true
@@ -577,6 +577,7 @@ ShellRoot {
     property bool nucleusTransitionActive: false
     property bool nucleusTransitionEnabled: true
     property string nucleusTransitionWord: "Wooshh!!"
+    property string nucleusTransitionAnimation: "quantum"
 
     function startNucleusTransition(force) {
         if (!force && !root.nucleusTransitionEnabled) {
@@ -620,7 +621,7 @@ ShellRoot {
 
     Timer {
         id: barModePoller
-        interval: 1500
+        interval: 10000
         running: true
         repeat: true
         onTriggered: {
@@ -664,6 +665,9 @@ ShellRoot {
                     }
                     if (d.nucleus.transitionWord) {
                         root.nucleusTransitionWord = String(d.nucleus.transitionWord)
+                    }
+                    if (d.nucleus.animation) {
+                        root.nucleusTransitionAnimation = String(d.nucleus.animation)
                     }
                 }
                 if (d.mode) {
@@ -2332,11 +2336,9 @@ ShellRoot {
                     border.width: 1
 
                     Item {
+                        id: ring1Orbit
                         anchors.centerIn: parent
                         width: parent.width; height: parent.height
-                        NumberAnimation on rotation {
-                            from: 0; to: 360; duration: 18000; loops: Animation.Infinite; running: nucleusRestingWindow.visible
-                        }
                         Rectangle {
                             anchors.horizontalCenter: parent.horizontalCenter
                             y: -3.5; width: 6; height: 6; radius: 3; color: Theme.accent
@@ -2357,12 +2359,10 @@ ShellRoot {
                     border.width: 1
 
                     Item {
+                        id: ring2Orbit
                         anchors.centerIn: parent
                         width: parent.width; height: parent.height
                         rotation: 45
-                        NumberAnimation on rotation {
-                            from: 45; to: -315; duration: 28000; loops: Animation.Infinite; running: nucleusRestingWindow.visible
-                        }
                         Repeater {
                             model: 4
                             delegate: Item {
@@ -2374,6 +2374,14 @@ ShellRoot {
                                 }
                             }
                         }
+                    }
+                }
+
+                FrameAnimation {
+                    running: nucleusRestingWindow.visible
+                    onTriggered: {
+                        ring1Orbit.rotation += frameTime * (360.0 / 18.0)
+                        ring2Orbit.rotation -= frameTime * (360.0 / 28.0)
                     }
                 }
 
@@ -2494,6 +2502,7 @@ ShellRoot {
                 isPrimaryScreen: (modelData === Quickshell.screens[0])
                 transitionWord: root.nucleusTransitionWord
                 transitionEnabled: root.nucleusTransitionEnabled
+                transitionAnimation: root.nucleusTransitionAnimation
 
                 Component.onCompleted: {
                     play()

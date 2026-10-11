@@ -348,7 +348,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             if k not in self.vanish_shortcuts:
                 self.vanish_shortcuts[k] = v
         if not self.bar_mode.get("nucleus"):
-            self.bar_mode["nucleus"] = {"transition": True, "transitionWord": "Wooshh!!"}
+            self.bar_mode["nucleus"] = {"transition": True, "animation": "quantum", "transitionWord": "Wooshh!!"}
         if "musicVisualizer" not in self.bar_mode:
             self.bar_mode["musicVisualizer"] = "liquidHalo"
         self.var_data = read_variables()
@@ -971,7 +971,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         row_mode.append(btn_act)
         card1.append(row_mode)
 
-        # 2.3s Cinematic Transition
+        # Mode-Switch Transition
         nuc_cfg = self.bar_mode.get("nucleus", {})
         trans_act = bool(nuc_cfg.get("transition", True))
         def on_trans_toggle(act):
@@ -979,7 +979,26 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
                 self.bar_mode["nucleus"] = {}
             self.bar_mode["nucleus"]["transition"] = bool(act)
             write_json(BAR_MODE_PATH, self.bar_mode)
-        self.add_switch_row(card1, "Cinematic Transition (~2.3s)", "Play dynamic bar collapse and speed lines when entering Vanish", trans_act, on_trans_toggle)
+            hypr_bar_mode = os.path.expanduser("~/.config/hypr/carbon-bar-mode.json")
+            if hypr_bar_mode != BAR_MODE_PATH:
+                write_json(hypr_bar_mode, self.bar_mode)
+        self.add_switch_row(card1, "Mode-Switch Transition", "Play fullscreen transition sequence when entering Vanish", trans_act, on_trans_toggle)
+
+        # Transition Animation Style (Quantum Collapse vs Instant Crossfade)
+        anim_options = ["Quantum Collapse (~2.4s)", "Instant Crossfade (300ms)"]
+        anim_ids = ["quantum", "crossfade"]
+        cur_anim = nuc_cfg.get("animation", "quantum")
+        cur_a_idx = anim_ids.index(cur_anim) if cur_anim in anim_ids else 0
+        def on_anim_sel(idx):
+            a = anim_ids[idx]
+            if "nucleus" not in self.bar_mode or not isinstance(self.bar_mode["nucleus"], dict):
+                self.bar_mode["nucleus"] = {}
+            self.bar_mode["nucleus"]["animation"] = a
+            write_json(BAR_MODE_PATH, self.bar_mode)
+            hypr_bar_mode = os.path.expanduser("~/.config/hypr/carbon-bar-mode.json")
+            if hypr_bar_mode != BAR_MODE_PATH:
+                write_json(hypr_bar_mode, self.bar_mode)
+        self.add_combo_row(card1, "Transition Animation", "Visual effect style played during mode switch", anim_options, cur_a_idx, on_anim_sel)
 
         # Dynamic Transition Word
         cur_word = nuc_cfg.get("transitionWord", "Wooshh!!")
@@ -991,6 +1010,9 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
                 self.bar_mode["nucleus"] = {}
             self.bar_mode["nucleus"]["transitionWord"] = w
             write_json(BAR_MODE_PATH, self.bar_mode)
+            hypr_bar_mode = os.path.expanduser("~/.config/hypr/carbon-bar-mode.json")
+            if hypr_bar_mode != BAR_MODE_PATH:
+                write_json(hypr_bar_mode, self.bar_mode)
         self.add_combo_row(card1, "Transition Dynamic Word", "Text banner displayed during speed blur impact", word_options, cur_w_idx, on_word_sel)
 
         # Play Preview Button
@@ -1002,7 +1024,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         lbl_pt.set_halign(Gtk.Align.START)
         lbl_pt.add_css_class("row-title")
         lbox_p.append(lbl_pt)
-        lbl_ps = Gtk.Label(label="Play the 2.3s transition overlay right now")
+        lbl_ps = Gtk.Label(label="Play the transition overlay right now")
         lbl_ps.set_halign(Gtk.Align.START)
         lbl_ps.add_css_class("row-subtitle")
         lbox_p.append(lbl_ps)
