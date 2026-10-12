@@ -559,6 +559,14 @@ echo "source = ~/.config/carbon/vanish-keybinds.conf" >> "$CONFIG_DIR/carbon.con
 
 cat << EOF >> "$CONFIG_DIR/carbon.conf"
 
+# Cursor
+# no_warps = keep the pointer where it is when window focus changes via the
+# keyboard (Alt+Tab, SUPER+arrow, ...). Without this, Hyprland warps the
+# pointer to the centre of the newly focused window (cursor appears to jump).
+cursor {
+    no_warps = true
+}
+
 # Autostart Carbon Quickshell Service
 exec-once = systemctl --user start carbon-quickshell.service
 
