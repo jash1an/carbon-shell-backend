@@ -971,6 +971,7 @@ Item {
                                     Image {
                                         anchors.fill: parent
                                         source: root.artUrl
+                                        sourceSize: Qt.size(80, 80)
                                         visible: root.artUrl.length > 0
                                         fillMode: Image.PreserveAspectCrop
                                     }
@@ -1817,6 +1818,7 @@ Item {
                                                         const icon = String(cardItem.modelData ? (cardItem.modelData.appIcon || "") : "")
                                                         return (icon.startsWith("/") || icon.startsWith("file:")) ? icon : ""
                                                     }
+                                                    sourceSize: Qt.size(52, 52)
                                                     fillMode: Image.PreserveAspectFit
                                                     visible: status === Image.Ready
                                                 }

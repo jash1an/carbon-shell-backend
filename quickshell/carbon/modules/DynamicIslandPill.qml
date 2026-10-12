@@ -98,6 +98,7 @@ Item {
                 Image {
                     anchors.fill: parent
                     source: HudService.artUrl
+                    sourceSize: Qt.size(40, 40)
                     visible: HudService.artUrl.length > 0
                     fillMode: Image.PreserveAspectCrop
                 }

@@ -239,6 +239,7 @@ NotchContainer {
                         id: albumArtImg
                         anchors.fill: parent
                         source: root.artUrl
+                        sourceSize: Qt.size(44, 44)
                         visible: root.hasTrack && root.artUrl.length > 0
                         fillMode: Image.PreserveAspectCrop
                     }

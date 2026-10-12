@@ -124,6 +124,7 @@ Item {
         Image {
             anchors.fill: parent
             source: LyricsService.artUrl
+            sourceSize: Qt.size(280, 200)
             fillMode: Image.PreserveAspectCrop
             opacity: 0.14
             visible: status === Image.Ready && source != ""
@@ -231,6 +232,7 @@ Item {
                     Image {
                         anchors.fill: parent
                         source: LyricsService.artUrl
+                        sourceSize: Qt.size(84, 84)
                         fillMode: Image.PreserveAspectCrop
                         visible: status === Image.Ready && source != ""
                     }

@@ -75,9 +75,9 @@ hl.window_rule({ match = { initial_title = "Open Files" },         float = true,
 
 
 -- Carbon Config Editor GUI floating window
-hl.window_rule({ match = { class = "carbon-config-editor.*" }, float = true, size = "900 620", center = true, workspace = "2" })
-hl.window_rule({ match = { class = "org.carbon.configeditor" }, float = true, size = "900 620", center = true, workspace = "2" })
-hl.window_rule({ match = { title = "Settings" }, float = true, size = "900 620", center = true, workspace = "2" })
+hl.window_rule({ match = { class = "carbon-config-editor.*" }, float = true, size = "900 620", center = true })
+hl.window_rule({ match = { class = "org.carbon.configeditor" }, float = true, size = "900 620", center = true })
+hl.window_rule({ match = { title = "Settings" }, float = true, size = "900 620", center = true })
 
 -- Tiling & Maximize suppression (forces all apps to tile cleanly side-by-side)
 hl.window_rule({ name = "suppress-maximize",  match = { class = ".*" }, suppress_event = "maximize" })
