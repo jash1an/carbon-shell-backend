@@ -25,6 +25,8 @@ Item {
 
     // Mode: "local" (system wallpapers), "live" (video/gif wallpapers), or "wallhaven" (online search)
     property string activeSource: "local"
+    // Online Provider: "unsplash" or "wallhaven"
+    property string onlineProvider: "unsplash"
     property bool searchOpen: false
     property string currentSort: "toplist"
     property string searchQuery: ""
@@ -103,15 +105,20 @@ Item {
         root.fetchWallpapers()
     }
 
+    onOnlineProviderChanged: {
+        if (root.open && root.activeSource === "wallhaven") {
+            root.currentPage = 1
+            root.fetchWallpapers()
+        }
+    }
+
     onCurrentSortChanged: {
         if (root.open && root.activeSource === "wallhaven") root.fetchWallpapers()
     }
 
     onOpenChanged: {
         if (root.open) {
-            if (root.activeSource !== "wallhaven" || root.searchOpen) {
-                searchInput.forceActiveFocus()
-            }
+            searchInput.forceActiveFocus()
             root.fetchWallpapers()
         }
     }
@@ -151,7 +158,7 @@ Item {
                 args.push("--query", root.searchQuery.trim())
             }
         } else {
-            args = ["python3", root.wallhavenScript, "search", "--client", "picker", "--sort", root.currentSort, "--page", "1"]
+            args = ["python3", root.wallhavenScript, "search", "--client", "picker", "--provider", root.onlineProvider, "--sort", root.currentSort, "--page", "1"]
             if (root.searchQuery && root.searchQuery.trim().length > 0) {
                 args.push("--query", root.searchQuery.trim())
             }
@@ -166,7 +173,7 @@ Item {
         root.isLoadingMore = true
         var nextPage = root.currentPage + 1
 
-        var args = ["python3", root.wallhavenScript, "search", "--client", "picker", "--sort", root.currentSort, "--page", String(nextPage)]
+        var args = ["python3", root.wallhavenScript, "search", "--client", "picker", "--provider", root.onlineProvider, "--sort", root.currentSort, "--page", String(nextPage)]
         if (root.searchQuery && root.searchQuery.trim().length > 0) {
             args.push("--query", root.searchQuery.trim())
         }
@@ -322,31 +329,20 @@ Item {
         }
     }
 
-    /* Modal geometry: 660x415 popping out of the bottom center */
-    width: 660
-    height: 415
-
+    /* Fullscreen layout with smooth fade/scale */
     opacity: root.open ? 1.0 : 0.0
-    scale: root.open ? 1.0 : 0.92
-    y: root.open ? 0 : 36
-    transformOrigin: Item.Bottom
+    scale: root.open ? 1.0 : 0.98
 
     Behavior on opacity {
         NumberAnimation {
-            duration: root.open ? 280 : 160
-            easing.type: root.open ? Easing.OutExpo : Easing.InQuad
+            duration: root.open ? 260 : 160
+            easing.type: root.open ? Easing.OutCubic : Easing.InQuad
         }
     }
     Behavior on scale {
         NumberAnimation {
-            duration: root.open ? 280 : 160
-            easing.type: root.open ? Easing.OutExpo : Easing.InQuad
-        }
-    }
-    Behavior on y {
-        NumberAnimation {
-            duration: root.open ? 280 : 160
-            easing.type: root.open ? Easing.OutExpo : Easing.InQuad
+            duration: root.open ? 260 : 160
+            easing.type: root.open ? Easing.OutCubic : Easing.InQuad
         }
     }
 
@@ -356,41 +352,37 @@ Item {
     Rectangle {
         id: panelCard
         anchors.fill: parent
-        radius: 20
-        color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 1.0)
-        border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.90)
-        border.width: 1
+        color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.96)
 
-        /* Prevent clicks inside card from propagating to backdrop */
+        /* Prevent clicks inside from propagating to background */
         MouseArea {
             anchors.fill: parent
             onClicked: {}
         }
 
         ColumnLayout {
-            anchors.top: parent.top
-            anchors.topMargin: 16
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 16
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: 624
-            spacing: 12
+            anchors.fill: parent
+            anchors.topMargin: 20
+            anchors.bottomMargin: 20
+            anchors.leftMargin: 28
+            anchors.rightMargin: 28
+            spacing: 16
 
-            /* ── Header: Source Icons, Search Bar & Filters ─────────── */
+            /* ── Header: Source Icons, API Switcher, Search Bar & Filters ─────────── */
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 10
+                spacing: 12
 
                 /* Source Switcher: Local, Live, and Online */
                 RowLayout {
-                    spacing: 4
+                    spacing: 6
 
                     /* File Icon: My Local Wallpapers */
                     Rectangle {
                         id: localTabBtn
-                        height: 38
-                        width: 44
-                        radius: 10
+                        height: 40
+                        width: 48
+                        radius: 12
                         readonly property bool isActive: root.activeSource === "local"
                         color: isActive ? Theme.accent : (locHov.containsMouse ? Theme.bgHover : Qt.alpha(Theme.fg, 0.06))
                         border.color: isActive ? Theme.accentLit : Qt.alpha(Theme.fg, 0.12)
@@ -403,7 +395,7 @@ Item {
                             anchors.centerIn: parent
                             text: "folder"
                             font.family: Theme.fontIcon
-                            font.pixelSize: 18
+                            font.pixelSize: 20
                             color: localTabBtn.isActive ? "#111111" : Theme.fg
                         }
 
@@ -419,9 +411,9 @@ Item {
                     /* Film Reel Icon: Live Wallpapers (.mp4, .gif) */
                     Rectangle {
                         id: liveTabBtn
-                        height: 38
-                        width: 44
-                        radius: 10
+                        height: 40
+                        width: 48
+                        radius: 12
                         readonly property bool isActive: root.activeSource === "live"
                         color: isActive ? Theme.accent : (liveHov.containsMouse ? Theme.bgHover : Qt.alpha(Theme.fg, 0.06))
                         border.color: isActive ? Theme.accentLit : Qt.alpha(Theme.fg, 0.12)
@@ -434,7 +426,7 @@ Item {
                             anchors.centerIn: parent
                             text: "movie"
                             font.family: Theme.fontIcon
-                            font.pixelSize: 18
+                            font.pixelSize: 20
                             color: liveTabBtn.isActive ? "#111111" : Theme.fg
                         }
 
@@ -447,12 +439,12 @@ Item {
                         }
                     }
 
-                    /* Globe Icon: Wallhaven Online Search */
+                    /* Globe Icon: Online Search */
                     Rectangle {
                         id: onlineTabBtn
-                        height: 38
-                        width: 44
-                        radius: 10
+                        height: 40
+                        width: 48
+                        radius: 12
                         readonly property bool isActive: root.activeSource === "wallhaven"
                         color: isActive ? Theme.accent : (onlHov.containsMouse ? Theme.bgHover : Qt.alpha(Theme.fg, 0.06))
                         border.color: isActive ? Theme.accentLit : Qt.alpha(Theme.fg, 0.12)
@@ -465,7 +457,7 @@ Item {
                             anchors.centerIn: parent
                             text: "public"
                             font.family: Theme.fontIcon
-                            font.pixelSize: 18
+                            font.pixelSize: 20
                             color: onlineTabBtn.isActive ? "#111111" : Theme.fg
                         }
 
@@ -479,23 +471,94 @@ Item {
                     }
                 }
 
-                /* Spacer when in Wallhaven Best/Latest mode without search bar */
-                Item {
-                    Layout.fillWidth: true
-                    visible: root.activeSource === "wallhaven" && !root.searchOpen
+                /* API Provider Switcher (Unsplash / Wallhaven) - Visible in Online mode */
+                Rectangle {
+                    height: 40
+                    radius: 12
+                    color: Qt.alpha(Theme.fg, 0.05)
+                    border.color: Qt.alpha(Theme.fg, 0.12)
+                    border.width: 1
+                    visible: root.activeSource === "wallhaven"
+                    implicitWidth: providerRow.implicitWidth + 8
+
+                    RowLayout {
+                        id: providerRow
+                        anchors.centerIn: parent
+                        spacing: 2
+
+                        /* Unsplash Pill */
+                        Rectangle {
+                            height: 32
+                            width: unsplashTxt.implicitWidth + 20
+                            radius: 9
+                            readonly property bool isSelected: root.onlineProvider === "unsplash"
+                            color: isSelected ? Theme.accent : (unsHov.containsMouse ? Theme.bgHover : "transparent")
+                            scale: unsHov.pressed ? 0.95 : 1.0
+                            Behavior on color { ColorAnimation { duration: 120 } }
+                            Behavior on scale { NumberAnimation { duration: 100 } }
+
+                            Text {
+                                id: unsplashTxt
+                                anchors.centerIn: parent
+                                text: "Unsplash"
+                                font.family: "Valley Sans"
+                                font.pixelSize: 12
+                                font.weight: Font.Bold
+                                color: parent.isSelected ? "#111111" : Theme.fgDim
+                            }
+
+                            MouseArea {
+                                id: unsHov
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.onlineProvider = "unsplash"
+                            }
+                        }
+
+                        /* Wallhaven Pill */
+                        Rectangle {
+                            height: 32
+                            width: whTxt.implicitWidth + 20
+                            radius: 9
+                            readonly property bool isSelected: root.onlineProvider === "wallhaven"
+                            color: isSelected ? Theme.accent : (whHov.containsMouse ? Theme.bgHover : "transparent")
+                            scale: whHov.pressed ? 0.95 : 1.0
+                            Behavior on color { ColorAnimation { duration: 120 } }
+                            Behavior on scale { NumberAnimation { duration: 100 } }
+
+                            Text {
+                                id: whTxt
+                                anchors.centerIn: parent
+                                text: "Wallhaven"
+                                font.family: "Valley Sans"
+                                font.pixelSize: 12
+                                font.weight: Font.Bold
+                                color: parent.isSelected ? "#111111" : Theme.fgDim
+                            }
+
+                            MouseArea {
+                                id: whHov
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.onlineProvider = "wallhaven"
+                            }
+                        }
+                    }
                 }
 
-                /* Wallhaven Mode: Best & Latest filter tabs with separate search icon button */
+                /* Online Sort Chips: Best & Latest (Visible in Online mode) */
                 RowLayout {
                     spacing: 6
-                    visible: root.activeSource === "wallhaven" && !root.searchOpen
+                    visible: root.activeSource === "wallhaven"
 
                     /* Best Tab */
                     Rectangle {
                         id: bestBtn
-                        height: 38
-                        width: 76
-                        radius: 10
+                        height: 40
+                        width: 82
+                        radius: 12
                         readonly property bool isActive: root.currentSort === "toplist"
                         color: isActive ? Theme.accent : (bestHov.containsMouse ? Theme.bgHover : Qt.alpha(Theme.fg, 0.06))
                         border.color: isActive ? Theme.accentLit : Qt.alpha(Theme.fg, 0.12)
@@ -510,7 +573,7 @@ Item {
                             Text {
                                 text: "star"
                                 font.family: Theme.fontIcon
-                                font.pixelSize: 14
+                                font.pixelSize: 15
                                 color: bestBtn.isActive ? "#111111" : Theme.fg
                             }
                             Text {
@@ -536,9 +599,9 @@ Item {
                     /* Latest Tab */
                     Rectangle {
                         id: latestBtn
-                        height: 38
-                        width: 80
-                        radius: 10
+                        height: 40
+                        width: 86
+                        radius: 12
                         readonly property bool isActive: root.currentSort === "date_added"
                         color: isActive ? Theme.accent : (latestHov.containsMouse ? Theme.bgHover : Qt.alpha(Theme.fg, 0.06))
                         border.color: isActive ? Theme.accentLit : Qt.alpha(Theme.fg, 0.12)
@@ -553,7 +616,7 @@ Item {
                             Text {
                                 text: "schedule"
                                 font.family: Theme.fontIcon
-                                font.pixelSize: 14
+                                font.pixelSize: 15
                                 color: latestBtn.isActive ? "#111111" : Theme.fg
                             }
                             Text {
@@ -575,49 +638,16 @@ Item {
                             }
                         }
                     }
-
-                    /* Separate Search Toggle Icon */
-                    Rectangle {
-                        id: searchToggleBtn
-                        height: 38
-                        width: 38
-                        radius: 10
-                        color: searchToggleHov.containsMouse ? Theme.bgHover : Qt.alpha(Theme.fg, 0.06)
-                        border.color: Qt.alpha(Theme.fg, 0.12)
-                        border.width: 1
-                        scale: searchToggleHov.pressed ? 0.94 : (searchToggleHov.containsMouse ? 1.05 : 1.0)
-                        Behavior on scale { NumberAnimation { duration: Theme.motionDurationShort2; easing.type: Theme.easingEmphasized } }
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "search"
-                            font.family: Theme.fontIcon
-                            font.pixelSize: 16
-                            color: Theme.fg
-                        }
-
-                        MouseArea {
-                            id: searchToggleHov
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                root.searchOpen = true
-                                searchInput.forceActiveFocus()
-                            }
-                        }
-                    }
                 }
 
-                /* Search Bar: Visible in Local/Live or when Search Icon is clicked in Wallhaven */
+                /* Search Bar: Always visible on top of screen */
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 38
+                    Layout.preferredHeight: 40
                     radius: 12
                     color: Qt.alpha(Theme.fg, 0.06)
                     border.color: searchInput.activeFocus ? Theme.accent : Qt.alpha(Theme.fg, 0.14)
                     border.width: 1
-                    visible: root.activeSource !== "wallhaven" || root.searchOpen
 
                     Behavior on border.color { ColorAnimation { duration: 150 } }
 
@@ -631,7 +661,7 @@ Item {
                         Text {
                             text: root.activeSource === "wallhaven" ? "public" : (root.activeSource === "live" ? "movie" : "folder")
                             font.family: Theme.fontIcon
-                            font.pixelSize: 16
+                            font.pixelSize: 18
                             color: searchInput.activeFocus ? Theme.accent : Theme.fgDim
                         }
 
@@ -646,7 +676,7 @@ Item {
 
                             Text {
                                 anchors.fill: parent
-                                text: "search"
+                                text: root.activeSource === "wallhaven" ? ("Search " + (root.onlineProvider === "unsplash" ? "Unsplash" : "Wallhaven") + " wallpapers...") : (root.activeSource === "live" ? "Search live wallpapers..." : "Search local wallpapers...")
                                 font: searchInput.font
                                 color: Theme.fgFaint
                                 visible: !searchInput.text
@@ -667,9 +697,9 @@ Item {
 
                         /* Clear button */
                         Rectangle {
-                            width: 20
-                            height: 20
-                            radius: 10
+                            width: 22
+                            height: 22
+                            radius: 11
                             color: clrHov.containsMouse ? Theme.bgHover : "transparent"
                             scale: clrHov.pressed ? 0.90 : 1.0
                             Behavior on scale { NumberAnimation { duration: Theme.motionDurationShort2; easing.type: Theme.easingEmphasized } }
@@ -679,7 +709,7 @@ Item {
                                 anchors.centerIn: parent
                                 text: "close"
                                 font.family: Theme.fontIcon
-                                font.pixelSize: 12
+                                font.pixelSize: 13
                                 color: Theme.fgDim
                             }
 
@@ -695,46 +725,14 @@ Item {
                                 }
                             }
                         }
-
-                        /* Close Search button (for Wallhaven mode) */
-                        Rectangle {
-                            width: 22
-                            height: 22
-                            radius: 11
-                            color: closeSearchHov.containsMouse ? Theme.bgHover : "transparent"
-                            scale: closeSearchHov.pressed ? 0.90 : 1.0
-                            Behavior on scale { NumberAnimation { duration: Theme.motionDurationShort2; easing.type: Theme.easingEmphasized } }
-                            visible: root.activeSource === "wallhaven" && root.searchOpen
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: "close"
-                                font.family: Theme.fontIcon
-                                font.pixelSize: 13
-                                color: Theme.fgDim
-                            }
-
-                            MouseArea {
-                                id: closeSearchHov
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    root.searchOpen = false
-                                    searchInput.text = ""
-                                    root.searchQuery = ""
-                                    root.fetchWallpapers()
-                                }
-                            }
-                        }
                     }
                 }
 
                 /* Refresh Button */
                 Rectangle {
-                    height: 38
-                    width: 38
-                    radius: 10
+                    height: 40
+                    width: 40
+                    radius: 12
                     color: refHov.containsMouse ? Theme.bgHover : Qt.alpha(Theme.fg, 0.06)
                     border.color: Qt.alpha(Theme.fg, 0.12)
                     border.width: 1
@@ -745,7 +743,7 @@ Item {
                         anchors.centerIn: parent
                         text: "refresh"
                         font.family: Theme.fontIcon
-                        font.pixelSize: 16
+                        font.pixelSize: 18
                         color: Theme.fg
 
                         NumberAnimation on rotation {
@@ -767,9 +765,9 @@ Item {
 
                 /* Close Button */
                 Rectangle {
-                    height: 38
-                    width: 38
-                    radius: 10
+                    height: 40
+                    width: 40
+                    radius: 12
                     color: clsHov.containsMouse ? Qt.alpha(Theme.err, 0.25) : Qt.alpha(Theme.fg, 0.06)
                     border.color: clsHov.containsMouse ? Theme.err : Qt.alpha(Theme.fg, 0.12)
                     border.width: 1
@@ -780,7 +778,7 @@ Item {
                         anchors.centerIn: parent
                         text: "close"
                         font.family: Theme.fontIcon
-                        font.pixelSize: 16
+                        font.pixelSize: 18
                         color: clsHov.containsMouse ? Theme.err : Theme.fgDim
                     }
 
@@ -892,8 +890,10 @@ Item {
                     id: wpGrid
                     anchors.fill: parent
                     clip: true
-                    cellWidth: 208
-                    cellHeight: 138
+                    // Compute number of columns dynamically so cards are never cramped (~300px min width)
+                    readonly property int columns: Math.max(2, Math.floor(width / 310))
+                    cellWidth: Math.floor(width / columns)
+                    cellHeight: Math.round(cellWidth * 0.62)
                     model: root.wallpapers
                     visible: root.wallpapers.length > 0
 
@@ -918,17 +918,17 @@ Item {
 
                         Rectangle {
                             id: tile
-                            width: 196
-                            height: 126
+                            width: cardItem.width - 16
+                            height: cardItem.height - 16
                             anchors.centerIn: parent
-                            radius: 12
+                            radius: 14
                             color: Qt.alpha(Theme.fg, 0.04)
                             border.color: cardItem.isCurrent ? Theme.accentLit : (tileHov.containsMouse ? Theme.accentLit : Theme.outline)
                             border.width: (cardItem.isCurrent || tileHov.containsMouse) ? 2 : 1
                             clip: true
 
                             y: tileHov.containsMouse ? -5 : 0
-                            scale: tileHov.containsMouse ? 1.055 : 1.0
+                            scale: tileHov.containsMouse ? 1.03 : 1.0
                             Behavior on y { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
                             Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
                             Behavior on border.color { ColorAnimation { duration: 150 } }

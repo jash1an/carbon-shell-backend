@@ -988,26 +988,26 @@ ShellRoot {
                     var cmd = message.trim()
                     console.log("[IPC RECEIVED] " + cmd)
                     if (cmd === "wallpaper" || cmd === "wallpaper-local") {
+                        root.wallpaperSource = "local"
                         if (root.barMode === "nucleus") {
                             if (root.nucleusHubItem) root.nucleusHubItem.openWallpaperMode()
                         } else {
-                            root.wallpaperSource = "local"
                             root.toggleWallpaperPicker()
                         }
                     }
                     else if (cmd === "wallpaper-live") {
+                        root.wallpaperSource = "live"
                         if (root.barMode === "nucleus") {
                             if (root.nucleusHubItem) root.nucleusHubItem.openWallpaperMode()
                         } else {
-                            root.wallpaperSource = "live"
                             root.openWallpaperPicker()
                         }
                     }
                     else if (cmd === "wallpaper-online") {
+                        root.wallpaperSource = "wallhaven"
                         if (root.barMode === "nucleus") {
                             if (root.nucleusHubItem) root.nucleusHubItem.openWallpaperMode()
                         } else {
-                            root.wallpaperSource = "wallhaven"
                             root.openWallpaperPicker()
                         }
                     }
@@ -2902,9 +2902,7 @@ ShellRoot {
 
             WallpaperPicker {
                 id: wpItem
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: 24
+                anchors.fill: parent
                 open: root.wallpaperPickerOpen
                 activeSource: root.wallpaperSource
                 onCloseRequested: root.closeWallpaperPicker()

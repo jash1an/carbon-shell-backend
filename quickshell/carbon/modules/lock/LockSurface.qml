@@ -415,37 +415,5 @@ WlSessionLockSurface {
         opacity: root.phase === "unlocking" ? Math.max(0.0, 1.0 - root.u / 250.0) : 1.0
     }
 
-    /* ── 4. Debug HUD ────────────────────────────────────────────────────── */
-    Rectangle {
-        visible: LockTransition.debugTimeline
-        z: 9999
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.margins: 14
-        width: debugCol.width + 16
-        height: debugCol.height + 12
-        radius: 6
-        color: "#CC050508"
-        border.color: "#00F0FF"
-        border.width: 1
 
-        Column {
-            id: debugCol
-            anchors.centerIn: parent
-            spacing: 3
-            Text {
-                text: "Phase: " + LockTransition.phase + " | t: " + Math.round(LockTransition.t) + "ms | u: " + Math.round(LockTransition.u) + "ms"
-                color: "#00F0FF"
-                font.family: "monospace"
-                font.pixelSize: 12
-                font.bold: true
-            }
-            Text {
-                text: "Frame: " + LockTransition.lastFrameTimeMs.toFixed(1) + "ms (" + (LockTransition.lastFrameTimeMs > 0 ? (1000.0 / LockTransition.lastFrameTimeMs).toFixed(0) : 60) + " fps) | min=" + LockTransition.minFrameTimeMs.toFixed(1) + " avg=" + LockTransition.avgFrameTimeMs.toFixed(1) + " max=" + LockTransition.maxFrameTimeMs.toFixed(1)
-                color: "#A6E3A1"
-                font.family: "monospace"
-                font.pixelSize: 11
-            }
-        }
-    }
 }

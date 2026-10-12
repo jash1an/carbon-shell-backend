@@ -7,6 +7,6 @@
   "notificationPopup": true,
   "transition": {
     "lockSync": true,
-    "debug": true
+    "debug": false
   }
 }

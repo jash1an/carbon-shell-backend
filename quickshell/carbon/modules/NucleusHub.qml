@@ -196,11 +196,10 @@ Item {
     }
 
     function openWallpaperMode() {
-        if (!root.hubOpen) root.open()
-        root.activeMode = "wallpapers"
-        root.focusedLobe = ""
-        root.loadWallpapersForCurrentSource()
+        root.close()
+        root.openWallpapers()
     }
+
 
     function openPowerMode() {
         closeFinishTimer.stop()
@@ -994,7 +993,7 @@ Item {
             desc: "Open Carbon dynamic wallpaper picker",
             glyph: "wallpaper",
             run: () => {
-                root.openWallpapersMode()
+                root.openWallpaperMode()
             }
         },
         {
@@ -1186,7 +1185,7 @@ Item {
             } else if (root.activeMode === "power") {
                 if (root.cancelPowerAction()) return
                 root.close()
-            } else if (root.activeMode === "wallpapers" || root.activeMode === "appsearch" || root.activeMode === "calendar") {
+            } else if (root.activeMode === "appsearch" || root.activeMode === "calendar") {
                 root.activeMode = "hub"
             } else if (root.focusedLobe !== "") {
                 root.focusedLobe = ""
@@ -1195,38 +1194,7 @@ Item {
             }
         }
         Keys.onPressed: (event) => {
-            if (root.activeMode === "wallpapers") {
-                if (event.key === Qt.Key_Tab) {
-                    root.cycleWallpaperSource()
-                    event.accepted = true
-                    return
-                }
-                if (event.key === Qt.Key_Left) {
-                    root.stepWallpaperCarousel(-1)
-                    event.accepted = true
-                    return
-                }
-                if (event.key === Qt.Key_Right) {
-                    root.stepWallpaperCarousel(1)
-                    event.accepted = true
-                    return
-                }
-                if (event.key === Qt.Key_Up) {
-                    root.stepWallpaperCarousel(-2)
-                    event.accepted = true
-                    return
-                }
-                if (event.key === Qt.Key_Down) {
-                    root.stepWallpaperCarousel(2)
-                    event.accepted = true
-                    return
-                }
-                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                    root.applyCurrentWallpaper()
-                    event.accepted = true
-                    return
-                }
-            } else if (root.activeMode === "hub" && event.text && event.text.length > 0 && (!event.modifiers || event.modifiers === Qt.ShiftModifier)) {
+            if (root.activeMode === "hub" && event.text && event.text.length > 0 && (!event.modifiers || event.modifiers === Qt.ShiftModifier)) {
                 const ch = event.text
                 if (ch.trim().length > 0) {
                     root.openLauncherMode(ch)
@@ -1714,7 +1682,7 @@ Item {
                     {
                         icon: "wallpaper",
                         isFontIcon: true,
-                        isActive: root.activeMode === "wallpapers",
+                        isActive: false,
                         action: function() {
                             root.openWallpaperMode()
                         }
@@ -1910,12 +1878,12 @@ Item {
             }
             height: width
             z: 10
-            visible: (root.activeMode === "hub" || root.activeMode === "wallpapers" || root.activeMode === "power")
+            visible: (root.activeMode === "hub" || root.activeMode === "power")
             opacity: {
                 if (root.activeMode === "power" && root.powerAction === "shutdown" && root.powerActionT >= 2200.0 && !root.powerReducedMotion) {
                     return Math.max(0.0, 1.0 - (root.powerActionT - 2200.0) / 400.0)
                 }
-                return (root.activeMode === "hub" || root.activeMode === "wallpapers" || root.activeMode === "power") ? 1.0 : 0.0
+                return (root.activeMode === "hub" || root.activeMode === "power") ? 1.0 : 0.0
             }
             Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
             Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
@@ -2033,10 +2001,9 @@ Item {
                         : root.hubProgress
                     text: {
                         if (controlRing && controlRing.isOpen) return controlRing.centerReadoutText
-                        if (root.activeMode === "wallpapers") return (wallpaperModel.count > 0 ? wallpaperModel.count : "✦")
                         return root.timeStr
                     }
-                    font.family: (root.activeMode === "wallpapers" && wallpaperModel.count === 0) ? Theme.fontIcon : "Valley Sans"
+                    font.family: "Valley Sans"
                     font.pixelSize: (controlRing && controlRing.isOpen) ? 15 : ((root.activeMode === "power") ? 11 : 13)
                     font.bold: true
                     color: "#0b0e14"
@@ -2083,8 +2050,6 @@ Item {
                             }
                         } else if (root.activeMode === "wifi" || root.activeMode === "bluetooth") {
                             if (connectivityPicker) connectivityPicker.goBack()
-                        } else if (root.activeMode === "wallpapers") {
-                            root.cycleWallpaperSource()
                         } else if (root.activeMode === "power") {
                             // In power mode, do not close on click — only close on Escape key!
                             return
@@ -2519,12 +2484,12 @@ Item {
             id: dateLyricsCaption
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.bottom
-            anchors.topMargin: (root.activeMode === "wallpapers") ? 142 : ((root.activeMode === "wifi" || root.activeMode === "bluetooth" || root.activeMode === "power") ? 134 : ((LyricsService.hasTrack && root.activeMode === "hub") ? 148 : 82))
+            anchors.topMargin: ((root.activeMode === "wifi" || root.activeMode === "bluetooth" || root.activeMode === "power") ? 134 : ((LyricsService.hasTrack && root.activeMode === "hub") ? 148 : 82))
             Behavior on anchors.topMargin { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
-            visible: root.hubProgress > 0.1 && (root.activeMode === "hub" || root.activeMode === "wifi" || root.activeMode === "bluetooth" || root.activeMode === "wallpapers") && !(controlRing && controlRing.isOpen)
-            opacity: ((root.activeMode === "hub" || root.activeMode === "wifi" || root.activeMode === "bluetooth" || root.activeMode === "wallpapers") && !(controlRing && controlRing.isOpen)) ? root.hubProgress : 0.0
+            visible: root.hubProgress > 0.1 && (root.activeMode === "hub" || root.activeMode === "wifi" || root.activeMode === "bluetooth") && !(controlRing && controlRing.isOpen)
+            opacity: ((root.activeMode === "hub" || root.activeMode === "wifi" || root.activeMode === "bluetooth") && !(controlRing && controlRing.isOpen)) ? root.hubProgress : 0.0
             Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-            width: (root.activeMode === "wallpapers") ? 420 : 360
+            width: 360
             height: 24
             clip: true
 
@@ -2658,26 +2623,7 @@ Item {
                 }
             }
 
-            // 4. Wallpaper Carousel Caption View (index / total · filename · res · source)
-            Item {
-                id: wallpaperCaptionView
-                anchors.fill: parent
-                visible: root.activeMode === "wallpapers"
-                opacity: (root.activeMode === "wallpapers") ? 1.0 : 0.0
-                Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
 
-                Text {
-                    anchors.centerIn: parent
-                    text: root.wallpaperCaptionText
-                    font.family: "Valley Sans"
-                    font.pixelSize: 12
-                    font.bold: true
-                    color: root.colFgDim
-                    elide: Text.ElideMiddle
-                    width: parent.width - 24
-                    horizontalAlignment: Text.AlignHCenter
-                }
-            }
 
             // 5. Power Orbit Caption View
             Item {
@@ -3277,458 +3223,6 @@ Item {
             }
         }
 
-        /* ══════════════════════════════════════════════════════════════════════
-           PHASE 4: Special Concentric Dual PathView Carousel Wallpaper Picker
-           - Inner Ring: 6 circular delegates at radius 62 (guide diameter 124)
-           - Outer Ring: 10 circular delegates at radius 108 (guide diameter 216)
-           - Positioned by center: x = cx + r*cos(a) - w/2, y = cy + r*sin(a) - h/2
-           - Clipped circular thumbnail with radius = width/2, 1.5px border, sourceSize 44x44
-           - Bound to ONE shared ListModel (wallpaperModel) with continuous wrapping
-           - Opposing rotation directions with smooth inertia and snapping
-           - 3 small source switcher dots (Local / Online / Favorites) next to search pill
-           - Click applies, right-click toggles favorite, circular download progress arc
-           ══════════════════════════════════════════════════════════════════════ */
-        Item {
-            id: wallpaperRingSystem
-            anchors.centerIn: parent
-            visible: root.activeMode === "wallpapers"
-            opacity: root.activeMode === "wallpapers" ? 1.0 : 0.0
-            Behavior on opacity { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
-
-            // ── Faint Concentric Ring Guides ──
-            Rectangle {
-                anchors.centerIn: parent
-                width: 124
-                height: 124
-                radius: 62
-                color: "transparent"
-                border.color: Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.20)
-                border.width: 1
-            }
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: 216
-                height: 216
-                radius: 108
-                color: "transparent"
-                border.color: Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.16)
-                border.width: 1
-            }
-
-            // ── Drag & Wheel Arena for Dual Ring Opposing Inertia Rotation ──
-            MouseArea {
-                anchors.centerIn: parent
-                width: 320
-                height: 320
-                hoverEnabled: true
-                acceptedButtons: Qt.NoButton
-                property real lastX: 0
-
-                onWheel: (wheel) => {
-                    var delta = (wheel.angleDelta.y > 0) ? 0.35 : -0.35
-                    root.stepWallpaperCarousel(delta > 0 ? 1 : -1)
-                }
-            }
-
-            // ── Drag Handler for Opposing Spin ──
-            Item {
-                anchors.centerIn: parent
-                width: 320
-                height: 320
-
-                DragHandler {
-                    id: ringDragHandler
-                    target: null
-                    property real prevX: 0
-                    onActiveChanged: {
-                        if (active) prevX = centroid.position.x
-                    }
-                    onCentroidChanged: {
-                        if (active) {
-                            var curX = centroid.position.x
-                            var dx = curX - prevX
-                            prevX = curX
-                            if (pvInner) pvInner.offset += dx * 0.015
-                            if (pvOuter) pvOuter.offset -= dx * 0.015
-                        }
-                    }
-                }
-            }
-
-            // ── Inner Ring: 6 Items at Radius 62 (PathView size 124x124) ──
-            PathView {
-                id: pvInner
-                anchors.centerIn: parent
-                width: 124
-                height: 124
-                model: wallpaperModel
-                pathItemCount: Math.min(6, wallpaperModel.count)
-                snapMode: PathView.SnapToItem
-                movementDirection: PathView.Positive
-                interactive: true
-
-                onCurrentIndexChanged: {
-                    if (currentIndex >= 0 && currentIndex < wallpaperModel.count) {
-                        root.currentWallpaperIndex = currentIndex
-                    }
-                }
-
-                path: Path {
-                    startX: 62; startY: 0
-                    PathArc { x: 62; y: 124; radiusX: 62; radiusY: 62; useLargeArc: true }
-                    PathArc { x: 62; y: 0; radiusX: 62; radiusY: 62; useLargeArc: true }
-                }
-
-                delegate: Item {
-                    id: innerDelegate
-                    width: 38
-                    height: 38
-                    property bool isSelected: (index === root.currentWallpaperIndex)
-                    property bool isHovered: innerMouse.containsMouse
-
-                    Item {
-                        anchors.fill: parent
-                        scale: innerDelegate.isSelected ? 1.15 : (innerDelegate.isHovered ? 1.08 : 1.0)
-                        Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-
-                        Rectangle {
-                            id: innerMask
-                            anchors.fill: parent
-                            radius: width / 2
-                            layer.enabled: true
-                            visible: false
-                        }
-
-                        Image {
-                            id: innerImg
-                            anchors.fill: parent
-                            source: model.thumb || ""
-                            fillMode: Image.PreserveAspectCrop
-                            asynchronous: true
-                            sourceSize: Qt.size(44, 44)
-                            smooth: true
-                            visible: false
-                        }
-
-                        MultiEffect {
-                            anchors.fill: parent
-                            source: innerImg
-                            maskEnabled: true
-                            maskSource: innerMask
-                        }
-
-                        // Border Ring
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: width / 2
-                            color: "transparent"
-                            border.color: innerDelegate.isSelected ? root.colTeal : (innerDelegate.isHovered ? Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.85) : Qt.rgba(1, 1, 1, 0.25))
-                            border.width: innerDelegate.isSelected ? 2.0 : 1.5
-                            Behavior on border.color { ColorAnimation { duration: 160 } }
-                        }
-
-                        // Favorite Star Badge
-                        Text {
-                            visible: model.is_favorite
-                            text: "★"
-                            font.pixelSize: 10
-                            color: "#FFD700"
-                            anchors.top: parent.top
-                            anchors.right: parent.right
-                            anchors.topMargin: 2
-                            anchors.rightMargin: 2
-                        }
-
-                        // Circular Download Progress Arc
-                        Shape {
-                            anchors.fill: parent
-                            visible: root.isDownloadingWallpaper && (root.activeDownloadUrl === model.url)
-                            layer.enabled: true
-                            layer.samples: 4
-
-                            ShapePath {
-                                strokeWidth: 3
-                                strokeColor: root.colTeal
-                                fillColor: "transparent"
-                                capStyle: ShapePath.RoundCap
-                                PathAngleArc {
-                                    centerX: innerDelegate.width / 2
-                                    centerY: innerDelegate.height / 2
-                                    radiusX: innerDelegate.width / 2 - 2
-                                    radiusY: innerDelegate.height / 2 - 2
-                                    startAngle: -90
-                                    sweepAngle: 360 * root.downloadProgressValue
-                                }
-                            }
-                        }
-
-                        MouseArea {
-                            id: innerMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            acceptedButtons: Qt.LeftButton | Qt.RightButton
-                            onClicked: (mouse) => {
-                                root.currentWallpaperIndex = index
-                                if (mouse.button === Qt.RightButton) {
-                                    root.toggleFavoriteItem(model)
-                                } else {
-                                    root.applyWallpaper(model)
-                                }
-                            }
-                            onPressAndHold: {
-                                root.currentWallpaperIndex = index
-                                root.toggleFavoriteItem(model)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── Outer Ring: 10 Items at Radius 108 (PathView size 216x216) ──
-            PathView {
-                id: pvOuter
-                anchors.centerIn: parent
-                width: 216
-                height: 216
-                model: wallpaperModel
-                pathItemCount: Math.min(10, wallpaperModel.count)
-                snapMode: PathView.SnapToItem
-                movementDirection: PathView.Negative
-                interactive: true
-
-                onCurrentIndexChanged: {
-                    if (currentIndex >= 0 && currentIndex < wallpaperModel.count) {
-                        root.currentWallpaperIndex = currentIndex
-                    }
-                }
-
-                path: Path {
-                    startX: 108; startY: 0
-                    PathArc { x: 108; y: 216; radiusX: 108; radiusY: 108; useLargeArc: true }
-                    PathArc { x: 108; y: 0; radiusX: 108; radiusY: 108; useLargeArc: true }
-                }
-
-                delegate: Item {
-                    id: outerDelegate
-                    width: 42
-                    height: 42
-                    property bool isSelected: (index === root.currentWallpaperIndex)
-                    property bool isHovered: outerMouse.containsMouse
-
-                    Item {
-                        anchors.fill: parent
-                        scale: outerDelegate.isSelected ? 1.15 : (outerDelegate.isHovered ? 1.08 : 1.0)
-                        Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-
-                        Rectangle {
-                            id: outerMask
-                            anchors.fill: parent
-                            radius: width / 2
-                            layer.enabled: true
-                            visible: false
-                        }
-
-                        Image {
-                            id: outerImg
-                            anchors.fill: parent
-                            source: model.thumb || ""
-                            fillMode: Image.PreserveAspectCrop
-                            asynchronous: true
-                            sourceSize: Qt.size(44, 44)
-                            smooth: true
-                            visible: false
-                        }
-
-                        MultiEffect {
-                            anchors.fill: parent
-                            source: outerImg
-                            maskEnabled: true
-                            maskSource: outerMask
-                        }
-
-                        // Border Ring
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: width / 2
-                            color: "transparent"
-                            border.color: outerDelegate.isSelected ? root.colTeal : (outerDelegate.isHovered ? Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.85) : Qt.rgba(1, 1, 1, 0.25))
-                            border.width: outerDelegate.isSelected ? 2.0 : 1.5
-                            Behavior on border.color { ColorAnimation { duration: 160 } }
-                        }
-
-                        // Favorite Star Badge
-                        Text {
-                            visible: model.is_favorite
-                            text: "★"
-                            font.pixelSize: 10
-                            color: "#FFD700"
-                            anchors.top: parent.top
-                            anchors.right: parent.right
-                            anchors.topMargin: 2
-                            anchors.rightMargin: 2
-                        }
-
-                        // Circular Download Progress Arc
-                        Shape {
-                            anchors.fill: parent
-                            visible: root.isDownloadingWallpaper && (root.activeDownloadUrl === model.url)
-                            layer.enabled: true
-                            layer.samples: 4
-
-                            ShapePath {
-                                strokeWidth: 3
-                                strokeColor: root.colTeal
-                                fillColor: "transparent"
-                                capStyle: ShapePath.RoundCap
-                                PathAngleArc {
-                                    centerX: outerDelegate.width / 2
-                                    centerY: outerDelegate.height / 2
-                                    radiusX: outerDelegate.width / 2 - 2
-                                    radiusY: outerDelegate.height / 2 - 2
-                                    startAngle: -90
-                                    sweepAngle: 360 * root.downloadProgressValue
-                                }
-                            }
-                        }
-
-                        MouseArea {
-                            id: outerMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            acceptedButtons: Qt.LeftButton | Qt.RightButton
-                            onClicked: (mouse) => {
-                                root.currentWallpaperIndex = index
-                                if (mouse.button === Qt.RightButton) {
-                                    root.toggleFavoriteItem(model)
-                                } else {
-                                    root.applyWallpaper(model)
-                                }
-                            }
-                            onPressAndHold: {
-                                root.currentWallpaperIndex = index
-                                root.toggleFavoriteItem(model)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── Bottom Search & Source Filter Pill ──
-            Rectangle {
-                anchors.horizontalCenter: parent.horizontalCenter
-                y: 182
-                width: 310
-                height: 36
-                radius: 18
-                color: Qt.rgba(root.colBgDark.r, root.colBgDark.g, root.colBgDark.b, 0.92)
-                border.color: root.colTeal
-                border.width: 1.5
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 12
-                    anchors.rightMargin: 10
-                    spacing: 8
-
-                    Text {
-                        text: "search"
-                        font.family: Theme.fontIcon
-                        font.pixelSize: 14
-                        color: root.colTeal
-                    }
-
-                    TextInput {
-                        id: wpSearchInput
-                        Layout.fillWidth: true
-                        font.family: "Valley Sans"
-                        font.pixelSize: 11
-                        color: "#ffffff"
-                        clip: true
-                        selectByMouse: true
-                        selectionColor: Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.5)
-
-                        Text {
-                            text: (root.currentWallpaperSource === "local") ? "Filter local wallpapers..." : (root.currentWallpaperSource === "favorites" ? "Filter favorites..." : "Search Wallhaven (toplist)...")
-                            font.family: "Valley Sans"
-                            font.pixelSize: 11
-                            color: Qt.rgba(1, 1, 1, 0.35)
-                            visible: !wpSearchInput.text && !wpSearchInput.inputMethodComposing
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-
-                        onTextChanged: wpDebounce.restart()
-                        Keys.onReturnPressed: {
-                            if (root.currentWallpaperSource === "online") {
-                                root.fetchOnlineWallpapers(text)
-                            } else if (root.currentWallpaperSource === "local") {
-                                root.fetchLocalWallpapers(text)
-                            }
-                        }
-                        Keys.onTabPressed: (event) => {
-                            root.cycleWallpaperSource()
-                            event.accepted = true
-                        }
-                    }
-
-                    // ── 3 Small Source Indicator Dots (Local / Online / Favorites) ──
-                    RowLayout {
-                        spacing: 5
-                        Layout.alignment: Qt.AlignVCenter
-
-                        // Dot 1: Local
-                        Rectangle {
-                            width: (root.currentWallpaperSource === "local") ? 14 : 7
-                            height: 7
-                            radius: 3.5
-                            color: (root.currentWallpaperSource === "local") ? root.colTeal : Qt.rgba(1, 1, 1, 0.35)
-                            Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-                            Behavior on color { ColorAnimation { duration: 180 } }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.setWallpaperSource("local")
-                            }
-                        }
-
-                        // Dot 2: Online
-                        Rectangle {
-                            width: (root.currentWallpaperSource === "online") ? 14 : 7
-                            height: 7
-                            radius: 3.5
-                            color: (root.currentWallpaperSource === "online") ? root.colTeal : Qt.rgba(1, 1, 1, 0.35)
-                            Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-                            Behavior on color { ColorAnimation { duration: 180 } }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.setWallpaperSource("online")
-                            }
-                        }
-
-                        // Dot 3: Favorites
-                        Rectangle {
-                            width: (root.currentWallpaperSource === "favorites") ? 14 : 7
-                            height: 7
-                            radius: 3.5
-                            color: (root.currentWallpaperSource === "favorites") ? root.colTeal : Qt.rgba(1, 1, 1, 0.35)
-                            Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-                            Behavior on color { ColorAnimation { duration: 180 } }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.setWallpaperSource("favorites")
-                            }
-                        }
-                    }
-                }
-            }
-        }
 
         /* ══════════════════════════════════════════════════════════════════════
            PHASE 5: Monochrome Orbit-Orb Connectivity Picker (Wi-Fi & Bluetooth)
@@ -3890,251 +3384,6 @@ Item {
         }
     }
 
-    /* ── Wallpaper Carousel Model & Backend State (Local / Online / Favorites) ── */
-    property var wallpapersList: []
-    property string currentWallpaperSource: "local" // "local" | "online" | "favorites"
-    property int currentWallpaperIndex: 0
-    property string activeDownloadUrl: ""
-    property real downloadProgressValue: 0.0
-    property bool isDownloadingWallpaper: false
-
-    readonly property var currentWallpaperItem: {
-        if (wallpaperModel.count === 0) return null
-        var idx = Math.max(0, Math.min(wallpaperModel.count - 1, root.currentWallpaperIndex))
-        return wallpaperModel.get(idx)
-    }
-
-    readonly property string wallpaperCaptionText: {
-        if (wallpaperModel.count === 0) {
-            if (wpSearchProc.running || wpFavoritesProc.running) return "Loading wallpapers · · ·"
-            return "No wallpapers found"
-        }
-        var item = root.currentWallpaperItem
-        if (!item) return ""
-        var idxStr = (root.currentWallpaperIndex + 1) + " / " + wallpaperModel.count
-        var nameStr = item.name || item.filename || "Wallpaper"
-        var resStr = item.resolution || "HD"
-        var srcStr = (root.currentWallpaperSource === "local") ? "Local" : (root.currentWallpaperSource === "favorites" ? "Favorite" : "Wallhaven")
-        var favIndicator = item.is_favorite ? " ★" : ""
-        return idxStr + "  ·  " + nameStr + favIndicator + "  ·  " + resStr + "  ·  " + srcStr
-    }
-
-    ListModel {
-        id: wallpaperModel
-    }
-
-    readonly property string wallhavenScript: {
-        const home = Quickshell.env("HOME") || ""
-        const carbonDir = Quickshell.env("CARBON_CONFIG_DIR") || (home + "/.config/carbon")
-        return carbonDir + "/scripts/wallhaven.py"
-    }
-
-    Timer {
-        id: wpDebounce
-        interval: 650
-        onTriggered: {
-            if (root.activeMode === "wallpapers" && root.currentWallpaperSource === "online") {
-                root.fetchOnlineWallpapers(wpSearchInput ? wpSearchInput.text : "")
-            } else if (root.activeMode === "wallpapers" && root.currentWallpaperSource === "local") {
-                root.fetchLocalWallpapers(wpSearchInput ? wpSearchInput.text : "")
-            }
-        }
-    }
-
-    function setWallpaperSource(src) {
-        if (root.currentWallpaperSource === src && wallpaperModel.count > 0) return
-        root.currentWallpaperSource = src
-        if (wpSearchInput) wpSearchInput.text = ""
-        loadWallpapersForCurrentSource()
-    }
-
-    function cycleWallpaperSource() {
-        if (root.currentWallpaperSource === "local") {
-            setWallpaperSource("online")
-        } else if (root.currentWallpaperSource === "online") {
-            setWallpaperSource("favorites")
-        } else {
-            setWallpaperSource("local")
-        }
-    }
-
-    function loadWallpapersForCurrentSource() {
-        if (root.currentWallpaperSource === "local") {
-            fetchLocalWallpapers()
-        } else if (root.currentWallpaperSource === "favorites") {
-            fetchFavorites()
-        } else {
-            fetchOnlineWallpapers()
-        }
-    }
-
-    function fetchLocalWallpapers(query) {
-        var args = ["python3", root.wallhavenScript, "list-local"]
-        if (query && query.trim().length > 0) {
-            args.push("--query", query.trim())
-        }
-        wpSearchProc.command = args
-        wpSearchProc.running = true
-    }
-
-    function fetchOnlineWallpapers(query) {
-        var args = ["python3", root.wallhavenScript, "search", "--sort", "toplist", "--page", "1"]
-        if (query && query.trim().length > 0) {
-            args.push("--query", query.trim())
-        }
-        wpSearchProc.command = args
-        wpSearchProc.running = true
-    }
-
-    function fetchFavorites() {
-        wpFavoritesProc.command = ["python3", root.wallhavenScript, "list-favorites"]
-        wpFavoritesProc.running = true
-    }
-
-    function shuffleWallpaperQuery() {
-        var queries = ["cyberpunk", "minimalism", "space", "anime", "nature", "neon", "abstract"]
-        var q = queries[Math.floor(Math.random() * queries.length)]
-        if (wpSearchInput) wpSearchInput.text = q
-        if (root.currentWallpaperSource !== "online") root.currentWallpaperSource = "online"
-        fetchOnlineWallpapers(q)
-    }
-
-    function populateWallpaperModel(items) {
-        wallpaperModel.clear()
-        if (!items || !items.length) return
-        for (var i = 0; i < items.length; ++i) {
-            var it = items[i]
-            wallpaperModel.append({
-                "id": String(it.id || ("wp_" + i)),
-                "name": String(it.name || it.filename || "Wallpaper"),
-                "filename": String(it.filename || ""),
-                "resolution": String(it.resolution || "HD"),
-                "category": String(it.category || ""),
-                "thumb": String(it.thumb || ""),
-                "url": String(it.url || ""),
-                "path": String(it.path || ""),
-                "is_local": Boolean(it.is_local),
-                "is_live": Boolean(it.is_live),
-                "is_favorite": Boolean(it.is_favorite)
-            })
-        }
-        root.currentWallpaperIndex = 0
-        if (pvInner) pvInner.currentIndex = 0
-        if (pvOuter) pvOuter.currentIndex = 0
-    }
-
-    Process {
-        id: wpSearchProc
-        property string buffer: ""
-        onRunningChanged: {
-            if (running) {
-                buffer = ""
-            } else if (buffer.trim().length > 0) {
-                try {
-                    var res = JSON.parse(buffer)
-                    if (res && res.success && Array.isArray(res.data)) {
-                        root.populateWallpaperModel(res.data)
-                    }
-                } catch (e) {}
-            }
-        }
-        stdout: SplitParser {
-            onRead: chunk => wpSearchProc.buffer += chunk + "\n"
-        }
-    }
-
-    Process {
-        id: wpFavoritesProc
-        property string buffer: ""
-        onRunningChanged: {
-            if (running) {
-                buffer = ""
-            } else if (buffer.trim().length > 0) {
-                try {
-                    var res = JSON.parse(buffer)
-                    if (res && res.success && Array.isArray(res.data)) {
-                        root.populateWallpaperModel(res.data)
-                    }
-                } catch (e) {}
-            }
-        }
-        stdout: SplitParser {
-            onRead: chunk => wpFavoritesProc.buffer += chunk + "\n"
-        }
-    }
-
-    function toggleFavoriteItem(item) {
-        if (!item) return
-        var target = item.path || item.url || item.id
-        if (!target) return
-        item.is_favorite = !item.is_favorite
-        wpToggleFavProc.command = ["python3", root.wallhavenScript, "toggle-favorite", target]
-        wpToggleFavProc.running = true
-    }
-
-    Process {
-        id: wpToggleFavProc
-        command: []
-    }
-
-    function stepWallpaperCarousel(step) {
-        if (wallpaperModel.count === 0) return
-        var nextIdx = (root.currentWallpaperIndex + step) % wallpaperModel.count
-        if (nextIdx < 0) nextIdx += wallpaperModel.count
-        root.currentWallpaperIndex = nextIdx
-        if (pvInner) pvInner.offset = (pvInner.offset + step * 0.35)
-        if (pvOuter) pvOuter.offset = (pvOuter.offset - step * 0.35)
-    }
-
-    function applyCurrentWallpaper() {
-        var item = root.currentWallpaperItem
-        if (item) applyWallpaper(item)
-    }
-
-    function applyWallpaper(item) {
-        if (!item) return
-        if (item.is_local) {
-            wpApplyProc.command = ["python3", root.wallhavenScript, "apply", item.path]
-            wpApplyProc.running = true
-            root.close()
-        } else {
-            root.activeDownloadUrl = item.url
-            root.isDownloadingWallpaper = true
-            root.downloadProgressValue = 0.05
-            wpDownloadSimTimer.restart()
-            wpDownloadProc.command = ["python3", root.wallhavenScript, "download", item.url, item.filename]
-            wpDownloadProc.running = true
-        }
-    }
-
-    Timer {
-        id: wpDownloadSimTimer
-        interval: 100
-        repeat: true
-        running: root.isDownloadingWallpaper
-        onTriggered: {
-            if (root.downloadProgressValue < 0.90) {
-                root.downloadProgressValue += 0.05
-            }
-        }
-    }
-
-    Process {
-        id: wpApplyProc
-        command: []
-    }
-
-    Process {
-        id: wpDownloadProc
-        command: []
-        onRunningChanged: {
-            if (!running) {
-                root.downloadProgressValue = 1.0
-                root.isDownloadingWallpaper = false
-                root.close()
-            }
-        }
-    }
 
     /* ── App Scanning & Filtering Logic (Reusing DesktopEntries) ── */
     property var allAppsList: []
