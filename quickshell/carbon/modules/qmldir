@@ -46,3 +46,5 @@ NucleusTransitionOverlay NucleusTransitionOverlay.qml
 ConnectivityOrbitPicker ConnectivityOrbitPicker.qml
 ControlRing ControlRing.qml
 LockTransitionOverlay LockTransitionOverlay.qml
+CarbonCalendar CarbonCalendar.qml
+WorkspaceOsd WorkspaceOsd.qml

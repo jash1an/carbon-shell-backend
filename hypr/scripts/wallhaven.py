@@ -28,6 +28,30 @@ THUMB_CACHE_DIR = os.path.expanduser("~/.cache/carbon/thumbs")
 WALLPAPER_CACHE_DIR = os.path.expanduser("~/.cache/carbon/wallpapers")
 FAVORITES_FILE = os.path.join(CARBON_CONFIG_DIR, "wallpaper_favorites.json")
 RATE_LIMIT_FILE = os.path.join(os.path.expanduser("~/.cache/carbon"), "wallhaven_last_req.txt")
+WALLPAPER_SOURCE_FILE = os.path.join(CARBON_CONFIG_DIR, "carbon-wallpaper-source.json")
+
+
+def get_wallpaper_config():
+    """Retrieve online wallpaper provider settings."""
+    cfg = {"provider": "unsplash", "unsplash_access_key": ""}
+    paths = [
+        WALLPAPER_SOURCE_FILE,
+        os.path.expanduser("~/.config/hypr/carbon-wallpaper-source.json")
+    ]
+    for p in paths:
+        if os.path.isfile(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        if "provider" in data:
+                            cfg["provider"] = str(data["provider"]).lower()
+                        if "unsplash_access_key" in data:
+                            cfg["unsplash_access_key"] = str(data["unsplash_access_key"]).strip()
+                        return cfg
+            except Exception:
+                pass
+    return cfg
 
 WP_APPLY_SCRIPT = os.path.join(CARBON_CONFIG_DIR, "scripts", "wp-apply.sh")
 if not os.path.isfile(WP_APPLY_SCRIPT):
@@ -169,7 +193,189 @@ def rate_limit_guard():
         pass
 
 
-def search(sort="toplist", query="", page=1, seed=None):
+def search_unsplash(sort="toplist", query="", page=1, access_key=""):
+    os.makedirs(WALLPAPER_DIR, exist_ok=True)
+    os.makedirs(WALLPAPER_CACHE_DIR, exist_ok=True)
+
+    order_by = "latest" if sort == "date_added" else ("relevant" if query else "popular")
+
+    headers_list = []
+    if access_key:
+        headers_list.extend(["-H", f"Authorization: Client-ID {access_key}"])
+        if query and query.strip():
+            url = f"https://api.unsplash.com/search/photos?query={urllib.parse.quote(query.strip())}&page={page}&per_page=20&orientation=landscape&order_by={order_by}"
+        else:
+            url = f"https://api.unsplash.com/topics/wallpapers/photos?page={page}&per_page=20&orientation=landscape&order_by={order_by}"
+    else:
+        if query and query.strip():
+            url = f"https://unsplash.com/napi/search/photos?query={urllib.parse.quote(query.strip())}&page={page}&per_page=20&orientation=landscape&order_by={order_by}"
+        else:
+            url = f"https://unsplash.com/napi/topics/wallpapers/photos?page={page}&per_page=20&orientation=landscape&order_by={order_by}"
+
+    def fetch_url(target_url, hdrs):
+        cmd = ["curl", "-s", "--max-time", "12"] + hdrs + [target_url]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=14)
+        if res.returncode == 0 and res.stdout:
+            return json.loads(res.stdout.decode("utf-8", errors="ignore"))
+        return None
+
+    data = None
+    try:
+        data = fetch_url(url, headers_list)
+    except Exception:
+        pass
+
+    # If official API failed (e.g. invalid key or 401), fallback to napi
+    if (not data or (isinstance(data, dict) and "errors" in data)) and access_key:
+        try:
+            if query and query.strip():
+                fallback_url = f"https://unsplash.com/napi/search/photos?query={urllib.parse.quote(query.strip())}&page={page}&per_page=20&orientation=landscape&order_by={order_by}"
+            else:
+                fallback_url = f"https://unsplash.com/napi/topics/wallpapers/photos?page={page}&per_page=20&orientation=landscape&order_by={order_by}"
+            data = fetch_url(fallback_url, [])
+        except Exception:
+            pass
+
+    fav_list = set()
+    for item in get_favorites():
+        ident = item if isinstance(item, str) else item.get("path") or item.get("url") or item.get("id")
+        if ident:
+            fav_list.add(ident)
+
+    if data and not (isinstance(data, dict) and "errors" in data):
+        raw_items = []
+        total = 18000
+        last_page = 900
+        if isinstance(data, dict) and "results" in data:
+            raw_items = data.get("results", [])
+            total = data.get("total", len(raw_items))
+            last_page = data.get("total_pages", 1)
+        elif isinstance(data, list):
+            raw_items = data
+            total = 18000
+            last_page = 900
+
+        items = []
+        for photo in raw_items:
+            photo_id = str(photo.get("id", ""))
+            if not photo_id:
+                continue
+            width = photo.get("width", 0)
+            height = photo.get("height", 0)
+            res = f"{width}x{height}" if width and height else "HD"
+
+            urls = photo.get("urls", {})
+            thumb_url = urls.get("small") or urls.get("regular") or urls.get("thumb") or ""
+            full_url = urls.get("full") or (urls.get("raw", "") + "&q=85&fm=jpg") or thumb_url
+            filename = f"unsplash-{photo_id}.jpg"
+
+            cached_wall = os.path.join(WALLPAPER_DIR, filename)
+            alt_cached = os.path.join(WALLPAPER_CACHE_DIR, filename)
+            exists = os.path.isfile(cached_wall) or os.path.isfile(alt_cached)
+
+            is_fav = (photo_id in fav_list) or (full_url in fav_list) or (filename in fav_list)
+
+            # Category
+            category = "wallpapers"
+            topic_subs = photo.get("topic_submissions", {})
+            if isinstance(topic_subs, dict) and topic_subs:
+                for tname in topic_subs.keys():
+                    if tname:
+                        category = tname
+                        break
+
+            # Title
+            user_info = photo.get("user", {})
+            user_name = user_info.get("name") or user_info.get("username") or ""
+            desc = photo.get("description") or photo.get("alt_description") or ""
+            if desc:
+                name = desc.strip()[:42]
+                name = name[0].upper() + name[1:]
+            elif user_name:
+                name = f"Photo by {user_name}"
+            else:
+                name = f"Unsplash #{photo_id}"
+
+            items.append({
+                "id": photo_id,
+                "resolution": res,
+                "category": category,
+                "thumb": thumb_url,
+                "url": full_url,
+                "filename": filename,
+                "name": name,
+                "is_local": False,
+                "is_favorite": is_fav,
+                "exists": exists
+            })
+
+        print(json.dumps({
+            "success": True,
+            "data": items,
+            "meta": {
+                "current_page": page,
+                "last_page": last_page,
+                "total": total
+            }
+        }))
+        return
+
+    # Offline fallback
+    cached_items = []
+    valid_exts = {".jpg", ".jpeg", ".png", ".webp"}
+    try:
+        for fname in os.listdir(WALLPAPER_DIR):
+            if not (fname.startswith("unsplash-") or fname.startswith("wallhaven-")):
+                continue
+            ext = os.path.splitext(fname)[1].lower()
+            if ext not in valid_exts:
+                continue
+            full_path = os.path.join(WALLPAPER_DIR, fname)
+            if not os.path.isfile(full_path):
+                continue
+            if query and query.strip().lower() not in fname.lower():
+                continue
+
+            mtime = os.path.getmtime(full_path)
+            thumb_url = ensure_thumbnail(full_path, mtime, is_video=False)
+
+            res = "HD"
+            m = re.search(r"(\d{3,5}x\d{3,5})", fname)
+            if m:
+                res = m.group(1)
+
+            is_fav = (fname in fav_list) or (full_path in fav_list)
+
+            src_type = "unsplash" if fname.startswith("unsplash-") else "wallhaven"
+            cached_items.append({
+                "id": fname,
+                "resolution": res,
+                "category": f"{src_type} (cached)",
+                "thumb": thumb_url,
+                "url": f"file://{full_path}",
+                "path": full_path,
+                "filename": fname,
+                "name": fname.replace("unsplash-", "").replace("wallhaven-", "").rsplit(".", 1)[0],
+                "mtime": mtime,
+                "is_local": True,
+                "is_favorite": is_fav,
+                "exists": True
+            })
+        cached_items.sort(key=lambda x: x["mtime"], reverse=True)
+    except Exception:
+        pass
+
+    print(json.dumps({
+        "success": True,
+        "data": cached_items,
+        "offline_fallback": True,
+        "meta": {"current_page": 1, "last_page": 1, "total": len(cached_items)},
+        "notice": "Online Unsplash service unavailable. Showing downloaded wallpapers.",
+        "error": "Failed to fetch from Unsplash"
+    }))
+
+
+def search_wallhaven(sort="toplist", query="", page=1, seed=None):
     os.makedirs(WALLPAPER_DIR, exist_ok=True)
     os.makedirs(WALLPAPER_CACHE_DIR, exist_ok=True)
 
@@ -294,6 +500,26 @@ def search(sort="toplist", query="", page=1, seed=None):
         }))
 
 
+def search(sort="toplist", query="", page=1, seed=None, client=None, provider=None):
+    if provider is None:
+        if client == "picker":
+            cfg = get_wallpaper_config()
+            provider = cfg.get("provider", "unsplash")
+            access_key = cfg.get("unsplash_access_key", "")
+        else:
+            # Default for Vanish Mode or other callers
+            provider = "wallhaven"
+            access_key = ""
+    else:
+        cfg = get_wallpaper_config()
+        access_key = cfg.get("unsplash_access_key", "")
+
+    if provider.lower() == "unsplash":
+        search_unsplash(sort=sort, query=query, page=page, access_key=access_key)
+    else:
+        search_wallhaven(sort=sort, query=query, page=page, seed=seed)
+
+
 def list_local(query=""):
     valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif", ".mp4", ".mkv", ".webm"}
     video_exts = {".mp4", ".mkv", ".webm"}
@@ -410,15 +636,30 @@ def download(url, filename):
     os.makedirs(WALLPAPER_CACHE_DIR, exist_ok=True)
     dest_path = os.path.join(WALLPAPER_DIR, os.path.basename(filename))
 
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    downloaded = False
     try:
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         with urllib.request.urlopen(req, timeout=30) as response, open(dest_path, "wb") as out_file:
             while True:
                 chunk = response.read(65536)
                 if not chunk:
                     break
                 out_file.write(chunk)
+        if os.path.isfile(dest_path) and os.path.getsize(dest_path) > 1000:
+            downloaded = True
+    except Exception:
+        pass
 
+    if not downloaded:
+        try:
+            cmd = ["curl", "-s", "-L", "--max-time", "40", "-o", dest_path, url]
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
+            if os.path.isfile(dest_path) and os.path.getsize(dest_path) > 1000:
+                downloaded = True
+        except Exception:
+            pass
+
+    if downloaded:
         try:
             mtime = os.path.getmtime(dest_path)
             ensure_thumbnail(dest_path, mtime, is_video=False)
@@ -429,8 +670,8 @@ def download(url, filename):
             subprocess.run(["sh", WP_APPLY_SCRIPT, dest_path], check=False)
 
         print(json.dumps({"success": True, "path": dest_path}))
-    except Exception as e:
-        print(json.dumps({"success": False, "error": str(e)}))
+    else:
+        print(json.dumps({"success": False, "error": "Failed to download image"}))
 
 
 def apply_local(path):
@@ -452,6 +693,8 @@ def main():
         query = ""
         page = 1
         seed = None
+        client = None
+        provider = None
 
         i = 2
         while i < len(sys.argv):
@@ -470,9 +713,15 @@ def main():
             elif sys.argv[i] == "--seed" and i + 1 < len(sys.argv):
                 seed = sys.argv[i + 1]
                 i += 2
+            elif sys.argv[i] == "--client" and i + 1 < len(sys.argv):
+                client = sys.argv[i + 1]
+                i += 2
+            elif sys.argv[i] == "--provider" and i + 1 < len(sys.argv):
+                provider = sys.argv[i + 1]
+                i += 2
             else:
                 i += 1
-        search(sort=sort, query=query, page=page, seed=seed)
+        search(sort=sort, query=query, page=page, seed=seed, client=client, provider=provider)
 
     elif cmd in ("list-local", "local"):
         query = ""

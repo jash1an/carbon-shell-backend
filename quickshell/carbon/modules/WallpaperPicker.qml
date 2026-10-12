@@ -151,7 +151,7 @@ Item {
                 args.push("--query", root.searchQuery.trim())
             }
         } else {
-            args = ["python3", root.wallhavenScript, "search", "--sort", root.currentSort, "--page", "1"]
+            args = ["python3", root.wallhavenScript, "search", "--client", "picker", "--sort", root.currentSort, "--page", "1"]
             if (root.searchQuery && root.searchQuery.trim().length > 0) {
                 args.push("--query", root.searchQuery.trim())
             }
@@ -166,7 +166,7 @@ Item {
         root.isLoadingMore = true
         var nextPage = root.currentPage + 1
 
-        var args = ["python3", root.wallhavenScript, "search", "--sort", root.currentSort, "--page", String(nextPage)]
+        var args = ["python3", root.wallhavenScript, "search", "--client", "picker", "--sort", root.currentSort, "--page", String(nextPage)]
         if (root.searchQuery && root.searchQuery.trim().length > 0) {
             args.push("--query", root.searchQuery.trim())
         }
@@ -857,7 +857,7 @@ Item {
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: root.activeSource === "wallhaven" ? "Searching Wallhaven..." : (root.activeSource === "live" ? "Loading Live Wallpapers..." : "Loading Wallpapers...")
+                        text: root.activeSource === "wallhaven" ? "Searching Online Wallpapers..." : (root.activeSource === "live" ? "Loading Live Wallpapers..." : "Loading Wallpapers...")
                         font.family: "Valley Sans"
                         font.pixelSize: 13
                         color: Theme.fgDim

@@ -121,21 +121,24 @@ Item {
     Component.onCompleted: root.reloadConfig()
 
     /* ── Smooth Animated Visibility & Entrance ───────────────────────────── */
-    property bool entered: false
+    property bool stageDriven: false
+    property bool entered: stageDriven
     visible: opacity > 0.01
     opacity: (entered && enabledSetting) ? 1.0 : 0.0
     transform: Translate {
         id: transOffset
-        y: root.entered ? 0 : 36
-        x: root.entered ? 0 : 16
+        y: root.stageDriven ? 0 : (root.entered ? 0 : 36)
+        x: root.stageDriven ? 0 : (root.entered ? 0 : 16)
 
         Behavior on y {
+            enabled: !root.stageDriven
             NumberAnimation {
                 duration: 650
                 easing.type: Easing.OutCubic
             }
         }
         Behavior on x {
+            enabled: !root.stageDriven
             NumberAnimation {
                 duration: 650
                 easing.type: Easing.OutCubic
@@ -144,6 +147,7 @@ Item {
     }
 
     Behavior on opacity {
+        enabled: !root.stageDriven
         NumberAnimation {
             duration: 520
             easing.type: Easing.OutQuad
@@ -153,7 +157,7 @@ Item {
     Timer {
         id: introDelay
         interval: 180
-        running: true
+        running: !root.stageDriven
         onTriggered: {
             root.pickRandomSplash()
             root.entered = true

@@ -8,372 +8,362 @@ import "../Singletons"
 /**
  * ConnectivityOrbitPicker.qml
  *
- * Generic Monochrome Orbit-Orb Connectivity Picker for Carbon Shell.
- * Supports:
- * - Wi-Fi (nmcli): signal-proportional orbits (118 - sig*52 px), 12-dot keyboard password ring,
- *   connecting spinner, 800ms rose flash on wrong password, electron curve & pulse on success.
- * - Bluetooth (BlueZ D-Bus via carbon-bluetooth.py):
- *   Two orbits: paired/known devices on inner orbit (~66px) and discovered devices on outer orbit (~112px, RSSI modulated).
- *   Stable MAC-hashed angles (never jump), live battery arcs (accent color), device type icons (headphones, speaker, phone, etc.),
- *   scanning spinner arc around nucleus, connecting spinner, success electron curve & pulse ring, 800ms rose failure flash,
- *   BlueZ 6-digit passkey confirmation agent (no dialogs), long-press to forget with 1s filling ring,
- *   adapter state handling (bluetooth off / power on via nucleus tap, no adapter),
- *   optional auto-switch audio output on headset connect.
+ * Nucleus Hub Attached Wi-Fi & Bluetooth Picker.
+ * - Sits directly below the nucleus on a horizontal layout
+ * - Two tabs at (-84px, 0) and (+84px, 0) on the nucleus line
+ * - Live captured satellite start/end positions preserving full randomness
+ * - Horizontal carousel row at y = +104px (selected radius 36, neighbors shrinking & fading)
+ * - Details & action rows with primary pill, 2-step Forget ("Sure?"), and status
+ * - Password pill with masked/plain text, blinking caret, eye toggle, submit arrow, stdin piping
+ * - Bluetooth BlueZ passkey agent confirmation
+ * - Dual-orb scanning indicator around nucleus or selected item
+ * - Hub slide-up when near screen bottom
+ * - Smooth cubic easing, zero wobble, nothing animates at rest, nothing runs while closed
  */
 Item {
     id: root
 
-    /* ── Configuration & Token Defaults ── */
-    property int wifiOrbitBase: Theme.wifiOrbitBase || 118
-    property int wifiOrbitFactor: Theme.wifiOrbitFactor || 52
-    property int guideRingInner: Theme.guideRingInner || 70
-    property int guideRingOuter: Theme.guideRingOuter || 105
-    property int btInnerRadius: Theme.btInnerRadius || 66
-    property int btOuterRadius: Theme.btOuterRadius || 112
-    property int scanInterval: Theme.connectivityScanInterval || 8000
-    property bool reducedMotion: Theme.reducedMotion || false
-    property bool autoSwitchAudio: Theme.bluetoothHeadsetDefaultAudio || false
-
     /* ── Mode & State Machine ── */
     // pickerMode: "none" | "wifi" | "bluetooth"
     property string pickerMode: "none"
-    // state: "idle" | "list" | "pass" | "connecting" | "confirm_passkey" | "done"
-    property string state: "idle"
+    // state: "list" | "pass" | "busy" | "passkey"
+    property string state: "list"
 
-    /* ── Selection & Caption Communication ── */
-    property var selectedItem: null
-    property var hoveredItem: null
-    property string statusMessage: ""
-    property string pendingPasskey: ""
-    property string pendingMac: ""
-    property string failedMac: ""
-    property real failureFlashOpacity: 0.0
+    readonly property bool isOpen: root.pickerMode === "wifi" || root.pickerMode === "bluetooth"
+    readonly property bool reducedMotion: Boolean(Theme.reducedMotion)
 
-    readonly property string captionText: {
-        if (root.pickerMode === "bluetooth") {
-            if (!root.btAdapterAvailable) return "no bluetooth adapter"
-            if (!root.btPowered) return "bluetooth off / tap nucleus to power on"
-            if (root.isLoading) return "searching for devices…"
-            if (root.state === "confirm_passkey") {
-                return "confirm passkey: " + root.pendingPasskey + " / tap orb to confirm, tap nucleus to cancel"
-            }
-            if (root.state === "connecting") {
-                var targetB = root.selectedItem ? (root.selectedItem.name || root.selectedItem.mac) : ""
-                return "connecting to " + targetB + "…"
-            }
-            if (root.statusMessage.length > 0) return root.statusMessage
-            var activeB = root.hoveredItem || root.selectedItem
-            if (activeB) {
-                var bType = activeB.deviceType || "device"
-                var bState = activeB.connected ? "connected" : (activeB.paired ? "paired" : "discovered")
-                var batStr = (activeB.battery !== undefined && activeB.battery >= 0) ? (" / " + activeB.battery + "%") : ""
-                var bTail = activeB.connected ? "tap again to disconnect" : (activeB.paired ? "tap again to connect" : "tap again to pair")
-                return activeB.name + " / " + bType + " / " + bState + batStr + " / " + bTail
-            }
-            if (root.btList.length === 0) {
-                return root.btScanning ? "discovering devices…" : "no bluetooth devices found"
-            }
-            return root.btScanning ? "select a device / discovering…" : "select a device / tap nucleus to exit"
-        }
+    signal backRequested()
 
-        // Wi-Fi
-        if (root.isLoading) {
-            return "searching for networks…"
-        }
-        if (root.state === "pass") {
-            if (root.wrongPasswordActive) return "wrong password / try again"
-            return "enter password / Enter to connect / Esc to cancel"
-        }
-        if (root.state === "connecting") {
-            var targetW = root.selectedItem ? (root.selectedItem.ssid || root.selectedItem.name || "") : ""
-            return "connecting to " + targetW + "…"
-        }
-        if (root.statusMessage.length > 0) return root.statusMessage
+    /* ── Captured Satellite Positions (From Lobe Connect) ── */
+    property real capturedWifiX: -84
+    property real capturedWifiY: -84
+    property real capturedBtX: 84
+    property real capturedBtY: -84
 
-        var activeW = root.hoveredItem || root.selectedItem
-        if (activeW) {
-            var sec = activeW.isSecured ? "secured" : "open"
-            var tailW = (root.selectedItem === activeW) ? "tap again to connect" : "tap to select"
-            return activeW.ssid + " / " + sec + " / " + activeW.signal + "% / " + tailW
-        }
+    /* ── Open / Close Transition Progress (0.0 .. 1.0) ── */
+    property real transitionProgress: 0.0
 
-        if (root.wifiList.length === 0 && !root.wifiScanning) return "no wi-fi networks found"
-        return "select a network / tap nucleus to exit"
+    NumberAnimation {
+        id: openAnim
+        target: root
+        property: "transitionProgress"
+        from: 0.0
+        to: 1.0
+        duration: root.reducedMotion ? 0 : 450
+        easing.type: Easing.OutCubic
     }
 
-    /* Signals to parent (NucleusHub) */
-    signal backRequested()
-    signal connectSuccess()
+    NumberAnimation {
+        id: closeAnim
+        target: root
+        property: "transitionProgress"
+        from: 1.0
+        to: 0.0
+        duration: root.reducedMotion ? 0 : 400
+        easing.type: Easing.OutCubic
+        onFinished: {
+            root.pickerMode = "none"
+            root.state = "list"
+            root.backRequested()
+        }
+    }
 
-    /* ── Colors (Strict Monochrome + Halo Accent) ── */
-    readonly property color colAccent: Theme.accent || "#00F0FF"
-    readonly property color colErr: Theme.err || "#f87171"
-    readonly property color colWhite: "#FFFFFF"
-    readonly property color colFg: Theme.fg || "#e6e4f0"
-    readonly property color colFgDim: Theme.fgDim || "#94a3b8"
-    readonly property color colBgDark: Theme.bg || "#0e0e14"
+    /* ── Selection & Scrolling ── */
+    property int selectedIndex: 0
+    property real scrollOffset: 0.0
+    property bool isDragging: false
+    property real dragStartX: 0.0
+    property real dragStartOffset: 0.0
 
-    /* ── Internal Models ── */
+    Behavior on scrollOffset {
+        enabled: !root.isDragging && !root.reducedMotion
+        NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+    }
+
+    Timer {
+        id: snapTimer
+        interval: 160
+        repeat: false
+        onTriggered: {
+            const listLen = root.pickerMode === "bluetooth" ? root.btList.length : root.wifiList.length
+            if (listLen > 0) {
+                root.selectedIndex = Math.max(0, Math.min(listLen - 1, Math.round(root.scrollOffset)))
+                root.scrollOffset = root.selectedIndex
+            }
+        }
+    }
+
+    /* ── Two-Step Forget State ── */
+    property bool forgetPending: false
+    Timer {
+        id: forgetResetTimer
+        interval: 2500
+        onTriggered: root.forgetPending = false
+    }
+
+    /* ── Status Messages ── */
+    property string statusText: ""
+    property bool isStatusError: false
+    property real wrongPasswordFlash: 0.0
+
+    Behavior on wrongPasswordFlash {
+        NumberAnimation { duration: 800; easing.type: Easing.OutCubic }
+    }
+
+    /* ── Success Pulse Ring ── */
+    property real successPulseScale: 1.0
+    property real successPulseAlpha: 0.0
+
+    ParallelAnimation {
+        id: successPulseAnim
+        NumberAnimation {
+            target: root
+            property: "successPulseScale"
+            from: 1.0
+            to: 2.11 // 36px * 2.11 ~ 76px
+            duration: root.reducedMotion ? 0 : 700
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: root
+            property: "successPulseAlpha"
+            from: 0.85
+            to: 0.0
+            duration: root.reducedMotion ? 0 : 700
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    /* ── Dual-Orb Rotation Scanning Animation ── */
+    property bool scanAnimRunning: false
+    property real scanOrbAngle: 0.0
+
+    Timer {
+        id: scanOrbTimer
+        interval: 16
+        running: root.isOpen && (root.scanAnimRunning || root.state === "busy")
+        repeat: true
+        onTriggered: {
+            root.scanOrbAngle = (root.scanOrbAngle + 0.005 * 16.0) % (2.0 * Math.PI)
+        }
+    }
+
+    Timer {
+        id: initialScanTimer
+        interval: 3000
+        onTriggered: {
+            if (!root.wifiScanning && !root.btScanning) root.scanAnimRunning = false
+        }
+    }
+
+    Timer {
+        id: manualScanTimer
+        interval: 2500
+        onTriggered: {
+            if (!root.wifiScanning && !root.btScanning) root.scanAnimRunning = false
+        }
+    }
+
+    /* ── Password Entry State ── */
+    property string passwordInput: ""
+    property bool showPassword: false
+    property bool caretVisible: true
+
+    Timer {
+        id: caretBlinkTimer
+        interval: 500
+        running: root.state === "pass"
+        repeat: true
+        onTriggered: root.caretVisible = !root.caretVisible
+    }
+
+    /* ── Bluetooth Passkey Confirmation State ── */
+    property string pendingPasskey: ""
+    property string pendingMac: ""
+    property string pendingDevName: ""
+
+    /* ── Data Models ── */
     property var wifiList: []
-    property var wifiStagedList: []
-    property bool wifiScanning: false
     property var btList: []
-    property var btRawList: []
+    property bool wifiScanning: false
     property bool btScanning: false
     property bool btAdapterAvailable: true
     property bool btPowered: true
 
-    /* Password Input Buffer */
-    property string passwordBuffer: ""
-    property bool wrongPasswordActive: false
-
-    /* Loading & Animation State */
-    property bool isLoading: false
-    property real animPhase: 0.0
-    property var savedWifiConnections: []
-    property double connectStartTime: 0.0
-
-    FrameAnimation {
-        running: !root.reducedMotion && (root.isLoading || root.wifiScanning || root.btScanning || root.state === "connecting")
-        onTriggered: {
-            root.animPhase = (root.animPhase + frameTime * 240.0) % 360.0
-        }
-    }
-
-    Timer {
-        id: wifiLoadTimer
-        interval: 1800
-        repeat: false
-        onTriggered: {
-            root.wifiList = root.wifiStagedList
-            root.isLoading = false
-        }
-    }
-
-    Timer {
-        id: btLoadTimer
-        interval: 2200
-        repeat: false
-        onTriggered: {
-            root.btList = root.btRawList
-            root.isLoading = false
-        }
-    }
-
-    Timer {
-        id: delayClearStatusTimer
-        interval: 3200
-        repeat: false
-        onTriggered: {
-            root.statusMessage = ""
-        }
-    }
-
-    NumberAnimation {
-        id: failureFlashAnim
-        target: root
-        property: "failureFlashOpacity"
-        from: 1.0
-        to: 0.0
-        duration: 800
-        easing.type: Easing.OutCubic
-    }
-
-    /* Success Animation Props */
-    property real successStartX: 0.0
-    property real successStartY: -96.0
-    property real electronProgress: 0.0
-    property real pulseProgress: 0.0
-    property bool showSuccessEffects: false
-
-    function triggerSuccessAnimation(sx, sy) {
-        root.successStartX = (sx !== undefined && sx !== null) ? sx : 0.0
-        root.successStartY = (sy !== undefined && sy !== null) ? sy : -96.0
-        root.showSuccessEffects = true
-        root.electronProgress = 0.0
-        root.pulseProgress = 0.0
-        successSeq.restart()
-    }
-
-    SequentialAnimation {
-        id: successSeq
-        ParallelAnimation {
-            NumberAnimation {
-                target: root
-                property: "electronProgress"
-                from: 0.0
-                to: 1.0
-                duration: 700
-                easing.type: Easing.InOutCubic
+    readonly property var currentItem: {
+        if (root.pickerMode === "bluetooth") {
+            if (root.selectedIndex >= 0 && root.selectedIndex < root.btList.length) {
+                return root.btList[root.selectedIndex]
             }
-            SequentialAnimation {
-                PauseAnimation { duration: 240 }
-                NumberAnimation {
-                    target: root
-                    property: "pulseProgress"
-                    from: 0.0
-                    to: 1.0
-                    duration: 600
-                    easing.type: Easing.OutCubic
-                }
+        } else {
+            if (root.selectedIndex >= 0 && root.selectedIndex < root.wifiList.length) {
+                return root.wifiList[root.selectedIndex]
             }
         }
-        PauseAnimation { duration: 320 }
-        ScriptAction {
-            script: {
-                root.showSuccessEffects = false
-                root.electronProgress = 0.0
-                root.pulseProgress = 0.0
-                root.state = "list"
-                root.connectSuccess()
-            }
-        }
+        return null
     }
 
-    /* ── Lifecycle Management ── */
+    /* ── Public Control API ── */
     function openWifi() {
-        root.stopBluetoothBackend()
         root.pickerMode = "wifi"
         root.state = "list"
-        root.selectedItem = null
-        root.hoveredItem = null
-        root.statusMessage = ""
-        root.passwordBuffer = ""
-        root.wrongPasswordActive = false
-        root.showSuccessEffects = false
-        root.wifiList = []
-        root.wifiStagedList = []
-        root.isLoading = true
-        btLoadTimer.stop()
-        wifiLoadTimer.restart()
-        if (!wifiSavedProc.running) {
-            wifiSavedProc.running = true
-        }
+        root.selectedIndex = 0
+        root.scrollOffset = 0.0
+        root.statusText = ""
+        root.isStatusError = false
+        root.forgetPending = false
+        root.scanAnimRunning = true
+        initialScanTimer.restart()
+        openAnim.restart()
+        root.fetchSavedNetworks()
         root.rescanWifi()
     }
 
     function openBluetooth() {
         root.pickerMode = "bluetooth"
         root.state = "list"
-        root.selectedItem = null
-        root.hoveredItem = null
-        root.statusMessage = ""
-        root.pendingPasskey = ""
-        root.pendingMac = ""
-        root.failedMac = ""
-        root.failureFlashOpacity = 0.0
-        root.showSuccessEffects = false
-        root.btList = []
-        root.btRawList = []
-        root.isLoading = true
-        wifiLoadTimer.stop()
-        btLoadTimer.restart()
-        root.startBluetoothBackend()
-    }
-
-    function closePicker() {
-        root.stopBluetoothBackend()
-        root.isLoading = false
-        wifiLoadTimer.stop()
-        btLoadTimer.stop()
-        delayClearStatusTimer.stop()
-        connectGuardTimer.stop()
-        failureFlashAnim.stop()
-        root.pickerMode = "none"
-        root.state = "idle"
-        root.selectedItem = null
-        root.hoveredItem = null
-        root.statusMessage = ""
-        root.passwordBuffer = ""
-        root.wrongPasswordActive = false
-        root.pendingPasskey = ""
-        root.pendingMac = ""
-        root.showSuccessEffects = false
-        root.wifiList = []
-        root.wifiStagedList = []
-        root.btList = []
-        root.btRawList = []
+        root.selectedIndex = 0
+        root.scrollOffset = 0.0
+        root.statusText = ""
+        root.isStatusError = false
+        root.forgetPending = false
+        root.scanAnimRunning = true
+        initialScanTimer.restart()
+        openAnim.restart()
+        startBtBackend()
     }
 
     function goBack() {
-        if (root.state === "confirm_passkey") {
-            root.sendBtCmd({ "action": "cancel_passkey" })
+        if (root.state === "pass" || root.state === "passkey") {
             root.state = "list"
-            root.pendingPasskey = ""
-            root.pendingMac = ""
+            root.passwordInput = ""
+            root.statusText = ""
             return
         }
-        if (root.pickerMode === "bluetooth" && !root.btPowered && root.btAdapterAvailable) {
-            root.sendBtCmd({ "action": "power_on" })
-            return
-        }
-        if (root.state === "pass") {
-            root.state = "list"
-            root.passwordBuffer = ""
-            root.wrongPasswordActive = false
-            keyScope.focus = false
-            return
-        }
-        if (root.state === "list" || root.state === "connecting" || root.state === "done") {
-            root.closePicker()
-            root.backRequested()
+        closePicker()
+    }
+
+    function resetPicker() {
+        openAnim.stop()
+        closeAnim.stop()
+        stopBtBackend()
+        transitionProgress = 0.0
+        pickerMode = "none"
+        state = "list"
+        scanAnimRunning = false
+    }
+
+    function closePicker() {
+        stopBtBackend()
+        closeAnim.restart()
+    }
+
+    function switchTab(mode) {
+        if (root.pickerMode === mode) return
+        root.pickerMode = mode
+        root.state = "list"
+        root.selectedIndex = 0
+        root.scrollOffset = 0.0
+        root.statusText = ""
+        root.isStatusError = false
+        root.forgetPending = false
+        if (mode === "bluetooth") {
+            startBtBackend()
+        } else {
+            stopBtBackend()
+            root.rescanWifi()
         }
     }
 
-    /* ══════════════════════════════════════════════════════════════════════
-       WIFI BACKEND (nmcli)
-       ══════════════════════════════════════════════════════════════════════ */
-    function shellQuote(s) {
-        return "'" + String(s).replace(/'/g, "'\\''") + "'"
-    }
+    /* ── Wi-Fi Backend via nmcli & carbon-wifi.py ── */
+    property var savedConnections: []
 
     Process {
-        id: wifiSavedProc
-        command: ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"]
+        id: savedWifiProc
+        command: ["nmcli", "-t", "-f", "NAME", "connection", "show"]
+        running: false
         stdout: StdioCollector {
-            id: wifiSavedOut
+            id: savedWifiCol
             waitForEnd: true
         }
         onExited: {
-            var lines = String(wifiSavedOut.text).split("\n")
-            var saved = []
-            for (var i = 0; i < lines.length; i++) {
-                var l = lines[i].trim()
-                if (!l) continue
-                var p = l.split(":")
-                if (p.length >= 2 && p[1] === "802-11-wireless") {
-                    saved.push(p[0])
+            const raw = String(savedWifiCol.text || "").trim()
+            if (!raw) {
+                root.savedConnections = []
+                return
+            }
+            const lines = raw.split("\n")
+            const saved = []
+            for (let i = 0; i < lines.length; i++) {
+                const s = lines[i].trim()
+                if (s.length > 0 && s !== "lo" && s !== "Wired connection 1") {
+                    saved.push(s)
                 }
             }
-            root.savedWifiConnections = saved
+            root.savedConnections = saved
+            root.rescanWifi()
         }
+    }
+
+    function fetchSavedNetworks() {
+        savedWifiProc.running = false
+        savedWifiProc.running = true
     }
 
     Process {
         id: wifiScanProc
-        command: ["nmcli", "-t", "-f", "IN-USE,SIGNAL,SECURITY,SSID", "dev", "wifi", "list", "--rescan", "auto"]
+        command: ["nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "dev", "wifi", "list"]
+        running: false
         stdout: StdioCollector {
-            id: wifiScanOut
+            id: wifiScanCol
             waitForEnd: true
         }
         onExited: {
             root.wifiScanning = false
-            root.parseWifiOutput(String(wifiScanOut.text))
-            if (!wifiLoadTimer.running) {
-                root.wifiList = root.wifiStagedList
-                root.isLoading = false
-            }
-        }
-    }
+            root.scanAnimRunning = false
+            const raw = String(wifiScanCol.text || "").trim()
+            if (!raw) return
+            const lines = raw.split("\n")
+            const seen = {}
+            const list = []
 
-    Timer {
-        id: wifiRescanTimer
-        interval: root.scanInterval
-        repeat: true
-        running: root.pickerMode === "wifi" && root.state === "list"
-        onTriggered: {
-            if (!wifiScanProc.running) {
-                root.rescanWifi()
+            for (let i = 0; i < lines.length; i++) {
+                const parts = lines[i].split(":")
+                if (parts.length >= 3) {
+                    const inUse = (parts[0].trim() === "*")
+                    const ssid = parts[1].trim()
+                    const signal = parseInt(parts[2].trim(), 10) || 0
+                    const security = parts.length >= 4 ? parts.slice(3).join(":").trim() : ""
+
+                    if (ssid.length > 0 && !seen[ssid]) {
+                        seen[ssid] = true
+                        const isSaved = root.savedConnections.indexOf(ssid) !== -1
+                        list.push({
+                            ssid: ssid,
+                            name: ssid,
+                            signal: signal,
+                            security: security,
+                            connected: inUse,
+                            saved: isSaved,
+                            deviceType: "wifi"
+                        })
+                    }
+                }
+            }
+
+            // Sort: connected first, then saved, then by signal descending
+            list.sort((a, b) => {
+                if (a.connected && !b.connected) return -1
+                if (!a.connected && b.connected) return 1
+                if (a.saved && !b.saved) return -1
+                if (!a.saved && b.saved) return 1
+                return b.signal - a.signal
+            })
+
+            root.wifiList = list
+            if (root.selectedIndex >= list.length) {
+                root.selectedIndex = Math.max(0, list.length - 1)
+                root.scrollOffset = root.selectedIndex
             }
         }
     }
@@ -381,856 +371,580 @@ Item {
     function rescanWifi() {
         if (wifiScanProc.running) return
         root.wifiScanning = true
+        wifiScanProc.running = false
         wifiScanProc.running = true
     }
 
-    function parseWifiOutput(raw) {
-        var lines = raw.split("\n")
-        var seen = {}
-        var list = []
-
-        for (var i = 0; i < lines.length; i++) {
-            var line = lines[i].trim()
-            if (!line) continue
-            var parts = line.split(":")
-            if (parts.length < 4) continue
-
-            var inUse = parts[0].trim() === "*"
-            var sig = parseInt(parts[1].trim(), 10) || 20
-            var secStr = parts[2].trim()
-            var ssid = parts.slice(3).join(":").trim()
-
-            if (!ssid) continue
-            var isSec = (secStr.length > 0 && secStr !== "--")
-            var isSaved = root.savedWifiConnections.indexOf(ssid) !== -1
-
-            if (seen[ssid]) {
-                if (sig > seen[ssid].signal) {
-                    seen[ssid].signal = sig
-                    seen[ssid].connected = seen[ssid].connected || inUse
-                }
-                continue
-            }
-
-            var item = {
-                ssid: ssid,
-                signal: sig,
-                isSecured: isSec,
-                isSaved: isSaved,
-                connected: inUse,
-                isWifi: true
-            }
-            seen[ssid] = item
-            list.push(item)
-        }
-
-        list.sort(function(a, b) {
-            if (a.connected !== b.connected) return a.connected ? -1 : 1
-            return b.signal - a.signal
-        })
-
-        if (list.length > 14) list = list.slice(0, 14)
-
-        var total = list.length
-        for (var idx = 0; idx < total; idx++) {
-            var it = list[idx]
-            var normSig = Math.max(0.0, Math.min(1.0, it.signal / 100.0))
-            it.orbitRadius = Math.round(root.wifiOrbitBase - (normSig * root.wifiOrbitFactor))
-            it.orbRadius = Math.round(11 + (normSig * 8))
-            it.angleDeg = idx * (360.0 / Math.max(1, total))
-        }
-
-        if (root.isLoading) {
-            root.wifiStagedList = list
-        } else {
-            root.wifiList = list
-        }
-    }
-
-    property bool pendingConnectSuccess: false
-
-    Timer {
-        id: connectGuardTimer
-        repeat: false
-        onTriggered: {
-            if (root.pendingConnectSuccess) {
-                root.state = "done"
-                root.passwordBuffer = ""
-                root.wrongPasswordActive = false
-                root.triggerSuccessAnimation(0.0, -96.0)
-            } else {
-                root.state = "pass"
-                root.passwordBuffer = ""
-                root.wrongPasswordActive = true
-                wrongPasswordTimer.restart()
-                root.statusMessage = "connection failed / try again"
-            }
-        }
-    }
-
+    /* Python Helper Process for Stdin Password & BlueZ Backend */
     Process {
-        id: wifiConnectProc
-        stdout: StdioCollector { id: wifiConnOut; waitForEnd: true }
-        stderr: StdioCollector { id: wifiConnErr; waitForEnd: true }
-        onExited: {
-            var isSuccess = (exitCode === 0)
-            root.pendingConnectSuccess = isSuccess
-            var elapsed = Date.now() - root.connectStartTime
-            var remaining = Math.max(0, 1400 - elapsed)
-            if (remaining > 0) {
-                connectGuardTimer.interval = remaining
-                connectGuardTimer.restart()
-            } else {
-                if (isSuccess) {
-                    root.state = "done"
-                    root.passwordBuffer = ""
-                    root.wrongPasswordActive = false
-                    root.triggerSuccessAnimation(0.0, -96.0)
-                } else {
-                    root.state = "pass"
-                    root.passwordBuffer = ""
-                    root.wrongPasswordActive = true
-                    wrongPasswordTimer.restart()
-                    root.statusMessage = "connection failed / try again"
-                }
-            }
-        }
-    }
-
-    Timer {
-        id: wrongPasswordTimer
-        interval: 800
-        repeat: false
-        onTriggered: {
-            root.wrongPasswordActive = false
-        }
-    }
-
-    function connectWifi(item, password) {
-        root.state = "connecting"
-        root.connectStartTime = Date.now()
-        var cmd = ""
-        if (item.isSaved && (!password || password.length === 0)) {
-            cmd = "nmcli connection up id " + root.shellQuote(item.ssid)
-        } else if (item.isSecured && password && password.length > 0) {
-            cmd = "nmcli dev wifi connect " + root.shellQuote(item.ssid) + " password " + root.shellQuote(password)
-        } else {
-            cmd = "nmcli dev wifi connect " + root.shellQuote(item.ssid)
-        }
-        wifiConnectProc.command = ["sh", "-c", cmd]
-        wifiConnectProc.running = true
-    }
-
-    /* ══════════════════════════════════════════════════════════════════════
-       BLUETOOTH BACKEND (BlueZ D-Bus via carbon-bluetooth.py)
-       ══════════════════════════════════════════════════════════════════════ */
-    Process {
-        id: btDaemonProc
-        command: ["python3", (Quickshell.env("CARBON_CONFIG_DIR") || ((Quickshell.env("HOME") || "") + "/.config/carbon")) + "/scripts/carbon-bluetooth.py"]
-        stdinEnabled: true
+        id: wifiActionProc
+        command: ["python3", Quickshell.env("HOME") + "/carbon-shell/quickshell/carbon/scripts/carbon-wifi.py"]
         running: false
-
         stdout: SplitParser {
-            splitMarker: "\n"
-            onRead: function(line) {
-                root.handleBtDaemonLine(line.trim())
+            onRead: (line) => {
+                const s = line.trim()
+                if (!s) return
+                try {
+                    const data = JSON.parse(s)
+                    if (data.event === "result") {
+                        root.handleWifiResult(data)
+                    }
+                } catch (e) {}
             }
         }
+    }
 
-        onExited: {
-            root.btScanning = false
+    function ensureWifiActionProc() {
+        if (!wifiActionProc.running) wifiActionProc.running = true
+    }
+
+    function handleWifiResult(data) {
+        if (data.action === "connect") {
+            if (data.status === "success") {
+                root.state = "list"
+                root.statusText = "connected - " + data.ssid
+                root.isStatusError = false
+                successPulseAnim.restart()
+                root.fetchSavedNetworks()
+            } else {
+                if (data.error === "wrong_password") {
+                    root.wrongPasswordFlash = 1.0
+                    root.statusText = "wrong password, try again"
+                    root.isStatusError = true
+                    root.passwordInput = ""
+                    flashTimer.restart()
+                } else if (data.error === "network_not_found") {
+                    root.state = "list"
+                    root.statusText = "network not found"
+                    root.isStatusError = true
+                } else if (data.error === "no_response") {
+                    root.state = "list"
+                    root.statusText = "no response"
+                    root.isStatusError = true
+                } else {
+                    root.state = "list"
+                    root.statusText = "connection failed"
+                    root.isStatusError = true
+                }
+            }
+        } else if (data.action === "disconnect" || data.action === "forget") {
+            root.state = "list"
+            root.statusText = ""
+            root.fetchSavedNetworks()
         }
     }
 
-    function startBluetoothBackend() {
-        if (!btDaemonProc.running) {
-            btDaemonProc.running = true
-        }
-        sendBtCmd({ "action": "set_auto_switch_audio", "enabled": root.autoSwitchAudio })
+    Timer {
+        id: flashTimer
+        interval: 800
+        onTriggered: root.wrongPasswordFlash = 0.0
     }
 
-    function stopBluetoothBackend() {
-        if (btDaemonProc.running) {
-            sendBtCmd({ "action": "stop" })
-            btDaemonProc.running = false
+    /* ── Bluetooth Backend via carbon-bluetooth.py ── */
+    Process {
+        id: btBackendProc
+        command: ["python3", Quickshell.env("HOME") + "/carbon-shell/quickshell/carbon/scripts/carbon-bluetooth.py"]
+        running: false
+        stdout: SplitParser {
+            onRead: (line) => {
+                const s = line.trim()
+                if (!s) return
+                try {
+                    const data = JSON.parse(s)
+                    root.handleBtEvent(data)
+                } catch (e) {}
+            }
         }
-        root.btScanning = false
     }
 
-    function sendBtCmd(obj) {
-        if (btDaemonProc.running) {
+    function startBtBackend() {
+        if (!btBackendProc.running) btBackendProc.running = true
+    }
+
+    function stopBtBackend() {
+        if (btBackendProc.running) {
             try {
-                btDaemonProc.write(JSON.stringify(obj) + "\n")
-            } catch (e) {
-                console.log("[ConnectivityPicker] sendBtCmd error:", e)
-            }
+                btBackendProc.write(JSON.stringify({ action: "stop" }) + "\n")
+            } catch (e) {}
+            btBackendProc.running = false
         }
     }
 
-    function handleBtDaemonLine(line) {
-        if (!line) return
-        var data
-        try {
-            data = JSON.parse(line)
-        } catch (e) {
-            return
-        }
-
-        if (data.type === "adapter_state") {
-            root.btAdapterAvailable = data.available
-            root.btPowered = data.powered
-            if (!data.available || !data.powered) {
-                root.btScanning = false
+    function handleBtEvent(data) {
+        if (data.type === "devices") {
+            const rawList = data.list || []
+            // Order: connected, then paired, then nearby by RSSI
+            rawList.sort((a, b) => {
+                if (a.connected && !b.connected) return -1
+                if (!a.connected && b.connected) return 1
+                if (a.paired && !b.paired) return -1
+                if (!a.paired && b.paired) return 1
+                return (b.rssi || -999) - (a.rssi || -999)
+            })
+            root.btList = rawList
+            if (root.selectedIndex >= rawList.length) {
+                root.selectedIndex = Math.max(0, rawList.length - 1)
+                root.scrollOffset = root.selectedIndex
+            }
+        } else if (data.type === "adapter_state") {
+            root.btAdapterAvailable = Boolean(data.available)
+            root.btPowered = Boolean(data.powered)
+            if (!root.btPowered) {
+                root.statusText = "bluetooth off"
             }
         } else if (data.type === "scan_state") {
-            root.btScanning = data.scanning
-        } else if (data.type === "devices") {
-            var rawList = data.list || []
-            for (var i = 0; i < rawList.length; i++) {
-                rawList[i].isWifi = false
-            }
-            root.btRawList = rawList
-            if (!root.isLoading) {
-                root.btList = rawList
-            }
+            root.btScanning = Boolean(data.scanning)
+            if (!root.btScanning) root.scanAnimRunning = false
         } else if (data.type === "passkey_request") {
-            root.state = "confirm_passkey"
+            root.pendingMac = data.mac || ""
+            root.pendingDevName = data.name || ""
             root.pendingPasskey = String(data.passkey || "")
-            root.pendingMac = String(data.mac || "")
-        } else if (data.type === "passkey_cancelled") {
-            if (root.state === "confirm_passkey") {
-                root.state = "list"
-                root.pendingPasskey = ""
-                root.pendingMac = ""
-            }
+            root.state = "passkey"
+            root.statusText = "does this code match the device?"
+            root.isStatusError = false
         } else if (data.type === "action_result") {
             if (data.success) {
+                root.state = "list"
+                root.statusText = ""
+                root.isStatusError = false
                 if (data.action === "connect" || data.action === "pair") {
-                    root.state = "done"
-                    var targetX = 0.0
-                    var targetY = -66.0
-                    if (root.selectedItem) {
-                        var rad = (root.selectedItem.angleDeg || 0.0) * (Math.PI / 180.0)
-                        targetX = root.selectedItem.orbitRadius * Math.cos(rad)
-                        targetY = root.selectedItem.orbitRadius * Math.sin(rad)
-                    }
-                    root.triggerSuccessAnimation(targetX, targetY)
-                } else if (data.action === "disconnect" || data.action === "forget") {
-                    root.state = "list"
-                    root.selectedItem = null
+                    successPulseAnim.restart()
                 }
             } else {
                 root.state = "list"
-                root.failedMac = String(data.mac || "")
-                failureFlashAnim.restart()
-                root.statusMessage = "connection failed: " + (data.error || "rejected")
-                delayClearStatusTimer.restart()
+                root.statusText = (data.error && data.error.includes("reject"))
+                    ? ("pairing rejected by " + (root.pendingDevName || "device"))
+                    : (data.error || "action failed")
+                root.isStatusError = true
             }
         }
     }
 
-    /* ══════════════════════════════════════════════════════════════════════
-       KEYBOARD LISTENER (Password Input in Wi-Fi 'pass' State)
-       ══════════════════════════════════════════════════════════════════════ */
-    Item {
-        id: keyScope
-        focus: root.pickerMode === "wifi" && root.state === "pass"
+    /* ── Action Executors ── */
+    function runPrimaryAction() {
+        if (!root.currentItem) return
 
-        Keys.onEscapePressed: {
-            root.goBack()
-        }
-        Keys.onReturnPressed: {
-            if (root.selectedItem && root.passwordBuffer.length > 0) {
-                root.connectWifi(root.selectedItem, root.passwordBuffer)
+        if (root.pickerMode === "wifi") {
+            const item = root.currentItem
+            if (item.connected) {
+                // Disconnect
+                root.state = "busy"
+                root.statusText = "disconnecting…"
+                ensureWifiActionProc()
+                wifiActionProc.write(JSON.stringify({ action: "disconnect", ssid: item.ssid }) + "\n")
+            } else if (item.saved) {
+                // Saved connect
+                root.state = "busy"
+                root.statusText = "connecting to " + item.ssid + "…"
+                ensureWifiActionProc()
+                wifiActionProc.write(JSON.stringify({ action: "connect", ssid: item.ssid, is_saved: true }) + "\n")
+            } else if (!item.security || item.security.length === 0) {
+                // Open network connect
+                root.state = "busy"
+                root.statusText = "connecting to " + item.ssid + "…"
+                ensureWifiActionProc()
+                wifiActionProc.write(JSON.stringify({ action: "connect", ssid: item.ssid, is_saved: false }) + "\n")
+            } else if (item.security.includes("802.1X") || item.security.includes("Enterprise")) {
+                root.statusText = "needs a system dialog"
+                ensureWifiActionProc()
+                wifiActionProc.write(JSON.stringify({ action: "launch_editor" }) + "\n")
+            } else {
+                // Secured new network -> open password pill
+                root.state = "pass"
+                root.passwordInput = ""
+                root.statusText = ""
+                root.isStatusError = false
             }
-        }
-        Keys.onEnterPressed: {
-            if (root.selectedItem && root.passwordBuffer.length > 0) {
-                root.connectWifi(root.selectedItem, root.passwordBuffer)
-            }
-        }
-        Keys.onBackPressed: {
-            if (root.passwordBuffer.length > 0) {
-                root.passwordBuffer = root.passwordBuffer.slice(0, -1)
-            }
-        }
-        Keys.onDeletePressed: {
-            if (root.passwordBuffer.length > 0) {
-                root.passwordBuffer = root.passwordBuffer.slice(0, -1)
-            }
-        }
-        Keys.onPressed: (event) => {
-            if (event.key === Qt.Key_Backspace) {
-                if (root.passwordBuffer.length > 0) {
-                    root.passwordBuffer = root.passwordBuffer.slice(0, -1)
+        } else {
+            // Bluetooth
+            if (!root.btPowered) {
+                if (btBackendProc.running) {
+                    btBackendProc.write(JSON.stringify({ action: "power_on" }) + "\n")
                 }
-                event.accepted = true
                 return
             }
-            if (event.text && event.text.length > 0 && (!event.modifiers || event.modifiers === Qt.ShiftModifier)) {
-                root.passwordBuffer += event.text
+            const item = root.currentItem
+            root.state = "busy"
+            if (item.connected) {
+                root.statusText = "disconnecting…"
+                btBackendProc.write(JSON.stringify({ action: "disconnect", mac: item.mac }) + "\n")
+            } else if (item.paired) {
+                root.statusText = "connecting to " + item.name + "…"
+                btBackendProc.write(JSON.stringify({ action: "connect", mac: item.mac }) + "\n")
+            } else {
+                root.statusText = "pairing with " + item.name + "…"
+                btBackendProc.write(JSON.stringify({ action: "pair", mac: item.mac }) + "\n")
+            }
+        }
+    }
+
+    function runForgetAction() {
+        if (!root.currentItem) return
+        if (root.pickerMode === "wifi") {
+            const item = root.currentItem
+            ensureWifiActionProc()
+            wifiActionProc.write(JSON.stringify({ action: "forget", ssid: item.ssid }) + "\n")
+        } else {
+            const item = root.currentItem
+            if (btBackendProc.running) {
+                btBackendProc.write(JSON.stringify({ action: "forget", mac: item.mac }) + "\n")
+            }
+        }
+    }
+
+    function submitPassword() {
+        if (!root.currentItem || root.passwordInput.length === 0) return
+        root.state = "busy"
+        root.statusText = "connecting to " + root.currentItem.ssid + "…"
+        ensureWifiActionProc()
+        wifiActionProc.write(JSON.stringify({
+            action: "connect",
+            ssid: root.currentItem.ssid,
+            password: root.passwordInput,
+            is_saved: false
+        }) + "\n")
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       KEYBOARD FOCUS & EVENT ROUTING
+       ══════════════════════════════════════════════════════════════════════ */
+    Item {
+        id: keyboardHandler
+        anchors.fill: parent
+        focus: root.isOpen
+
+        Keys.onPressed: (event) => {
+            if (!root.isOpen) return
+
+            // 1. Password state keyboard handler
+            if (root.state === "pass") {
+                if (event.key === Qt.Key_Escape) {
+                    root.state = "list"
+                    root.passwordInput = ""
+                    event.accepted = true
+                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    root.submitPassword()
+                    event.accepted = true
+                } else if (event.key === Qt.Key_Backspace) {
+                    if (root.passwordInput.length > 0) {
+                        root.passwordInput = root.passwordInput.substring(0, root.passwordInput.length - 1)
+                    }
+                    event.accepted = true
+                } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_V) {
+                    Quickshell.execDetached(["sh", "-c", "wl-paste -n > /tmp/carbon_paste_tmp.txt && python3 -c 'import sys; v=open(\"/tmp/carbon_paste_tmp.txt\").read().strip(); print(v)'"])
+                    event.accepted = true
+                } else if (event.text && event.text.length > 0 && event.text.charCodeAt(0) >= 32) {
+                    root.passwordInput += event.text
+                    event.accepted = true
+                }
+                return
+            }
+
+            // 2. Bluetooth Passkey state
+            if (root.state === "passkey") {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    if (btBackendProc.running) btBackendProc.write(JSON.stringify({ action: "confirm_passkey" }) + "\n")
+                    event.accepted = true
+                } else if (event.key === Qt.Key_Escape) {
+                    if (btBackendProc.running) btBackendProc.write(JSON.stringify({ action: "cancel_passkey" }) + "\n")
+                    root.state = "list"
+                    event.accepted = true
+                }
+                return
+            }
+
+            // 3. Normal List state
+            if (event.key === Qt.Key_Escape) {
+                root.goBack()
+                event.accepted = true
+            } else if (event.key === Qt.Key_Tab) {
+                root.switchTab(root.pickerMode === "wifi" ? "bluetooth" : "wifi")
+                event.accepted = true
+            } else if (event.key === Qt.Key_Left) {
+                const listLen = root.pickerMode === "bluetooth" ? root.btList.length : root.wifiList.length
+                if (listLen > 0) {
+                    root.selectedIndex = Math.max(0, root.selectedIndex - 1)
+                    root.scrollOffset = root.selectedIndex
+                }
+                event.accepted = true
+            } else if (event.key === Qt.Key_Right) {
+                const listLen = root.pickerMode === "bluetooth" ? root.btList.length : root.wifiList.length
+                if (listLen > 0) {
+                    root.selectedIndex = Math.min(listLen - 1, root.selectedIndex + 1)
+                    root.scrollOffset = root.selectedIndex
+                }
+                event.accepted = true
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                root.runPrimaryAction()
                 event.accepted = true
             }
         }
     }
 
-    onStateChanged: {
-        if (root.state === "pass") {
-            Qt.callLater(() => keyScope.forceActiveFocus())
+    /* ══════════════════════════════════════════════════════════════════════
+       VISUAL LAYOUT (Centered at Nucleus (0, 0))
+       ══════════════════════════════════════════════════════════════════════ */
+    visible: root.transitionProgress > 0.001
+
+    // ── 1. TWO TAB SLOTS ON NUCLEUS HORIZONTAL LINE (y = 0) ──
+    Item {
+        id: tabsContainer
+        anchors.centerIn: parent
+        width: 1
+        height: 1
+
+        // Interpolate live from captured positions to (-84, 0) and (+84, 0)
+        readonly property real p: root.transitionProgress
+
+        // WiFi Tab (Only shown when Wi-Fi is active)
+        Rectangle {
+            visible: root.pickerMode === "wifi"
+            x: root.capturedWifiX + (-84.0 - root.capturedWifiX) * tabsContainer.p - (width / 2)
+            y: root.capturedWifiY + (0.0 - root.capturedWifiY) * tabsContainer.p - (height / 2)
+            width: 40
+            height: 40
+            radius: 20
+            readonly property bool isActive: root.pickerMode === "wifi"
+            color: isActive ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0.04, 0.05, 0.08, 0.92)
+            border.color: isActive ? "#FFFFFF" : Qt.rgba(1, 1, 1, 0.40)
+            border.width: isActive ? 2.0 : 1.2
+
+            Behavior on color { ColorAnimation { duration: 140 } }
+            Behavior on border.color { ColorAnimation { duration: 140 } }
+
+            Text {
+                anchors.centerIn: parent
+                text: "wifi"
+                font.family: Theme.fontIcon
+                font.pixelSize: 18
+                color: "#FFFFFF"
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.switchTab("wifi")
+            }
+        }
+
+        // Bluetooth Tab (Only shown when Bluetooth is active)
+        Rectangle {
+            visible: root.pickerMode === "bluetooth"
+            x: root.capturedBtX + (84.0 - root.capturedBtX) * tabsContainer.p - (width / 2)
+            y: root.capturedBtY + (0.0 - root.capturedBtY) * tabsContainer.p - (height / 2)
+            width: 40
+            height: 40
+            radius: 20
+            readonly property bool isActive: root.pickerMode === "bluetooth"
+            color: isActive ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0.04, 0.05, 0.08, 0.92)
+            border.color: isActive ? "#FFFFFF" : Qt.rgba(1, 1, 1, 0.40)
+            border.width: isActive ? 2.0 : 1.2
+
+            Behavior on color { ColorAnimation { duration: 140 } }
+            Behavior on border.color { ColorAnimation { duration: 140 } }
+
+            Text {
+                anchors.centerIn: parent
+                text: "bluetooth"
+                font.family: Theme.fontIcon
+                font.pixelSize: 18
+                color: "#FFFFFF"
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.switchTab("bluetooth")
+            }
         }
     }
 
-    /* ══════════════════════════════════════════════════════════════════════
-       VISUAL RENDERING: GUIDE RINGS, SCANNER SPINNER, ORBS, 12-DOT PASS RING
-       ══════════════════════════════════════════════════════════════════════ */
+    // ── 2. DUAL-ORB SCANNING / BUSY ROTATION ANIMATION ──
     Item {
-        id: visualContainer
-        anchors.centerIn: parent
-        visible: root.pickerMode !== "none"
+        id: rotatingOrbsLayer
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: 1
+        height: 1
+        visible: root.scanAnimRunning || root.state === "busy"
+        opacity: visible ? 1.0 : 0.0
+        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
-        /* ── Faint Concentric Orbit Guide Rings (Celestial / Bohr Model Abstractness) ── */
-        Item {
-            id: guideRingsLayer
-            anchors.centerIn: parent
-            visible: !root.isLoading && !root.showSuccessEffects && (root.pickerMode === "wifi" || root.pickerMode === "bluetooth")
-            opacity: visible ? 1.0 : 0.0
-            Behavior on opacity { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+        // When busy (connecting/pairing): center at (0, 104) around selected item
+        // When scanning: center at (0, 0) around nucleus
+        readonly property real targetCenterY: (root.state === "busy") ? 104.0 : 0.0
+        readonly property real targetRadius: (root.state === "busy") ? 44.0 : 40.0
 
-            // Inner Orbit Guide Ring
-            Rectangle {
-                anchors.centerIn: parent
-                width: ((root.pickerMode === "bluetooth") ? root.btInnerRadius : root.guideRingInner) * 2
-                height: width
-                radius: width / 2
-                color: "transparent"
-                border.color: Qt.rgba(1, 1, 1, 0.09)
-                border.width: 1.0
-                Behavior on width { NumberAnimation { duration: 340; easing.type: Easing.OutCubic } }
-            }
+        y: targetCenterY
 
-            // Outer Orbit Guide Ring
-            Rectangle {
-                anchors.centerIn: parent
-                width: ((root.pickerMode === "bluetooth") ? root.btOuterRadius : root.guideRingOuter) * 2
-                height: width
-                radius: width / 2
-                color: "transparent"
-                border.color: Qt.rgba(1, 1, 1, 0.06)
-                border.width: 1.0
-                Behavior on width { NumberAnimation { duration: 340; easing.type: Easing.OutCubic } }
-            }
-        }
-
-        /* ── Thin Scanning Spinner Arc around Nucleus ── */
-        Item {
-            id: nucleusScanningSpinner
-            anchors.centerIn: parent
-            width: 58
-            height: 58
-            visible: (root.wifiScanning || root.btScanning) && !root.isLoading
-            opacity: visible ? 1.0 : 0.0
-            Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-            rotation: root.animPhase
-
-            Canvas {
-                anchors.fill: parent
-                onPaint: {
-                    var ctx = getContext("2d")
-                    ctx.reset()
-                    ctx.lineWidth = 1.2
-                    ctx.strokeStyle = root.colAccent
-                    ctx.beginPath()
-                    // r = 28 (width=58), sweep 60 degrees (Math.PI / 3)
-                    ctx.arc(29, 29, 28, 0, Math.PI / 3, false)
-                    ctx.stroke()
-                }
-            }
-        }
-
-        /* ── Bohr Valence Electron Loading Orbs (Only on Initial Loading Screen) ── */
-        Item {
-            id: scanningOrbitSystem
-            anchors.centerIn: parent
-            width: 1
-            height: 1
-            visible: (root.pickerMode === "bluetooth" || root.pickerMode === "wifi") && root.isLoading
-            opacity: visible ? 1.0 : 0.0
-            Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-            rotation: (root.animPhase * 0.15) % 360.0
-
-            Item {
-                x: -width / 2
-                y: -root.guideRingInner - height / 2
-                width: 22
-                height: 22
-
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 20; height: 20; radius: 10
-                    color: Qt.rgba(root.colAccent.r, root.colAccent.g, root.colAccent.b, 0.38)
-                }
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 12; height: 12; radius: 6
-                    color: root.colWhite
-                    border.width: 1.5
-                    border.color: root.colAccent
-
-                    Rectangle {
-                        anchors.centerIn: parent
-                        width: 4; height: 4; radius: 2
-                        color: root.colAccent
-                    }
-                }
-            }
-
-            Item {
-                x: -width / 2
-                y: root.guideRingInner - height / 2
-                width: 22
-                height: 22
-
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 20; height: 20; radius: 10
-                    color: Qt.rgba(root.colAccent.r, root.colAccent.g, root.colAccent.b, 0.38)
-                }
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 12; height: 12; radius: 6
-                    color: root.colWhite
-                    border.width: 1.5
-                    border.color: root.colAccent
-
-                    Rectangle {
-                        anchors.centerIn: parent
-                        width: 4; height: 4; radius: 2
-                        color: root.colAccent
-                    }
-                }
-            }
-        }
-
-        /* ── Thin Bond Line from Selected Orb to Nucleus upon Success ── */
-        Shape {
-            visible: root.showSuccessEffects
-            anchors.fill: parent
-            ShapePath {
-                strokeColor: Qt.rgba(1, 1, 1, 0.40)
-                strokeWidth: 1.6
-                startX: root.successStartX
-                startY: root.successStartY
-                PathLine { x: 0; y: 0 }
-            }
-        }
-
-        /* ── Pulse Ring Expanding from Nucleus on Success (600ms) ── */
+        // Orb 1 (Radius 4.0, diameter 8.0, white)
         Rectangle {
-            visible: root.showSuccessEffects && root.pulseProgress > 0.001
+            x: (rotatingOrbsLayer.targetRadius * Math.cos(root.scanOrbAngle)) - (width / 2)
+            y: (rotatingOrbsLayer.targetRadius * Math.sin(root.scanOrbAngle)) - (height / 2)
+            width: 8.0
+            height: 8.0
+            radius: 4.0
+            color: "#FFFFFF"
+        }
+
+        // Orb 2 (Radius 4.0, diameter 8.0, white, opposite side +PI)
+        Rectangle {
+            x: (rotatingOrbsLayer.targetRadius * Math.cos(root.scanOrbAngle + Math.PI)) - (width / 2)
+            y: (rotatingOrbsLayer.targetRadius * Math.sin(root.scanOrbAngle + Math.PI)) - (height / 2)
+            width: 8.0
+            height: 8.0
+            radius: 4.0
+            color: "#FFFFFF"
+        }
+    }
+
+    // ── 3. HORIZONTAL ROUND ITEM ROW (y = +104px) ──
+    Item {
+        id: listRowLayer
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: 1
+        height: 1
+
+        // Transition: fly from nucleus center (0, 0) to (0, 104) starting at 25% of transition
+        readonly property real listProgress: Math.max(0.0, Math.min(1.0, (root.transitionProgress - 0.25) / 0.75))
+        y: 104.0 * listProgress
+        opacity: listProgress
+
+        // Input Capture Area for Wheel & Drag Scroll
+        MouseArea {
             anchors.centerIn: parent
-            width: 38 + (root.pulseProgress * 110)
-            height: 38 + (root.pulseProgress * 110)
-            radius: width / 2
-            color: "transparent"
-            border.color: Qt.rgba(1, 1, 1, (1.0 - root.pulseProgress) * 0.85)
-            border.width: 2.0
-        }
+            width: 440
+            height: 90
+            hoverEnabled: true
 
-        /* ── Success Electron Travelling along Curve into Nucleus (700ms) ── */
-        Item {
-            id: successElectron
-            visible: root.showSuccessEffects && root.electronProgress < 0.999
-            readonly property real ep: root.electronProgress
-            readonly property real curX: root.successStartX * (1.0 - ep) + Math.sin(ep * Math.PI) * 16.0
-            readonly property real curY: root.successStartY * (1.0 - ep)
-
-            x: curX - 4
-            y: curY - 4
-            width: 8
-            height: 8
-
-            Rectangle {
-                anchors.fill: parent
-                radius: 4
-                color: root.colWhite
+            onWheel: (wheel) => {
+                const listLen = root.pickerMode === "bluetooth" ? root.btList.length : root.wifiList.length
+                if (listLen <= 0) return
+                const delta = (wheel.angleDelta.y > 0) ? -0.6 : 0.6
+                root.scrollOffset = Math.max(0, Math.min(listLen - 1, root.scrollOffset + delta))
+                snapTimer.restart()
             }
 
-            Rectangle {
-                x: -Math.sin(successElectron.ep * Math.PI) * 3
-                y: -4
-                width: 5
-                height: 5
-                radius: 2.5
-                color: Qt.rgba(1, 1, 1, 0.5)
+            onPressed: (mouse) => {
+                root.isDragging = true
+                root.dragStartX = mouse.x
+                root.dragStartOffset = root.scrollOffset
+                snapTimer.stop()
+            }
+
+            onPositionChanged: (mouse) => {
+                if (!root.isDragging) return
+                const dx = mouse.x - root.dragStartX
+                const listLen = root.pickerMode === "bluetooth" ? root.btList.length : root.wifiList.length
+                root.scrollOffset = Math.max(0, Math.min(listLen - 1, root.dragStartOffset - (dx / 50.0)))
+            }
+
+            onReleased: {
+                root.isDragging = false
+                snapTimer.restart()
             }
         }
 
-        /* ── 12-Dot Password Ring around Selected Orb in Wi-Fi 'pass' State ── */
-        Item {
-            id: dotRingSystem
-            x: 0
-            y: -96
-            visible: root.pickerMode === "wifi" && (root.state === "pass" || root.state === "connecting" || root.state === "done")
-
-            Item {
-                anchors.centerIn: parent
-                width: 88
-                height: 88
-                visible: root.state === "connecting"
-                rotation: root.animPhase
-
-                Canvas {
-                    anchors.fill: parent
-                    onPaint: {
-                        var ctx = getContext("2d")
-                        ctx.reset()
-                        ctx.lineWidth = 2.0
-                        ctx.strokeStyle = root.colAccent
-                        ctx.beginPath()
-                        ctx.arc(44, 44, 42, 0, Math.PI * 0.9, false)
-                        ctx.stroke()
-                    }
-                }
-            }
-
-            Repeater {
-                model: 12
-                delegate: Item {
-                    id: dotDelegate
-                    required property int index
-                    readonly property real angleDeg: index * 30.0
-                    readonly property real rad: angleDeg * (Math.PI / 180.0)
-                    readonly property real dotRadius: 38
-
-                    readonly property bool isLit: {
-                        if (root.showSuccessEffects) return true
-                        var len = root.passwordBuffer.length
-                        if (len === 0) return false
-                        return index < len
-                    }
-
-                    x: (dotRadius * Math.cos(rad)) - width / 2
-                    y: (dotRadius * Math.sin(rad)) - height / 2
-                    width: isLit ? 6 : 4
-                    height: isLit ? 6 : 4
-                    Behavior on width { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-                    Behavior on height { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: width / 2
-                        color: {
-                            if (root.wrongPasswordActive) return root.colErr
-                            if (dotDelegate.isLit) return root.colWhite
-                            return Qt.rgba(1, 1, 1, 0.22)
-                        }
-                        Behavior on color { ColorAnimation { duration: 160 } }
-                    }
-                }
-            }
-        }
-
-        /* ── Active Orbs (WiFi or Bluetooth) ── */
+        // Visible Items Repeater
         Repeater {
-            model: (!root.isLoading && root.pickerMode === "wifi") ? root.wifiList : ((!root.isLoading && root.pickerMode === "bluetooth") ? root.btList : [])
+            model: root.pickerMode === "bluetooth" ? root.btList : root.wifiList
+
             delegate: Item {
-                id: orbDelegate
+                id: itemDelegate
                 required property int index
                 required property var modelData
 
-                readonly property bool isThisSelected: root.selectedItem === modelData
-                readonly property bool inPassMode: (root.pickerMode === "wifi") && (root.state === "pass" || root.state === "connecting" || root.state === "done")
+                // Distance from current scroll position
+                readonly property real dist: Math.abs(index - root.scrollOffset)
+                visible: dist <= 4.2
 
-                // Target Coordinates:
-                readonly property real idleAngleOffset: 0.0
-                readonly property real idleDistOffset: 0.0
+                // Layout formula: spacing 66px, max radius 36, shrinks by 13px per slot, min radius 11px
+                readonly property real itemRadius: Math.max(11.0, 36.0 - 13.0 * dist)
+                readonly property real itemAlpha: Math.max(0.0, Math.min(1.0, 1.3 - 0.32 * dist))
+                readonly property bool isSelected: Math.abs(index - root.selectedIndex) < 0.5
+                readonly property bool isSavedOrPaired: Boolean(modelData.saved || modelData.paired)
+                readonly property bool isConnected: Boolean(modelData.connected)
 
-                readonly property real finalAngleDeg: (modelData.angleDeg || 0.0) + (isThisSelected ? 0.0 : idleAngleOffset)
-                readonly property real baseRad: finalAngleDeg * (Math.PI / 180.0)
-                readonly property real finalRadius: (modelData.orbitRadius || 80) + (isThisSelected ? 0.0 : idleDistOffset)
-                readonly property real targetX: (inPassMode && isThisSelected) ? 0.0 : (finalRadius * Math.cos(baseRad))
-                readonly property real targetY: (inPassMode && isThisSelected) ? -96.0 : (finalRadius * Math.sin(baseRad))
-                readonly property real targetD: (inPassMode && isThisSelected) ? 52.0 : ((modelData.orbRadius || 17) * 2)
+                // Fly from nucleus center (0, 0) with stagger
+                readonly property real slotTargetX: (index - root.scrollOffset) * 66.0
+                readonly property real itemAnimP: Math.max(0.0, Math.min(1.0, (listRowLayer.listProgress - (dist * 0.08)) / Math.max(0.01, 1.0 - (dist * 0.08))))
+                readonly property real curX: slotTargetX * itemAnimP
+                readonly property real curY: (-104.0 * (1.0 - itemAnimP))
 
-                // Dynamic Scale & Opacity per specifications (hover expands to 1.15, others shrink to 0.88 and dim to 0.65):
-                readonly property bool isThisHovered: orbMouse.containsMouse || (root.hoveredItem === modelData)
-                readonly property bool isAnyHovered: root.hoveredItem !== null
-                readonly property real targetScale: (inPassMode && !isThisSelected) 
-                    ? 0.4 
-                    : (isThisHovered ? 1.15 : (isAnyHovered && !isThisSelected ? 0.88 : 1.0))
-                readonly property real targetAlpha: (inPassMode && !isThisSelected) 
-                    ? 0.0 
-                    : (isAnyHovered && !isThisHovered && !isThisSelected ? 0.65 : 1.0)
+                x: curX - itemRadius
+                y: curY - itemRadius
+                width: itemRadius * 2
+                height: itemRadius * 2
+                opacity: itemAlpha * itemAnimP
 
-                // Staggered Spawning Animation (55ms stagger)
-                property real spawnProgress: 0.0
-                Component.onCompleted: {
-                    if (root.reducedMotion) {
-                        spawnProgress = 1.0
-                    } else {
-                        spawnTimer.restart()
-                    }
-                }
-
-                Timer {
-                    id: spawnTimer
-                    interval: Math.max(10, index * 55)
-                    repeat: false
-                    onTriggered: spawnAnim.restart()
-                }
-
-                NumberAnimation {
-                    id: spawnAnim
-                    target: orbDelegate
-                    property: "spawnProgress"
-                    from: 0.0
-                    to: 1.0
-                    duration: 320
-                    easing.type: Easing.OutCubic
-                }
-
-                // Long-press to forget state
-                property bool forgetPending: false
-                property real forgetFillProgress: 0.0
-
-                NumberAnimation {
-                    id: forgetFillAnim
-                    target: orbDelegate
-                    property: "forgetFillProgress"
-                    from: 0.0
-                    to: 1.0
-                    duration: 1000
-                    easing.type: Easing.Linear
-                    onFinished: {
-                        if (orbDelegate.forgetFillProgress >= 0.99) {
-                            root.sendBtCmd({ "action": "forget", "mac": modelData.mac })
-                            orbDelegate.forgetPending = false
-                            orbDelegate.forgetFillProgress = 0.0
-                            root.statusMessage = "forgot " + modelData.name
-                            delayClearStatusTimer.restart()
-                        }
-                    }
-                }
-
-                Timer {
-                    id: firstHoldTimer
-                    interval: 700
-                    repeat: false
-                    onTriggered: {
-                        orbDelegate.forgetPending = true
-                        root.statusMessage = "forget " + modelData.name + "? / hold again to confirm"
-                        delayClearStatusTimer.restart()
-                    }
-                }
-
-                x: targetX - width / 2
-                y: targetY - height / 2
-                width: targetD
-                height: targetD
-                scale: targetScale * (0.3 + 0.7 * spawnProgress)
-                opacity: targetAlpha * Math.min(1.0, spawnProgress * 1.5)
-
-                Behavior on x { NumberAnimation { duration: 340; easing.type: Easing.OutCubic } }
-                Behavior on y { NumberAnimation { duration: 340; easing.type: Easing.OutCubic } }
-                Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
-                Behavior on height { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
-                Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-                Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
-
-                // Selection White Ring
+                // Success Pulse Ring on connected item
                 Rectangle {
                     anchors.centerIn: parent
-                    width: parent.width + 8
-                    height: parent.height + 8
+                    visible: isSelected && root.successPulseAlpha > 0.001
+                    width: (itemDelegate.itemRadius * 2) * root.successPulseScale
+                    height: width
                     radius: width / 2
                     color: "transparent"
-                    border.color: root.colWhite
-                    border.width: 1.6
-                    visible: orbDelegate.isThisSelected && !orbDelegate.inPassMode
-                    opacity: orbDelegate.isThisSelected ? 1.0 : 0.0
-                    Behavior on opacity { NumberAnimation { duration: 160 } }
+                    border.color: "#FFFFFF"
+                    border.width: 2.0
+                    opacity: root.successPulseAlpha
                 }
 
-                // Connecting Spinner Arc around target orb
-                Item {
-                    anchors.centerIn: parent
-                    width: parent.width + 8
-                    height: parent.height + 8
-                    visible: root.state === "connecting" && orbDelegate.isThisSelected
-                    rotation: root.animPhase
-
-                    Canvas {
-                        anchors.fill: parent
-                        onPaint: {
-                            var ctx = getContext("2d")
-                            ctx.reset()
-                            ctx.lineWidth = 1.8
-                            ctx.strokeStyle = root.colAccent
-                            ctx.beginPath()
-                            ctx.arc(width / 2, height / 2, width / 2 - 2, 0, Math.PI * 0.8, false)
-                            ctx.stroke()
-                        }
-                    }
-                }
-
-                // Battery Arc Indicator (Thin arc 0-100% in accent color)
-                Canvas {
-                    id: batteryArc
-                    anchors.centerIn: parent
-                    width: parent.width + 6
-                    height: parent.height + 6
-                    visible: root.pickerMode === "bluetooth" && modelData.battery !== undefined && modelData.battery >= 0
-                    onPaint: {
-                        var ctx = getContext("2d")
-                        ctx.reset()
-                        if (modelData.battery === undefined || modelData.battery < 0) return
-                        var pct = Math.max(0.0, Math.min(1.0, modelData.battery / 100.0))
-                        ctx.lineWidth = 1.5
-                        ctx.strokeStyle = root.colAccent
-                        ctx.beginPath()
-                        var startAngle = -Math.PI / 2
-                        ctx.arc(width / 2, height / 2, width / 2 - 1.5, startAngle, startAngle + (pct * 2 * Math.PI), false)
-                        ctx.stroke()
-                    }
-                }
-
-                // Long-Press Forget Progress Arc
-                Canvas {
-                    id: forgetProgressArc
-                    anchors.centerIn: parent
-                    width: parent.width + 10
-                    height: parent.height + 10
-                    visible: orbDelegate.forgetFillProgress > 0.005
-                    onPaint: {
-                        var ctx = getContext("2d")
-                        ctx.reset()
-                        ctx.lineWidth = 2.0
-                        ctx.strokeStyle = root.colErr
-                        ctx.beginPath()
-                        var startAngle = -Math.PI / 2
-                        ctx.arc(width / 2, height / 2, width / 2 - 2, startAngle, startAngle + (orbDelegate.forgetFillProgress * 2 * Math.PI), false)
-                        ctx.stroke()
-                    }
-                }
-
-                Connections {
-                    target: orbDelegate
-                    function onForgetFillProgressChanged() {
-                        forgetProgressArc.requestPaint()
-                    }
-                }
-
-                // Main Orb Body
+                // Main Circle Item
                 Rectangle {
-                    id: orbBody
                     anchors.fill: parent
                     radius: width / 2
-                    color: modelData.connected 
-                           ? root.colWhite 
-                           : (orbMouse.containsMouse 
-                              ? Qt.rgba(root.colAccent.r, root.colAccent.g, root.colAccent.b, 0.22) 
-                              : Qt.rgba(root.colBgDark.r, root.colBgDark.g, root.colBgDark.b, 0.94))
-                    border.color: modelData.connected 
-                                  ? root.colWhite 
-                                  : (orbMouse.containsMouse 
-                                     ? root.colAccent 
-                                     : (modelData.paired ? root.colWhite : Qt.rgba(1, 1, 1, 0.35)))
-                    border.width: modelData.connected ? 1.0 : (modelData.paired ? 1.6 : 1.2)
+                    color: isConnected ? "#FFFFFF" : Qt.rgba(0.04, 0.05, 0.08, 0.95)
+                    border.color: isSelected ? "#FFFFFF" : (isSavedOrPaired ? Qt.rgba(1, 1, 1, 0.70) : Qt.rgba(1, 1, 1, 0.30))
+                    border.width: isSelected ? 2.4 : 1.2
 
-                    // Failure Rose Flash
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: width / 2
-                        color: root.colErr
-                        visible: (root.failedMac === modelData.mac && root.failureFlashOpacity > 0.01)
-                        opacity: root.failureFlashOpacity
-                    }
-
-                    // Glyph Text Icon
+                    // Icon inside circle
                     Text {
                         anchors.centerIn: parent
                         text: {
                             if (root.pickerMode === "wifi") {
-                                return modelData.isSecured ? "lock" : "wifi"
+                                const sig = modelData.signal || 0
+                                if (sig >= 75) return "wifi"
+                                if (sig >= 45) return "network_wifi_2_bar"
+                                return "network_wifi_1_bar"
+                            } else {
+                                const dt = modelData.deviceType || ""
+                                if (dt === "headphones") return "headphones"
+                                if (dt === "speaker") return "speaker"
+                                if (dt === "phone") return "smartphone"
+                                if (dt === "watch") return "watch"
+                                if (dt === "keyboard") return "keyboard"
+                                if (dt === "mouse") return "mouse"
+                                if (dt === "gamepad") return "sports_esports"
+                                return "bluetooth"
                             }
-                            var dt = modelData.deviceType || "generic"
-                            if (dt === "headphones") return "headphones"
-                            if (dt === "speaker") return "speaker"
-                            if (dt === "phone") return "smartphone"
-                            if (dt === "watch") return "watch"
-                            if (dt === "keyboard") return "keyboard"
-                            if (dt === "mouse") return "mouse"
-                            if (dt === "gamepad") return "sports_esports"
-                            return "bluetooth"
                         }
                         font.family: Theme.fontIcon
-                        font.pixelSize: (orbDelegate.inPassMode && orbDelegate.isThisSelected) ? 22 : Math.max(12, Math.round(parent.width * 0.48))
-                        color: modelData.connected ? "#0b0e14" : (modelData.paired ? root.colWhite : root.colFgDim)
+                        font.pixelSize: Math.max(9, Math.round(itemDelegate.itemRadius * 0.52))
+                        color: isConnected ? "#0b0e14" : "#FFFFFF"
                     }
 
-                    MouseArea {
-                        id: orbMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
+                    // Small Lock Badge for secured Wi-Fi
+                    Text {
+                        anchors.bottom: parent.bottom
+                        anchors.right: parent.right
+                        anchors.margins: Math.max(2, itemDelegate.itemRadius * 0.12)
+                        visible: (root.pickerMode === "wifi") && Boolean(modelData.security && modelData.security.length > 0) && !isConnected && itemDelegate.itemRadius >= 20
+                        text: "lock"
+                        font.family: Theme.fontIcon
+                        font.pixelSize: Math.max(8, Math.round(itemDelegate.itemRadius * 0.32))
+                        color: Qt.rgba(1, 1, 1, 0.75)
+                    }
+                }
 
-                        onEntered: {
-                            root.hoveredItem = modelData
-                        }
-                        onExited: {
-                            if (root.hoveredItem === modelData) root.hoveredItem = null
-                        }
-
-                        onPressed: {
-                            if (root.pickerMode === "bluetooth" && modelData.paired) {
-                                if (orbDelegate.forgetPending) {
-                                    forgetFillAnim.restart()
-                                } else {
-                                    firstHoldTimer.restart()
-                                }
-                            }
-                        }
-
-                        onReleased: {
-                            firstHoldTimer.stop()
-                            if (forgetFillAnim.running) {
-                                forgetFillAnim.stop()
-                                orbDelegate.forgetFillProgress = 0.0
-                            }
-                        }
-
-                        onClicked: {
-                            if (root.state === "confirm_passkey") {
-                                root.sendBtCmd({ "action": "confirm_passkey" })
-                                root.state = "connecting"
-                                return
-                            }
-
-                            if (root.pickerMode === "wifi") {
-                                if (orbDelegate.isThisSelected) {
-                                    if (modelData.isSaved || !modelData.isSecured || modelData.connected) {
-                                        root.connectWifi(modelData, "")
-                                    } else {
-                                        root.state = "pass"
-                                        root.passwordBuffer = ""
-                                    }
-                                } else {
-                                    root.selectedItem = modelData
-                                }
-                            } else if (root.pickerMode === "bluetooth") {
-                                if (orbDelegate.isThisSelected) {
-                                    root.state = "connecting"
-                                    if (modelData.connected) {
-                                        root.sendBtCmd({ "action": "disconnect", "mac": modelData.mac })
-                                    } else if (modelData.paired) {
-                                        root.sendBtCmd({ "action": "connect", "mac": modelData.mac })
-                                    } else {
-                                        root.sendBtCmd({ "action": "pair", "mac": modelData.mac })
-                                    }
-                                } else {
-                                    root.selectedItem = modelData
-                                }
-                            }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (itemDelegate.isSelected) {
+                            root.runPrimaryAction()
+                        } else {
+                            root.selectedIndex = itemDelegate.index
+                            root.scrollOffset = itemDelegate.index
                         }
                     }
                 }
@@ -1238,7 +952,415 @@ Item {
         }
     }
 
-    Component.onDestruction: {
-        root.closePicker()
+    // ── 4. LABELS UNDER THE ROW (Line 1 Name & Line 2 Details) ──
+    Item {
+        id: labelsLayer
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: 380
+        height: 50
+        y: 160
+        opacity: listRowLayer.listProgress
+
+        ColumnLayout {
+            anchors.centerIn: parent
+            spacing: 3
+
+            // Line 1: Name (16px bold)
+            Text {
+                Layout.alignment: Qt.AlignHCenter
+                text: root.currentItem ? (root.currentItem.name || root.currentItem.ssid || "") : (root.pickerMode === "wifi" ? (root.wifiScanning ? "Scanning for networks…" : "No networks found") : (root.btScanning ? "Discovering devices…" : "No devices found"))
+                font.family: "Valley Sans, Rubik, sans-serif"
+                font.pixelSize: 16
+                font.bold: true
+                color: "#FFFFFF"
+                elide: Text.ElideRight
+                maximumLineCount: 1
+            }
+
+            // Line 2: Details line
+            Text {
+                Layout.alignment: Qt.AlignHCenter
+                text: {
+                    if (!root.currentItem) return ""
+                    if (root.pickerMode === "wifi") {
+                        const secStr = (root.currentItem.security && root.currentItem.security.length > 0) ? "secured" : "open"
+                        const savedStr = root.currentItem.saved ? "saved" : ""
+                        const sigStr = "signal " + (root.currentItem.signal || 0) + "%"
+                        const posStr = (root.selectedIndex + 1) + "/" + root.wifiList.length
+                        return secStr + (savedStr ? " - " + savedStr : "") + " - " + sigStr + " - " + posStr
+                    } else {
+                        const typeStr = root.currentItem.deviceType || "device"
+                        const stateStr = root.currentItem.connected ? "connected" : (root.currentItem.paired ? "paired" : "nearby")
+                        const batStr = (root.currentItem.battery !== undefined && root.currentItem.battery >= 0) ? ("battery " + root.currentItem.battery + "%") : ""
+                        const posStr = (root.selectedIndex + 1) + "/" + root.btList.length
+                        return typeStr + " - " + stateStr + (batStr ? " - " + batStr : "") + " - " + posStr
+                    }
+                }
+                font.family: "Valley Sans, Rubik, sans-serif"
+                font.pixelSize: 12
+                color: Qt.rgba(1, 1, 1, 0.60)
+            }
+        }
+    }
+
+    // ── 5. ACTION ROW (y = +236px from nucleus center) ──
+    Item {
+        id: actionRowLayer
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: 380
+        height: 60
+        y: 236
+        opacity: listRowLayer.listProgress
+
+        // A. Normal List / Busy State
+        RowLayout {
+            anchors.centerIn: parent
+            spacing: 8
+            visible: root.state === "list" || root.state === "busy"
+
+            readonly property bool hasForget: Boolean(root.currentItem && (root.currentItem.saved || root.currentItem.paired))
+
+            // Primary Pill Button
+            Rectangle {
+                Layout.preferredWidth: parent.hasForget ? 130 : 170
+                Layout.preferredHeight: 38
+                radius: 19
+                color: "#FFFFFF"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: {
+                        if (root.state === "busy") return "…"
+                        if (root.pickerMode === "wifi") {
+                            if (!root.currentItem) return "Connect"
+                            return root.currentItem.connected ? "Disconnect" : "Connect"
+                        } else {
+                            if (!root.btPowered) return "Turn on"
+                            if (!root.currentItem) return "Pair"
+                            if (root.currentItem.connected) return "Disconnect"
+                            if (root.currentItem.paired) return "Connect"
+                            return "Pair"
+                        }
+                    }
+                    font.family: "Valley Sans, Rubik, sans-serif"
+                    font.pixelSize: 13
+                    font.bold: true
+                    color: "#0b0e14"
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.runPrimaryAction()
+                }
+            }
+
+            // Ghost Forget Pill (84px)
+            Rectangle {
+                visible: parent.hasForget
+                Layout.preferredWidth: 84
+                Layout.preferredHeight: 38
+                radius: 19
+                color: Qt.rgba(1, 1, 1, 0.08)
+                border.color: root.forgetPending ? "#F87171" : Qt.rgba(1, 1, 1, 0.35)
+                border.width: 1.2
+
+                Text {
+                    anchors.centerIn: parent
+                    text: root.forgetPending ? "Sure?" : "Forget"
+                    font.family: "Valley Sans, Rubik, sans-serif"
+                    font.pixelSize: 12
+                    font.bold: root.forgetPending
+                    color: root.forgetPending ? "#F87171" : "#FFFFFF"
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (!root.forgetPending) {
+                            root.forgetPending = true
+                            forgetResetTimer.restart()
+                        } else {
+                            root.forgetPending = false
+                            forgetResetTimer.stop()
+                            root.runForgetAction()
+                        }
+                    }
+                }
+            }
+        }
+
+        // B. Password Entry State (Wi-Fi)
+        ColumnLayout {
+            anchors.centerIn: parent
+            spacing: 6
+            visible: root.state === "pass"
+
+            RowLayout {
+                spacing: 8
+                Layout.alignment: Qt.AlignHCenter
+
+                // 214px Password Pill
+                Rectangle {
+                    Layout.preferredWidth: 214
+                    Layout.preferredHeight: 38
+                    radius: 19
+                    color: Qt.rgba(0.04, 0.05, 0.08, 0.95)
+                    border.color: root.wrongPasswordFlash > 0.01 ? "#F87171" : Qt.rgba(1, 1, 1, 0.40)
+                    border.width: 1.2
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 10
+                        spacing: 6
+
+                        Text {
+                            text: "lock"
+                            font.family: Theme.fontIcon
+                            font.pixelSize: 15
+                            color: Qt.rgba(1, 1, 1, 0.60)
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+
+                            // Placeholder
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: root.passwordInput.length === 0
+                                text: "password"
+                                font.family: "Valley Sans, Rubik, sans-serif"
+                                font.pixelSize: 13
+                                color: Qt.rgba(1, 1, 1, 0.35)
+                            }
+
+                            // Password Text / Masked Dots with Caret
+                            Row {
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 2
+
+                                Text {
+                                    text: root.showPassword ? root.passwordInput : "●".repeat(root.passwordInput.length)
+                                    font.family: "Valley Sans, Rubik, sans-serif"
+                                    font.pixelSize: root.showPassword ? 13 : 10
+                                    color: "#FFFFFF"
+                                }
+
+                                Text {
+                                    visible: root.caretVisible
+                                    text: "|"
+                                    font.family: "Valley Sans, Rubik, sans-serif"
+                                    font.pixelSize: 14
+                                    color: "#FFFFFF"
+                                }
+                            }
+                        }
+
+                        // Eye toggle button
+                        Text {
+                            text: root.showPassword ? "visibility" : "visibility_off"
+                            font.family: Theme.fontIcon
+                            font.pixelSize: 16
+                            color: Qt.rgba(1, 1, 1, 0.65)
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.showPassword = !root.showPassword
+                            }
+                        }
+                    }
+                }
+
+                // Submit Arrow Button (radius 17px, diameter 34px)
+                Rectangle {
+                    Layout.preferredWidth: 34
+                    Layout.preferredHeight: 34
+                    radius: 17
+                    color: "#FFFFFF"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "arrow_forward"
+                        font.family: Theme.fontIcon
+                        font.pixelSize: 18
+                        color: "#0b0e14"
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.submitPassword()
+                    }
+                }
+            }
+
+            // Cancel ghost pill
+            Rectangle {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: 84
+                Layout.preferredHeight: 28
+                radius: 14
+                color: Qt.rgba(1, 1, 1, 0.08)
+                border.color: Qt.rgba(1, 1, 1, 0.25)
+                border.width: 1.0
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "Cancel"
+                    font.family: "Valley Sans, Rubik, sans-serif"
+                    font.pixelSize: 11
+                    color: Qt.rgba(1, 1, 1, 0.80)
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        root.state = "list"
+                        root.passwordInput = ""
+                    }
+                }
+            }
+        }
+
+        // C. Bluetooth Passkey Confirmation State
+        ColumnLayout {
+            anchors.centerIn: parent
+            spacing: 6
+            visible: root.state === "passkey"
+
+            // 190px Passkey Pill (18px mono)
+            Rectangle {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: 190
+                Layout.preferredHeight: 38
+                radius: 19
+                color: Qt.rgba(0.04, 0.05, 0.08, 0.95)
+                border.color: Qt.rgba(1, 1, 1, 0.40)
+                border.width: 1.2
+
+                Text {
+                    anchors.centerIn: parent
+                    text: root.pendingPasskey
+                    font.family: "JetBrains Mono, monospace"
+                    font.pixelSize: 18
+                    font.bold: true
+                    color: "#FFFFFF"
+                }
+            }
+
+            RowLayout {
+                Layout.alignment: Qt.AlignHCenter
+                spacing: 8
+
+                Rectangle {
+                    Layout.preferredWidth: 90
+                    Layout.preferredHeight: 32
+                    radius: 16
+                    color: "#FFFFFF"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Confirm"
+                        font.family: "Valley Sans, Rubik, sans-serif"
+                        font.pixelSize: 12
+                        font.bold: true
+                        color: "#0b0e14"
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (btBackendProc.running) btBackendProc.write(JSON.stringify({ action: "confirm_passkey" }) + "\n")
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.preferredWidth: 80
+                    Layout.preferredHeight: 32
+                    radius: 16
+                    color: Qt.rgba(1, 1, 1, 0.08)
+                    border.color: Qt.rgba(1, 1, 1, 0.30)
+                    border.width: 1.0
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Cancel"
+                        font.family: "Valley Sans, Rubik, sans-serif"
+                        font.pixelSize: 12
+                        color: "#FFFFFF"
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (btBackendProc.running) btBackendProc.write(JSON.stringify({ action: "cancel_passkey" }) + "\n")
+                            root.state = "list"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── 6. STATUS LINE BELOW ACTION ROW ──
+    Text {
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: actionRowLayer.bottom
+        anchors.topMargin: 8
+        opacity: listRowLayer.listProgress
+        text: root.statusText
+        font.family: "Valley Sans, Rubik, sans-serif"
+        font.pixelSize: 12
+        color: root.isStatusError ? "#F87171" : Qt.rgba(1, 1, 1, 0.55)
+    }
+
+    // ── 7. SCAN BUTTON (Bottom-Right of Picker) ──
+    RowLayout {
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.horizontalCenterOffset: 154
+        y: 240
+        spacing: 5
+        opacity: listRowLayer.listProgress
+
+        Rectangle {
+            Layout.preferredWidth: 30
+            Layout.preferredHeight: 30
+            radius: 15
+            color: Qt.rgba(1, 1, 1, 0.08)
+            border.color: Qt.rgba(1, 1, 1, 0.30)
+            border.width: 1.0
+
+            Text {
+                anchors.centerIn: parent
+                text: "refresh"
+                font.family: Theme.fontIcon
+                font.pixelSize: 15
+                color: "#FFFFFF"
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    root.scanAnimRunning = true
+                    manualScanTimer.restart()
+                    if (root.pickerMode === "bluetooth") {
+                        if (btBackendProc.running) btBackendProc.write(JSON.stringify({ action: "power_on" }) + "\n")
+                    } else {
+                        root.rescanWifi()
+                    }
+                }
+            }
+        }
+
+        Text {
+            text: "scan"
+            font.family: "Valley Sans, Rubik, sans-serif"
+            font.pixelSize: 11
+            color: Qt.rgba(1, 1, 1, 0.60)
+        }
     }
 }

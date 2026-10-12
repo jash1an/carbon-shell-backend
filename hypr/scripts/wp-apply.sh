@@ -52,6 +52,16 @@ else
         cp -f "$FRAME_SRC" "$SCALED" 2>/dev/null || true
     fi
     ln -sfn "$SCALED" "$CACHE_DIR/wallpaper_scaled.jpg"
+
+    BLURRED="$CACHE_DIR/wpscale/$(basename "$WALL" | tr '.' '_')_blurred.jpg"
+    if [ ! -s "$BLURRED" ] || [ "$BLURRED" -ot "$SCALED" ]; then
+        if [ -n "$MAGICK_BIN" ]; then
+            "$MAGICK_BIN" "$SCALED" -resize 25% -blur 0x16 -resize "${LW}x${LH}!" -fill "#050508" -colorize 55% -quality 85 "$BLURRED" 2>/dev/null || true
+        fi
+    fi
+    if [ -f "$BLURRED" ]; then
+        ln -sfn "$BLURRED" "$CACHE_DIR/wallpaper_blurred.jpg"
+    fi
 fi
 
 # Update hypr config

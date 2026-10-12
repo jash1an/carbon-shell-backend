@@ -6,6 +6,8 @@ import "../../Singletons"
 /**
  * LockScreen:
  * Wraps Quickshell WlSessionLock protocol.
+ * Implements lock-first architecture: session lock activates at t=0,
+ * and LockSurface is the stage for the entire transition.
  */
 Scope {
     id: root
@@ -14,13 +16,16 @@ Scope {
     property var notificationServer: null
 
     function lock() {
-        if (LockTransition.phase === "idle") {
-            LockTransition.startLock(false)
-        } else if (LockTransition.phase === "locking") {
-            // Transition is actively animating desktop pre-roll, do not interrupt!
-            return
-        } else {
+        if (LockTransition.lockSync) {
             sessionLock.locked = true
+            LockTransition.startLock(false)
+        } else {
+            // Legacy asynchronous lock
+            if (LockTransition.phase === "idle") {
+                LockTransition.startLock(false)
+            } else {
+                sessionLock.locked = true
+            }
         }
     }
 
@@ -54,23 +59,40 @@ Scope {
         root.testNotifClearRequested()
     }
 
+    Timer {
+        id: unlockReleaseTimer
+        interval: 1
+        repeat: false
+        onTriggered: {
+            sessionLock.locked = false
+        }
+    }
+
     WlSessionLock {
         id: sessionLock
 
         LockSurface {
             id: surf
+            sessionLock: sessionLock
             notificationServer: root.notificationServer
 
             onRequestUnlock: {
-                console.log("[LockScreen] Received onRequestUnlock -> unlocking session lock")
-                sessionLock.locked = false
+                console.log("[LockScreen] Received onRequestUnlock -> unlocking session lock immediately")
+                LockTransition.finishUnlock()
+                unlockReleaseTimer.restart()
+            }
+
+            onRequestUnlockFinish: {
+                console.log("[LockScreen] Received onRequestUnlockFinish -> unlock transition completed, dropping session lock")
+                LockTransition.finishUnlock()
+                unlockReleaseTimer.restart()
             }
 
             Connections {
                 target: root
-                function onTestNotifRequested() { surf.testNotif() }
-                function onTestNotifCenterRequested() { surf.testNotifCenter() }
-                function onTestNotifClearRequested() { surf.testNotifClear() }
+                function onTestNotifRequested() { if (surf) surf.testNotif() }
+                function onTestNotifCenterRequested() { if (surf) surf.testNotifCenter() }
+                function onTestNotifClearRequested() { if (surf) surf.testNotifClear() }
             }
         }
     }

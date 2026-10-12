@@ -185,14 +185,17 @@ Item {
         transform: Translate {
             y: (root.toastShowing && !root.centerOpen) ? 0 : 16
             Behavior on y {
+                enabled: LockTransition.phase === "locked"
                 NumberAnimation { duration: 320; easing.type: Easing.OutCubic }
             }
         }
 
         Behavior on opacity {
+            enabled: LockTransition.phase === "locked"
             NumberAnimation { duration: 250; easing.type: Easing.OutQuad }
         }
         Behavior on scale {
+            enabled: LockTransition.phase === "locked"
             NumberAnimation { duration: 320; easing.type: Easing.OutCubic }
         }
 
@@ -324,17 +327,21 @@ Item {
         transform: Translate {
             y: root.centerOpen ? 0 : 20
             Behavior on y {
+                enabled: LockTransition.phase === "locked"
                 NumberAnimation { duration: 320; easing.type: Easing.OutCubic }
             }
         }
 
         Behavior on opacity {
+            enabled: LockTransition.phase === "locked"
             NumberAnimation { duration: 250; easing.type: Easing.OutQuad }
         }
         Behavior on scale {
+            enabled: LockTransition.phase === "locked"
             NumberAnimation { duration: 320; easing.type: Easing.OutCubic }
         }
         Behavior on border.color {
+            enabled: LockTransition.phase === "locked"
             ColorAnimation { duration: 250 }
         }
 

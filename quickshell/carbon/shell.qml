@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -90,6 +91,10 @@ ShellRoot {
     property bool calendarPinned: false
     property bool centerDashboardAwaitingHover: false
     function openCalendar() {
+        if (root.barMode === "nucleus") {
+            if (root.nucleusHubItem) root.nucleusHubItem.openCalendarMode()
+            return
+        }
         centerDashboardLeaveTimer.stop()
         root.centerDashboardPinned = false
         root.centerDashboardAwaitingHover = true
@@ -97,8 +102,26 @@ ShellRoot {
         centerDashboardLeaveTimer.interval = 1000
         centerDashboardLeaveTimer.restart()
     }
-    function closeCalendar() { root.closeCenterDashboard() }
-    function toggleCalendar() { root.toggleCenterDashboard() }
+    function closeCalendar() {
+        if (root.barMode === "nucleus") {
+            if (root.nucleusHubItem) root.nucleusHubItem.activeMode = "hub"
+            return
+        }
+        root.closeCenterDashboard()
+    }
+    function toggleCalendar() {
+        if (root.barMode === "nucleus") {
+            if (root.nucleusHubItem) {
+                if (root.nucleusHubItem.hubOpen && root.nucleusHubItem.activeMode === "calendar") {
+                    root.nucleusHubItem.close()
+                } else {
+                    root.nucleusHubItem.openCalendarMode()
+                }
+            }
+            return
+        }
+        root.toggleCenterDashboard()
+    }
 
     onCalendarOpenChanged: {
         if (root.calendarOpen) { calendarOutTimer.stop(); root.calendarHidden = false }
@@ -597,6 +620,7 @@ ShellRoot {
 
     /* ── Bar Mode Configuration: "pill" or "notch" ──────────────────── */
     property string barMode: "pill"
+    property bool workspaceOsdActive: false
     onBarModeChanged: console.log("[BAR-MODE CHANGED] New root.barMode is now: " + root.barMode)
 
     FileView {
@@ -1040,6 +1064,10 @@ ShellRoot {
                             root.closeSpotlight()
                         }
                     }
+                    else if (cmd.startsWith("focus-lobe ")) {
+                        var lobeTarget = cmd.replace(/^focus-lobe\s+/, "").trim()
+                        if (root.barMode === "nucleus" && root.nucleusHubItem) root.nucleusHubItem.focusLobe(lobeTarget)
+                    }
                     else if (cmd === "test-hud-vol")
                         HudService.trigger("volume", 0.72, "72%", "Volume", "", false, "volume_up", "", 2500)
                     else if (cmd === "test-hud-bright")
@@ -1056,18 +1084,23 @@ ShellRoot {
                         root.toggleBrightness()
                     else if (cmd === "battery")
                         root.toggleBattery()
-                    else if (cmd === "wifi") {
+                    else if (cmd === "wifi" || cmd === "connect open wifi") {
                         if (root.barMode === "nucleus") {
                             if (root.nucleusHubItem) root.nucleusHubItem.openWifiMode()
                         } else {
                             root.toggleWifi()
                         }
                     }
-                    else if (cmd === "bt" || cmd === "bluetooth") {
+                    else if (cmd === "bt" || cmd === "bluetooth" || cmd === "connect open bluetooth") {
                         if (root.barMode === "nucleus") {
                             if (root.nucleusHubItem) root.nucleusHubItem.openBluetoothMode()
                         } else {
                             root.toggleBt()
+                        }
+                    }
+                    else if (cmd === "connect close") {
+                        if (root.barMode === "nucleus") {
+                            if (root.nucleusHubItem) root.nucleusHubItem.closeConnectivityPicker()
                         }
                     }
                     else if (cmd === "tray")
@@ -1182,12 +1215,65 @@ ShellRoot {
                         root.toggleWifi()
                     else if (cmd === "bt" || cmd === "bluetooth")
                         root.toggleBt()
-                    else if (cmd === "power" || cmd === "powermenu") {
-                        console.log("[IPC powermenu] barMode=" + root.barMode + " nucleusHubItem=" + Boolean(root.nucleusHubItem))
-                        if (root.barMode === "nucleus" && root.nucleusHubItem) {
-                            root.nucleusHubItem.openPowerMode()
-                        } else {
-                            root.togglePower()
+                    else if (cmd === "power" || cmd === "powermenu" || cmd.startsWith("power ")) {
+                        const parts = cmd.split(/\s+/)
+                        const sub = parts[1] || "open"
+                        const hasConfirm = parts.includes("--confirm")
+                        console.log("[IPC power] sub=" + sub + " confirm=" + hasConfirm + " barMode=" + root.barMode)
+                        if (sub === "open") {
+                            if (root.barMode === "nucleus" && root.nucleusHubItem) {
+                                root.nucleusHubItem.openPowerMode()
+                            } else {
+                                root.openPower()
+                            }
+                        } else if (sub === "close") {
+                            if (root.barMode === "nucleus" && root.nucleusHubItem) {
+                                root.nucleusHubItem.close()
+                            } else {
+                                root.closePower()
+                            }
+                        } else if (sub === "lock") {
+                            if (root.barMode === "nucleus" && root.nucleusHubItem) {
+                                root.nucleusHubItem.triggerPowerAction("lock")
+                            } else {
+                                root.closePower()
+                                sessionLock.lock()
+                            }
+                        } else if (sub === "sleep") {
+                            if (root.barMode === "nucleus" && root.nucleusHubItem) {
+                                root.nucleusHubItem.triggerPowerAction("sleep")
+                            } else {
+                                root.closePower()
+                                Quickshell.execDetached(["systemctl", "suspend"])
+                            }
+                        } else if (sub === "restart" || sub === "reboot") {
+                            if (hasConfirm) {
+                                if (root.barMode === "nucleus" && root.nucleusHubItem) {
+                                    root.nucleusHubItem.triggerPowerAction("restart")
+                                } else {
+                                    root.closePower()
+                                    Quickshell.execDetached(["systemctl", "reboot"])
+                                }
+                            } else {
+                                console.log("[IPC power restart] requires --confirm")
+                                if (root.barMode === "nucleus" && root.nucleusHubItem) {
+                                    root.nucleusHubItem.openPowerMode()
+                                }
+                            }
+                        } else if (sub === "shutdown" || sub === "poweroff") {
+                            if (hasConfirm) {
+                                if (root.barMode === "nucleus" && root.nucleusHubItem) {
+                                    root.nucleusHubItem.triggerPowerAction("shutdown")
+                                } else {
+                                    root.closePower()
+                                    Quickshell.execDetached(["systemctl", "poweroff"])
+                                }
+                            } else {
+                                console.log("[IPC power shutdown] requires --confirm")
+                                if (root.barMode === "nucleus" && root.nucleusHubItem) {
+                                    root.nucleusHubItem.openPowerMode()
+                                }
+                            }
                         }
                     }
                     else if (cmd === "tray" || cmd === "toggle-tray")
@@ -1402,12 +1488,12 @@ ShellRoot {
             color: "transparent"
             WlrLayershell.namespace: "carbon-lock-transition"
             WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.keyboardFocus: (LockTransition.phase === "locking" && LockTransition.t < 780.0) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            WlrLayershell.keyboardFocus: (!LockTransition.lockSync && LockTransition.phase === "locking" && LockTransition.t < 780.0) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             exclusionMode: ExclusionMode.Ignore
             aboveWindows: true
             anchors { top: true; bottom: true; left: true; right: true }
 
-            visible: LockTransition.phase === "locking" || LockTransition.phase === "post_unlock" || (LockTransition.phase === "unlocking" && LockTransition.u >= 900.0)
+            visible: !LockTransition.lockSync && (LockTransition.phase === "locking" || LockTransition.phase === "post_unlock" || (LockTransition.phase === "unlocking" && LockTransition.u >= 900.0))
 
             MouseArea {
                 anchors.fill: parent
@@ -2256,6 +2342,7 @@ ShellRoot {
     readonly property QtObject nucleusHubItem: QtObject {
         property bool hubOpen: false
         property bool isClosing: false
+        property string activeMode: "hub"
         signal toggleRequested()
         signal openRequested()
         signal closeRequested()
@@ -2264,6 +2351,7 @@ ShellRoot {
         signal launcherModeRequested()
         signal wifiModeRequested()
         signal bluetoothModeRequested()
+        signal calendarModeRequested()
 
         function toggle() { 
             if (!hubOpen || isClosing) {
@@ -2323,11 +2411,24 @@ ShellRoot {
             hubOpen = true
             bluetoothModeRequested()
         }
+        function openCalendarMode() {
+            isClosing = false
+            hubOpen = true
+            activeMode = "calendar"
+            calendarModeRequested()
+        }
         signal powerModeRequested()
         function openPowerMode() {
             isClosing = false
             hubOpen = true
+            activeMode = "power"
             powerModeRequested()
+        }
+        signal powerActionRequested(string action)
+        function triggerPowerAction(action) {
+            isClosing = false
+            hubOpen = true
+            powerActionRequested(action)
         }
         signal volumeActionRequested(string action, bool wasClosed)
         signal brightnessActionRequested(string action, bool wasClosed)
@@ -2382,6 +2483,15 @@ ShellRoot {
                 anchors.centerIn: parent
                 width: 80
                 height: 80
+                opacity: root.workspaceOsdActive ? 0.0 : 1.0
+                visible: opacity > 0.002
+                Behavior on opacity {
+                    NumberAnimation { duration: 140 }
+                }
+
+                property bool restingPressing: false
+                property real restingHoldProgress: 0.0
+                property bool justTriggeredPower: false
 
                 // Ring 1 (Inner, 2 electrons)
                 Rectangle {
@@ -2450,13 +2560,68 @@ ShellRoot {
                     border.width: 1.0
                 }
 
+                // Clockwise Halo Ring (radius 27px, fills white clockwise over 600ms on hold)
+                Shape {
+                    id: restingHoldRingShape
+                    anchors.centerIn: parent
+                    width: 54
+                    height: 54
+                    visible: nucleusRestingCenterDot.restingHoldProgress > 0.001
+                    layer.enabled: true
+                    layer.samples: 4
+                    ShapePath {
+                        strokeWidth: 2.5
+                        strokeColor: "#FFFFFF"
+                        fillColor: "transparent"
+                        capStyle: ShapePath.RoundCap
+                        PathAngleArc {
+                            centerX: 27
+                            centerY: 27
+                            radiusX: 27
+                            radiusY: 27
+                            startAngle: -90
+                            sweepAngle: Math.max(0.1, Math.min(359.9, nucleusRestingCenterDot.restingHoldProgress * 360.0))
+                        }
+                    }
+                }
+
+                FrameAnimation {
+                    running: nucleusRestingCenterDot.restingPressing || nucleusRestingCenterDot.restingHoldProgress > 0.0
+                    onTriggered: {
+                        var dt = frameTime * 1000.0
+                        if (nucleusRestingCenterDot.restingPressing) {
+                            nucleusRestingCenterDot.restingHoldProgress = Math.min(1.0, nucleusRestingCenterDot.restingHoldProgress + dt / 600.0)
+                            if (nucleusRestingCenterDot.restingHoldProgress >= 1.0) {
+                                nucleusRestingCenterDot.restingHoldProgress = 0.0
+                                nucleusRestingCenterDot.restingPressing = false
+                                nucleusRestingCenterDot.justTriggeredPower = true
+                                if (root.nucleusHubItem) root.nucleusHubItem.openPowerMode()
+                            }
+                        } else if (nucleusRestingCenterDot.restingHoldProgress > 0.0) {
+                            nucleusRestingCenterDot.restingHoldProgress = Math.max(0.0, nucleusRestingCenterDot.restingHoldProgress - dt * 0.004)
+                        }
+                    }
+                }
+
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    pressAndHoldInterval: 350
-                    onClicked: root.nucleusHubItem.open()
-                    onPressAndHold: {
-                        if (root.nucleusHubItem) root.nucleusHubItem.openPowerMode()
+                    acceptedButtons: Qt.LeftButton
+                    onPressed: {
+                        nucleusRestingCenterDot.justTriggeredPower = false
+                        nucleusRestingCenterDot.restingPressing = true
+                    }
+                    onReleased: nucleusRestingCenterDot.restingPressing = false
+                    onCanceled: nucleusRestingCenterDot.restingPressing = false
+                    onClicked: {
+                        nucleusRestingCenterDot.restingPressing = false
+                        if (nucleusRestingCenterDot.justTriggeredPower) {
+                            nucleusRestingCenterDot.justTriggeredPower = false
+                            return
+                        }
+                        if (nucleusRestingCenterDot.restingHoldProgress < 0.99) {
+                            if (root.nucleusHubItem) root.nucleusHubItem.open()
+                        }
                     }
                 }
             }
@@ -2500,6 +2665,10 @@ ShellRoot {
                 onCloseRequested: {
                     root.nucleusHubItem.hubOpen = false
                     root.nucleusHubItem.isClosing = false
+                    root.nucleusHubItem.activeMode = "hub"
+                }
+                onActiveModeChanged: {
+                    root.nucleusHubItem.activeMode = activeMode
                 }
 
                 Connections {
@@ -2513,7 +2682,9 @@ ShellRoot {
                     function onToggleLyricsRequested() { nucleusHubItemInstance.toggleLyrics() }
                     function onWifiModeRequested() { nucleusHubItemInstance.openWifiMode() }
                     function onBluetoothModeRequested() { nucleusHubItemInstance.openBluetoothMode() }
+                    function onCalendarModeRequested() { nucleusHubItemInstance.openCalendarMode() }
                     function onPowerModeRequested() { nucleusHubItemInstance.openPowerMode() }
+                    function onPowerActionRequested(action) { nucleusHubItemInstance.triggerPowerAction(action) }
                     function onVolumeActionRequested(action, wasClosed) {
                         if (wasClosed && action !== "open") {
                             nucleusHubItemInstance.osdOpenedHub = true
@@ -3559,6 +3730,43 @@ ShellRoot {
             NotchOsd {
                 id: osdItem
                 anchors.horizontalCenter: parent.horizontalCenter
+            }
+        }
+    }
+
+    /* ── Workspace Switcher OSD (Active only in Vanish Mode) ─────────── */
+    Variants {
+        model: Quickshell.screens
+
+        PanelWindow {
+            id: workspaceOsdWindow
+            required property var modelData
+
+            screen: modelData
+            color: "transparent"
+            WlrLayershell.namespace: "carbon-workspace-osd"
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+            exclusionMode: ExclusionMode.Ignore
+
+            anchors {
+                top: true
+                bottom: true
+                left: true
+                right: true
+            }
+
+            // Keep PanelWindow instantiated so internal state/listeners run continuously
+            visible: root.barMode === "nucleus" || root.barMode === "vanish" 
+
+            // Empty region mask ensures 100% mouse click & touch pass-through to underlying windows!
+            mask: Region {}
+
+            WorkspaceOsd {
+                id: wsOsdItem
+                anchors.centerIn: parent
+                barMode: root.barMode
+                onActiveChanged: root.workspaceOsdActive = wsOsdItem.active
             }
         }
     }

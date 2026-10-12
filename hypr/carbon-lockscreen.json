@@ -4,5 +4,9 @@
   "clock": true,
   "heartbeat": true,
   "batteryPopup": true,
-  "notificationPopup": true
+  "notificationPopup": true,
+  "transition": {
+    "lockSync": true,
+    "debug": true
+  }
 }

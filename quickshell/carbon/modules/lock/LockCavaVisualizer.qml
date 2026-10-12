@@ -114,16 +114,18 @@ Item {
     }
 
     /* ── Smooth Animated Visibility & Entrance ───────────────────────────── */
-    property bool entered: false
-    property bool showing: root.entered && root.enabledSetting
+    property bool stageDriven: false
+    property bool entered: stageDriven
+    property bool showing: (root.entered && root.enabledSetting)
 
     visible: opacity > 0.01
     opacity: showing ? 1.0 : 0.0
     transform: Translate {
         id: transOffset
-        y: root.showing ? 0 : -root.height
+        y: root.stageDriven ? 0 : (root.showing ? 0 : -root.height)
 
         Behavior on y {
+            enabled: !root.stageDriven
             NumberAnimation {
                 duration: 650
                 easing.type: Easing.OutCubic
@@ -132,6 +134,7 @@ Item {
     }
 
     Behavior on opacity {
+        enabled: !root.stageDriven
         NumberAnimation {
             duration: 520
             easing.type: Easing.OutQuad
@@ -141,7 +144,7 @@ Item {
     Timer {
         id: introDelay
         interval: 180
-        running: true
+        running: !root.stageDriven
         onTriggered: root.entered = true
     }
 

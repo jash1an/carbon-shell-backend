@@ -21,14 +21,14 @@ Singleton {
         // 1. If we have a playing player, track it as preferred
         for (let i = 0; i < players.length; i++) {
             if (players[i].playbackState === MprisPlaybackState.Playing) {
-                root.preferredPlayerBus = players[i].busName || ""
+                root.preferredPlayerBus = players[i].dbusName || ""
                 return players[i]
             }
         }
         // 2. If recent skip or pause transition, stick with preferred player if still alive
         if (root.preferredPlayerBus && root.preferredPlayerBus.length > 0) {
             for (let i = 0; i < players.length; i++) {
-                if ((players[i].busName || "") === root.preferredPlayerBus) {
+                if ((players[i].dbusName || "") === root.preferredPlayerBus) {
                     return players[i]
                 }
             }
@@ -37,9 +37,9 @@ Singleton {
         for (let i = 0; i < players.length; i++) {
             const p = players[i]
             if (p.playbackState === MprisPlaybackState.Paused && (p.trackTitle || "").length > 0) {
-                const name = (p.busName || p.identity || "").toLowerCase()
+                const name = (p.dbusName || p.identity || "").toLowerCase()
                 if (!name.includes("firefox") && !name.includes("chromium") && !name.includes("chrome")) {
-                    root.preferredPlayerBus = p.busName || ""
+                    root.preferredPlayerBus = p.dbusName || ""
                     return p
                 }
             }
@@ -47,7 +47,7 @@ Singleton {
         // 4. Any paused player with track
         for (let i = 0; i < players.length; i++) {
             if (players[i].playbackState === MprisPlaybackState.Paused && (players[i].trackTitle || "").length > 0) {
-                root.preferredPlayerBus = players[i].busName || ""
+                root.preferredPlayerBus = players[i].dbusName || ""
                 return players[i]
             }
         }
@@ -206,30 +206,18 @@ Singleton {
         const now = Date.now()
         if (now - root.lastSkipTime < 240) return
         root.lastSkipTime = now
-        if (root.activePlayer) {
-            root.activePlayer.next()
-        } else {
-            Quickshell.execDetached(["playerctl", "next"])
-        }
+        Quickshell.execDetached(["playerctl", "next"])
     }
 
     function skipPrevious() {
         const now = Date.now()
         if (now - root.lastSkipTime < 240) return
         root.lastSkipTime = now
-        if (root.activePlayer) {
-            root.activePlayer.previous()
-        } else {
-            Quickshell.execDetached(["playerctl", "previous"])
-        }
+        Quickshell.execDetached(["playerctl", "previous"])
     }
 
     function togglePlaying() {
-        if (root.activePlayer) {
-            root.activePlayer.togglePlaying()
-        } else {
-            Quickshell.execDetached(["playerctl", "play-pause"])
-        }
+        Quickshell.execDetached(["playerctl", "play-pause"])
     }
 
     function seekTo(sec) {

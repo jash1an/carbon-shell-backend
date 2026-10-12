@@ -39,8 +39,49 @@ Item {
 
     /* ── Properties & State ── */
     property bool hubOpen: false
-    property string activeMode: "hub" // "hub" | "wallpapers" | "appsearch" | "wifi" | "bluetooth" | "power"
+    property string activeMode: "hub" // "hub" | "wallpapers" | "appsearch" | "wifi" | "bluetooth" | "power" | "calendar"
     property string focusedLobe: ""    // "" | "connect" | "launch" | "spaces" | "alerts"
+    property bool nightLightOn: false
+    property bool justOpenedPower: false
+
+    readonly property string nightScript: {
+        const home = Quickshell.env("HOME") || ""
+        const carbonDir = Quickshell.env("CARBON_CONFIG_DIR") || (home + "/.config/carbon")
+        return carbonDir + "/scripts/carbon-night.sh"
+    }
+
+    Process {
+        id: nightProbe
+        command: ["/usr/bin/sh", root.nightScript, "status"]
+        stdout: StdioCollector {
+            id: nightCollector
+            waitForEnd: true
+        }
+        onExited: {
+            var v = String(nightCollector.text).trim()
+            root.nightLightOn = (v === "on")
+        }
+    }
+
+    Timer {
+        id: nightVerifyTimer
+        interval: 350
+        repeat: false
+        onTriggered: root.checkNightLight()
+    }
+
+    function checkNightLight() {
+        if (!nightProbe.running) {
+            nightProbe.command = ["/usr/bin/sh", root.nightScript, "status"]
+            nightProbe.running = true
+        }
+    }
+
+    function toggleNightLight() {
+        root.nightLightOn = !root.nightLightOn
+        Quickshell.execDetached(["/usr/bin/sh", root.nightScript, root.nightLightOn ? "on" : "off"])
+        nightVerifyTimer.restart()
+    }
 
     /* External IPC Triggers */
     function toggle() {
@@ -54,6 +95,7 @@ Item {
     Component.onCompleted: {
         root.randomizeOrbitalPositions()
         root.loadApps()
+        root.checkNightLight()
     }
 
     Connections {
@@ -66,6 +108,7 @@ Item {
     onHubOpenChanged: {
         if (root.hubOpen) {
             root.randomizeOrbitalPositions()
+            root.checkNightLight()
         }
     }
 
@@ -82,16 +125,17 @@ Item {
         interval: 380
         onTriggered: {
             root.activeMode = "hub"
-            if (connectivityPicker) connectivityPicker.closePicker()
+            if (connectivityPicker) connectivityPicker.resetPicker()
             root.closeRequested()
         }
     }
 
     function close() {
         if (!root.hubOpen) return
-        if (connectivityPicker) connectivityPicker.closePicker()
+        if (connectivityPicker) connectivityPicker.resetPicker()
         root.hubOpen = false
         root.focusedLobe = ""
+        root.activeMode = "hub"
         root.closingStarted()
         closeFinishTimer.restart()
     }
@@ -102,18 +146,53 @@ Item {
         root.focusedLobe = (root.focusedLobe === name) ? "" : name
     }
 
+    function captureSatellitePositions() {
+        if (!lobeConnect || !connectivityPicker) return
+        const lobeDeg = lobeConnect.rotation
+        const lobeRad = lobeDeg * (Math.PI / 180.0)
+        const cosLobe = Math.cos(lobeRad)
+        const sinLobe = Math.sin(lobeRad)
+
+        // Satellite 0 (WiFi, relDeg = -72)
+        const rad0 = -72.0 * (Math.PI / 180.0)
+        const lx0 = lobeConnect.orbitalRadius + 66.0 * Math.cos(rad0)
+        const ly0 = 66.0 * Math.sin(rad0)
+        connectivityPicker.capturedWifiX = lx0 * cosLobe - ly0 * sinLobe
+        connectivityPicker.capturedWifiY = lx0 * sinLobe + ly0 * cosLobe
+
+        // Satellite 1 (Bluetooth, relDeg = -24)
+        const rad1 = -24.0 * (Math.PI / 180.0)
+        const lx1 = lobeConnect.orbitalRadius + 66.0 * Math.cos(rad1)
+        const ly1 = 66.0 * Math.sin(rad1)
+        connectivityPicker.capturedBtX = lx1 * cosLobe - ly1 * sinLobe
+        connectivityPicker.capturedBtY = lx1 * sinLobe + ly1 * cosLobe
+    }
+
     function openWifiMode() {
-        if (!root.hubOpen) root.open()
+        closeFinishTimer.stop()
+        if (!root.hubOpen) {
+            root.randomizeOrbitalPositions()
+            root.hubOpen = true
+        }
+        root.captureSatellitePositions()
         root.activeMode = "wifi"
-        root.focusedLobe = ""
         if (connectivityPicker) connectivityPicker.openWifi()
     }
 
     function openBluetoothMode() {
-        if (!root.hubOpen) root.open()
+        closeFinishTimer.stop()
+        if (!root.hubOpen) {
+            root.randomizeOrbitalPositions()
+            root.hubOpen = true
+        }
+        root.captureSatellitePositions()
         root.activeMode = "bluetooth"
-        root.focusedLobe = ""
         if (connectivityPicker) connectivityPicker.openBluetooth()
+    }
+
+    function closeConnectivityPicker() {
+        if (connectivityPicker) connectivityPicker.closePicker()
+        else root.activeMode = "hub"
     }
 
     function openWallpaperMode() {
@@ -130,8 +209,21 @@ Item {
             root.hubOpen = true
         }
         root.activeMode = "power"
+        root.powerAction = "none"
+        root.powerActionT = 0.0
         root.focusedLobe = ""
         root.randomizePowerPositions()
+        globalKeyHandler.forceActiveFocus()
+    }
+
+    function openCalendarMode() {
+        closeFinishTimer.stop()
+        if (!root.hubOpen) {
+            root.randomizeOrbitalPositions()
+            root.hubOpen = true
+        }
+        root.activeMode = "calendar"
+        root.focusedLobe = ""
     }
 
     Timer {
@@ -151,11 +243,23 @@ Item {
         }
         root.activeMode = "appsearch"
         root.focusedLobe = "launch"
+        root.launcherTab = "apps"
+        root.calcResult = ""
+        root.hasCalcResult = false
+        root.refreshClipboard()
         if (appSearchInput) {
             appSearchInput.text = (initialText !== undefined && initialText !== null) ? initialText : ""
         }
         root.loadApps()
         focusSearchTimer.restart()
+    }
+
+    function toggleLauncher() {
+        if (root.hubOpen && root.activeMode === "appsearch") {
+            root.close()
+        } else {
+            root.openLauncherMode()
+        }
     }
 
     function toggleLyrics() {
@@ -209,77 +313,539 @@ Item {
         }
     }
 
-    /* ── Randomize Power Satellites Across Full 360° Circle ── */
-    property var powerOrbData: [
-        { id: "lock", icon: "lock", deg: 205, dist: 114, iconColor: "#FFFFFF" },
-        { id: "sleep", icon: "bedtime", deg: 302, dist: 114, iconColor: "#FFFFFF" },
-        { id: "reboot", icon: "restart_alt", deg: 38, dist: 114, iconColor: "#FFFFFF" },
-        { id: "shutdown", icon: "power_settings_new", deg: 114, dist: 114, iconColor: "#F28B82" }
+    /* ── Power Menu Configuration & Backend Driver ── */
+    readonly property string powerConfigFile: {
+        var envDir = Quickshell.env("CARBON_CONFIG_DIR")
+        if (envDir && envDir.length > 0) return envDir + "/carbon-bar-mode.json"
+        return (Quickshell.env("HOME") || "") + "/.config/carbon/carbon-bar-mode.json"
+    }
+
+    property string powerAnimMode: "full" // "full" | "short" | "none"
+    property real powerHoldMs: 600.0
+    property real powerConfirmHoldMs: 800.0
+    property bool powerEnableLogout: false
+
+    readonly property bool powerReducedMotion: (Theme.reducedMotion || root.powerAnimMode === "none")
+    readonly property real powerDurationScale: (root.powerAnimMode === "short" ? 0.5 : 1.0)
+
+    FileView {
+        id: powerConfigWatcher
+        path: root.powerConfigFile
+        watchChanges: true
+        printErrors: false
+        onFileChanged: powerConfigWatcher.reload()
+        onLoaded: root.loadPowerConfig()
+    }
+
+    function loadPowerConfig() {
+        try {
+            const raw = powerConfigWatcher.text().trim()
+            if (!raw) return
+            const cfg = JSON.parse(raw)
+            if (cfg.power) {
+                if (cfg.power.animation) root.powerAnimMode = String(cfg.power.animation)
+                if (cfg.power.holdMs !== undefined) root.powerHoldMs = Math.max(100.0, Number(cfg.power.holdMs) || 600.0)
+                if (cfg.power.confirmHoldMs !== undefined) root.powerConfirmHoldMs = Math.max(100.0, Number(cfg.power.confirmHoldMs) || 800.0)
+                if (cfg.power.enableLogout !== undefined) root.powerEnableLogout = Boolean(cfg.power.enableLogout)
+            }
+        } catch (e) {}
+    }
+
+    /* ── Power State & Action Variables ── */
+    property bool isPressingNucleus: false
+    property real nucleusHoldProgress: 0.0
+
+    property string heldPowerOrb: ""
+    property string lastHeldPowerOrb: ""
+    property real orbHoldProgress: 0.0
+    property string hoveredPowerOrb: ""
+
+    property string powerAction: "none" // "none" | "lock" | "sleep" | "restart" | "shutdown"
+    property real powerActionT: 0.0     // action timeline time in ms (scaled)
+    property string powerErrorMessage: ""
+    property real powerBloomRadius: 0.0
+
+    property bool lockFired: false
+    property bool sleepFired: false
+    property bool restartFired: false
+    property bool shutdownFired: false
+
+    property real innerElectronAngle: 0.0
+    property real outerElectronAngle: 0.0
+
+    // Easing helpers
+    function easeOutCubic(p) {
+        var x = Math.max(0.0, Math.min(1.0, p))
+        return 1.0 - Math.pow(1.0 - x, 3.0)
+    }
+
+    function easeInOutCubic(p) {
+        var x = Math.max(0.0, Math.min(1.0, p))
+        return x < 0.5 ? 4.0 * x * x * x : 1.0 - Math.pow(-2.0 * x + 2.0, 3.0) / 2.0
+    }
+
+    /* ── Fixed Power Orb Bloom Data (r=86px, angles: -150°, -60°, 30°, 120°) ── */
+    readonly property var powerOrbData: [
+        { id: "lock", icon: "lock", deg: -150.0, dist: 86.0, iconColor: "#FFFFFF", holdColor: "#FFFFFF", name: "Lock", isDestructive: false },
+        { id: "sleep", icon: "bedtime", deg: -60.0, dist: 86.0, iconColor: "#FFFFFF", holdColor: "#FFFFFF", name: "Sleep", isDestructive: false },
+        { id: "restart", icon: "restart_alt", deg: 30.0, dist: 86.0, iconColor: "#FFFFFF", holdColor: "#FFFFFF", name: "Restart", isDestructive: true },
+        { id: "shutdown", icon: "power_settings_new", deg: 120.0, dist: 86.0, iconColor: "#F87171", holdColor: "#F87171", name: "Shut down", isDestructive: true }
     ]
 
     function randomizePowerPositions() {
-        var baseSectors = [
-            { min: 15, max: 75 },
-            { min: 105, max: 165 },
-            { min: 195, max: 255 },
-            { min: 285, max: 345 }
-        ]
-        var order = [0, 1, 2, 3]
-        for (var i = order.length - 1; i > 0; i--) {
-            var j = Math.floor(Math.random() * (i + 1))
-            var temp = order[i]
-            order[i] = order[j]
-            order[j] = temp
+        // Compatibility hook: maintain fixed radial layout per rules
+        root.hoveredPowerOrb = ""
+        root.heldPowerOrb = ""
+        root.orbHoldProgress = 0.0
+    }
+
+    /* ── Power Hold-and-Drain Driver (Runs only during hold/drain, NEVER at rest) ── */
+    FrameAnimation {
+        id: powerHoldDriver
+        running: (root.isPressingNucleus || root.nucleusHoldProgress > 0.0 ||
+                  root.heldPowerOrb !== "" || root.orbHoldProgress > 0.0) &&
+                  root.powerAction === "none"
+        onTriggered: {
+            var dt = frameTime * 1000.0
+
+            // 1. Nucleus Hold & Early-Release Drain
+            if (root.isPressingNucleus) {
+                root.nucleusHoldProgress = Math.min(1.0, root.nucleusHoldProgress + dt / root.powerHoldMs)
+                if (root.nucleusHoldProgress >= 1.0) {
+                    root.nucleusHoldProgress = 0.0
+                    root.isPressingNucleus = false
+                    root.justOpenedPower = true
+                    root.openPowerMode()
+                }
+            } else if (root.nucleusHoldProgress > 0.0) {
+                root.nucleusHoldProgress = Math.max(0.0, root.nucleusHoldProgress - dt * 0.004)
+            }
+
+            // 2. Destructive Orb Hold & Early-Release Drain
+            if (root.heldPowerOrb !== "") {
+                root.orbHoldProgress = Math.min(1.0, root.orbHoldProgress + dt / root.powerConfirmHoldMs)
+                if (root.orbHoldProgress >= 1.0) {
+                    var actionToTrigger = root.heldPowerOrb
+                    root.heldPowerOrb = ""
+                    root.orbHoldProgress = 0.0
+                    if (actionToTrigger === "lock" && root.powerEnableLogout) {
+                        Quickshell.execDetached(["hyprctl", "dispatch", "exit"])
+                        root.close()
+                    } else {
+                        root.triggerPowerAction(actionToTrigger)
+                    }
+                }
+            } else if (root.orbHoldProgress > 0.0) {
+                root.orbHoldProgress = Math.max(0.0, root.orbHoldProgress - dt * 0.004)
+            }
         }
-        var baseItems = [
-            {
-                id: "lock",
-                icon: "lock",
-                iconColor: "#FFFFFF",
-                action: function() {
-                    root.close()
+    }
+
+    /* ── Action Trigger, Cancellation & Execution ── */
+    function triggerPowerAction(action) {
+        if (root.powerAction !== "none") return
+        if (!root.hubOpen) {
+            root.hubOpen = true
+        }
+        root.activeMode = "power"
+        root.powerErrorMessage = ""
+        root.heldPowerOrb = ""
+        root.orbHoldProgress = 0.0
+        root.isPressingNucleus = false
+        root.nucleusHoldProgress = 0.0
+        root.lockFired = false
+        root.sleepFired = false
+        root.restartFired = false
+        root.shutdownFired = false
+
+        if (root.powerReducedMotion) {
+            root.powerAction = action
+            root.powerActionT = 0.0
+            reducedMotionTimer.action = action
+            reducedMotionTimer.restart()
+            return
+        }
+
+        root.powerAction = action
+        root.powerActionT = 0.0
+        root.innerElectronAngle = 0.0
+        root.outerElectronAngle = 0.0
+
+        if (action === "sleep") {
+            // Lock first so resume displays the lock screen
+            LockTransition.startLock(false)
+        }
+    }
+
+    function cancelPowerAction() {
+        if (root.powerAction === "none") return false
+        var t = root.powerActionT
+        var cancellable = false
+
+        if (root.powerReducedMotion) {
+            cancellable = reducedMotionTimer.running
+        } else if (root.powerAction === "lock" && t < 400.0) {
+            cancellable = true
+        } else if (root.powerAction === "sleep" && t < 700.0) {
+            cancellable = true
+        } else if (root.powerAction === "restart" && t < 1400.0) {
+            cancellable = true
+        } else if (root.powerAction === "shutdown" && t < 2300.0) {
+            cancellable = true
+        }
+
+        if (cancellable) {
+            reducedMotionTimer.stop()
+            root.powerAction = "none"
+            root.powerActionT = 0.0
+            root.lockFired = false
+            root.sleepFired = false
+            root.restartFired = false
+            root.shutdownFired = false
+            return true
+        }
+        return false
+    }
+
+    Timer {
+        id: reducedMotionTimer
+        property string action: ""
+        interval: 300
+        onTriggered: {
+            if (action === "lock") {
+                LockTransition.startLock(false)
+                root.requestLock()
+            } else if (action === "sleep") {
+                root.executeSleep()
+            } else if (action === "restart") {
+                root.executeReboot()
+            } else if (action === "shutdown") {
+                root.executeShutdown()
+            }
+        }
+    }
+
+    /* ── Action Animation Driver (Runs only during action, NEVER at rest) ── */
+    FrameAnimation {
+        id: powerActionDriver
+        running: root.activeMode === "power" && root.powerAction !== "none" && !root.powerReducedMotion
+        onTriggered: {
+            var dt = (frameTime * 1000.0) / Math.max(0.1, root.powerDurationScale)
+            root.powerActionT += dt
+            var t = root.powerActionT
+
+            if (root.powerAction === "lock") {
+                root.innerElectronAngle += dt * 0.0011
+                root.outerElectronAngle -= dt * 0.0007
+
+                // Never delay real lock beyond 450ms
+                if (t >= 400.0 && !root.lockFired) {
+                    root.lockFired = true
+                    LockTransition.startLock(false)
                     root.requestLock()
                 }
-            },
-            {
-                id: "sleep",
-                icon: "bedtime",
-                iconColor: "#FFFFFF",
-                action: function() {
-                    root.close()
-                    Quickshell.execDetached(["systemctl", "suspend"])
+            } else if (root.powerAction === "sleep") {
+                // Decay electron speed: exp(-(t-500)/350)
+                var decay = (t < 500.0) ? 1.0 : Math.exp(-(t - 500.0) / 350.0)
+                root.innerElectronAngle += dt * 0.0011 * decay
+                root.outerElectronAngle -= dt * 0.0007 * decay
+
+                // At 1400ms: dim finished -> run systemctl suspend
+                if (t >= 1400.0 && !root.sleepFired) {
+                    root.sleepFired = true
+                    root.executeSleep()
                 }
-            },
-            {
-                id: "reboot",
-                icon: "restart_alt",
-                iconColor: "#FFFFFF",
-                action: function() {
-                    root.close()
-                    Quickshell.execDetached(["sh", "-c", "systemctl reboot || loginctl reboot"])
+            } else if (root.powerAction === "restart") {
+                var mult = 1.0
+                if (t >= 500.0 && t < 1300.0) {
+                    mult = 1.0 + (t - 500.0) / 120.0
+                } else if (t >= 1300.0 && t < 1600.0) {
+                    mult = 1.0 + 800.0 / 120.0
                 }
-            },
-            {
-                id: "shutdown",
-                icon: "power_settings_new",
-                iconColor: "#F28B82",
-                action: function() {
-                    root.close()
-                    Quickshell.execDetached(["sh", "-c", "systemctl poweroff || loginctl poweroff"])
+                root.innerElectronAngle += dt * 0.0011 * mult
+                root.outerElectronAngle -= dt * 0.0007 * mult
+
+                // At 1800ms (black frame): fire reboot command
+                if (t >= 1800.0 && !root.restartFired) {
+                    root.restartFired = true
+                    root.executeReboot()
+                }
+
+                // At 2600ms: atom turns back into clock
+                if (t >= 2650.0) {
+                    root.powerAction = "none"
+                    root.powerActionT = 0.0
+                    root.restartFired = false
+                }
+            } else if (root.powerAction === "shutdown") {
+                root.innerElectronAngle += dt * 0.0011
+                root.outerElectronAngle -= dt * 0.0007
+
+                // At 3000ms: fire poweroff command
+                if (t >= 3000.0 && !root.shutdownFired) {
+                    root.shutdownFired = true
+                    root.executeShutdown()
                 }
             }
-        ]
-        var out = []
-        for (var k = 0; k < 4; k++) {
-            var sec = baseSectors[order[k]]
-            var angle = sec.min + (Math.random() * (sec.max - sec.min))
-            var dist = Math.round(106.0 + Math.random() * 24.0)
-            var orb = baseItems[k]
-            orb.deg = angle
-            orb.dist = dist
-            out.push(orb)
         }
-        root.powerOrbData = out
+    }
+
+    /* ── System Command Execution & Inhibitor Check ── */
+    Process {
+        id: powerActionProc
+        property string actionName: ""
+        property string errorText: ""
+        command: []
+        stderr: SplitParser {
+            onRead: data => {
+                powerActionProc.errorText += data + " "
+            }
+        }
+        onExited: (exitCode, exitStatus) => {
+            if (exitCode !== 0) {
+                console.log("[PowerAction] Command failed:", actionName, "exitCode:", exitCode, "err:", errorText)
+                var msg = errorText.trim()
+                if (!msg) msg = "systemctl failed with exit code " + exitCode
+                root.handlePowerCommandFailed(msg)
+            } else {
+                if (actionName === "sleep") {
+                    root.handleSleepResume()
+                }
+            }
+        }
+    }
+
+    function executeSleep() {
+        powerActionProc.actionName = "sleep"
+        powerActionProc.errorText = ""
+        powerActionProc.command = ["systemctl", "suspend"]
+        powerActionProc.running = true
+    }
+
+    function executeReboot() {
+        powerActionProc.actionName = "restart"
+        powerActionProc.errorText = ""
+        powerActionProc.command = ["systemctl", "reboot"]
+        powerActionProc.running = true
+    }
+
+    function executeShutdown() {
+        powerActionProc.actionName = "shutdown"
+        powerActionProc.errorText = ""
+        powerActionProc.command = ["systemctl", "poweroff"]
+        powerActionProc.running = true
+    }
+
+    function handlePowerCommandFailed(reason) {
+        root.powerErrorMessage = reason
+        root.powerAction = "none"
+        root.powerActionT = 0.0
+        root.lockFired = false
+        root.sleepFired = false
+        root.restartFired = false
+        root.shutdownFired = false
+    }
+
+    function handleSleepResume() {
+        // Resume reverses screen dim over 500ms and resets all menu state
+        wakeReverseAnimation.restart()
+    }
+
+    property real powerDimOverride: 1.0
+    SequentialAnimation {
+        id: wakeReverseAnimation
+        PropertyAction { target: root; property: "powerDimOverride"; value: 1.0 }
+        NumberAnimation {
+            target: root
+            property: "powerDimOverride"
+            to: 0.0
+            duration: 500
+            easing.type: Easing.OutCubic
+        }
+        ScriptAction {
+            script: {
+                root.powerAction = "none"
+                root.powerActionT = 0.0
+                root.sleepFired = false
+                root.close()
+            }
+        }
+    }
+
+    /* ── Mathematics for 6 Bohr Electrons During Action ── */
+    function getPowerElectronPos(index) {
+        var t = root.powerActionT
+
+        if (root.powerAction === "shutdown") {
+            var t0 = 0.0
+            var r0 = 40.0
+            var dir = -1.0
+            var baseAngle = 0.0
+
+            if (index < 4) {
+                // 4 Outer electrons (indices 0..3): detach 260ms apart starting at 500ms
+                t0 = 500.0 + index * 260.0
+                r0 = 40.0
+                dir = -1.0
+                baseAngle = -0.0007 * t0 + index * (Math.PI / 2.0)
+            } else {
+                // 2 Inner electrons (indices 4..5): detach 260ms apart starting at 1540ms
+                t0 = 1540.0 + (index - 4) * 260.0
+                r0 = 22.0
+                dir = 1.0
+                baseAngle = 0.0011 * t0 + (index - 4) * Math.PI
+            }
+
+            if (t < t0) {
+                var curAngle = (index < 4)
+                    ? (root.outerElectronAngle + index * (Math.PI / 2.0))
+                    : (root.innerElectronAngle + (index - 4) * Math.PI)
+                return {
+                    x: r0 * Math.cos(curAngle),
+                    y: r0 * Math.sin(curAngle),
+                    alpha: 1.0,
+                    vx: -Math.sin(curAngle) * dir,
+                    vy: Math.cos(curAngle) * dir
+                }
+            }
+
+            var dt = t - t0
+            var r = r0 + dt * 0.12 + dt * dt * 0.0003
+            var tangentDist = Math.sqrt(Math.max(0.0, r * r - r0 * r0))
+            var tx = r0 * Math.cos(baseAngle) + dir * tangentDist * (-Math.sin(baseAngle))
+            var ty = r0 * Math.sin(baseAngle) + dir * tangentDist * (Math.cos(baseAngle))
+            var alpha = Math.max(0.0, 1.0 - dt / 700.0)
+
+            return {
+                x: tx,
+                y: ty,
+                alpha: alpha,
+                vx: -Math.sin(baseAngle) * dir,
+                vy: Math.cos(baseAngle) * dir
+            }
+        }
+
+        // Lock, Sleep, Restart
+        var rCur = 0.0
+        var thetaCur = 0.0
+        var alphaCur = 1.0
+        var isInner = (index >= 4)
+
+        if (isInner) {
+            var idxIn = index - 4
+            thetaCur = root.innerElectronAngle + idxIn * Math.PI
+            if (t < 500.0) {
+                rCur = 22.0 * root.easeOutCubic(t / 500.0)
+            } else if (root.powerAction === "restart") {
+                if (t < 1300.0) {
+                    rCur = 22.0
+                } else if (t < 1600.0) {
+                    rCur = 22.0 * (1.0 - root.easeInOutCubic((t - 1300.0) / 300.0))
+                } else if (t < 2100.0) {
+                    rCur = 0.0
+                } else if (t < 2600.0) {
+                    rCur = 22.0 * root.easeOutCubic((t - 2100.0) / 500.0)
+                } else {
+                    rCur = 22.0
+                }
+            } else {
+                rCur = 22.0
+            }
+        } else {
+            thetaCur = root.outerElectronAngle + index * (Math.PI / 2.0)
+            if (t < 500.0) {
+                rCur = 40.0 * root.easeOutCubic(t / 500.0)
+            } else if (root.powerAction === "restart") {
+                if (t < 1300.0) {
+                    rCur = 40.0
+                } else if (t < 1600.0) {
+                    rCur = 40.0 * (1.0 - root.easeInOutCubic((t - 1300.0) / 300.0))
+                } else if (t < 2100.0) {
+                    rCur = 0.0
+                } else if (t < 2600.0) {
+                    rCur = 40.0 * root.easeOutCubic((t - 2100.0) / 500.0)
+                } else {
+                    rCur = 40.0
+                }
+            } else {
+                rCur = 40.0
+            }
+        }
+
+        if (root.powerAction === "sleep") {
+            if (t >= 500.0 && t <= 1200.0) {
+                alphaCur = 1.0 - 0.75 * ((t - 500.0) / 700.0)
+            } else if (t > 1200.0) {
+                alphaCur = 0.25
+            }
+        }
+
+        var velX = -Math.sin(thetaCur) * (isInner ? 1.0 : -1.0)
+        var velY = Math.cos(thetaCur) * (isInner ? 1.0 : -1.0)
+
+        return {
+            x: rCur * Math.cos(thetaCur),
+            y: rCur * Math.sin(thetaCur),
+            alpha: alphaCur,
+            vx: velX,
+            vy: velY
+        }
+    }
+
+    /* ── Dynamic Orbit Ring Alpha ── */
+    readonly property real powerOrbitRingAlpha: {
+        if (root.activeMode !== "power" || root.powerAction === "none") return 0.0
+        var t = root.powerActionT
+        if (t < 500.0) return 0.14 * root.easeOutCubic(t / 500.0)
+
+        if (root.powerAction === "restart") {
+            if (t < 1300.0) return 0.14 + 0.36 * ((t - 500.0) / 800.0)
+            if (t < 1600.0) return 0.50 * (1.0 - (t - 1300.0) / 300.0)
+            if (t < 2100.0) return 0.0
+            if (t < 2600.0) return 0.14 * root.easeOutCubic((t - 2100.0) / 500.0)
+            return 0.0
+        }
+
+        if (root.powerAction === "shutdown") {
+            if (t < 2200.0) return 0.14
+            if (t < 2600.0) return 0.14 * (1.0 - (t - 2200.0) / 400.0)
+            return 0.0
+        }
+
+        return 0.14
+    }
+
+    /* ── Dynamic Screen Dimmer Scrim Opacity ── */
+    readonly property real effectiveScrimOpacity: {
+        if (root.activeMode !== "power" || root.powerAction === "none") {
+            return root.hubProgress * 0.42
+        }
+        if (root.powerReducedMotion) {
+            return 0.42 + 0.58 * Math.min(1.0, root.powerActionT / 300.0)
+        }
+        var t = root.powerActionT
+        if (root.powerAction === "sleep") {
+            if (root.powerDimOverride < 0.999) return 0.72 * root.powerDimOverride
+            if (t < 700.0) return 0.42
+            var p = Math.min(1.0, (t - 700.0) / 700.0)
+            return 0.42 + (0.72 - 0.42) * root.easeInOutCubic(p)
+        }
+        if (root.powerAction === "restart") {
+            if (t < 1400.0) return 0.42
+            if (t < 1600.0) {
+                var p1 = Math.min(1.0, (t - 1400.0) / 200.0)
+                return 0.42 + (0.92 - 0.42) * root.easeInOutCubic(p1)
+            }
+            if (t < 2100.0) return 0.92
+            var p2 = Math.min(1.0, (t - 2100.0) / 500.0)
+            return 0.92 - (0.92 - 0.42) * root.easeOutCubic(p2)
+        }
+        if (root.powerAction === "shutdown") {
+            if (t < 2300.0) return 0.42
+            var p3 = Math.min(1.0, (t - 2300.0) / 700.0)
+            return 0.42 + (1.0 - 0.42) * p3
+        }
+        return 0.42
     }
 
     /* ── Colors / Theme Tokens ── */
@@ -395,6 +961,178 @@ Item {
         Quickshell.execDetached(["hyprctl", "dispatch", "workspace", String(id)])
     }
 
+    /* ── Spotlight Engine for App Launcher (Vanish Mode) ── */
+    property string launcherTab: "apps" // "apps" | "clipboard" | "commands"
+    property string calcResult: ""
+    property bool hasCalcResult: false
+    property var clipboardItems: []
+
+    readonly property var systemActions: [
+        {
+            id: "screenshot-region",
+            title: "Screenshot Region",
+            desc: "Select a region on screen and copy to clipboard",
+            glyph: "crop",
+            run: () => {
+                root.close()
+                Quickshell.execDetached(["sh", root.home + "/.config/hypr/scripts/carbon-screenshot-region.sh"])
+            }
+        },
+        {
+            id: "screenshot-full",
+            title: "Screenshot Full Screen",
+            desc: "Capture all monitors and save to Pictures",
+            glyph: "photo_camera",
+            run: () => {
+                root.close()
+                Quickshell.execDetached(["sh", root.home + "/.config/hypr/scripts/carbon-screenshot-full.sh"])
+            }
+        },
+        {
+            id: "wallpaper",
+            title: "Change Wallpaper",
+            desc: "Open Carbon dynamic wallpaper picker",
+            glyph: "wallpaper",
+            run: () => {
+                root.openWallpapersMode()
+            }
+        },
+        {
+            id: "config",
+            title: "Carbon Config & Theme Editor",
+            desc: "Configure shell layout, notch mode, and keybinds",
+            glyph: "settings",
+            run: () => {
+                root.close()
+                Quickshell.execDetached(["python3", root.home + "/.config/hypr/scripts/carbon-config-editor.py"])
+            }
+        },
+        {
+            id: "terminal",
+            title: "Open Terminal",
+            desc: "Launch kitty terminal emulator",
+            glyph: "terminal",
+            run: () => {
+                root.close()
+                Quickshell.execDetached(["kitty"])
+            }
+        },
+        {
+            id: "lock",
+            title: "Lock Screen",
+            desc: "Lock the desktop session with Carbon Lock",
+            glyph: "lock",
+            run: () => {
+                root.close()
+                Quickshell.execDetached(["sh", root.home + "/.config/hypr/scripts/carbon-ipc.sh", "lock"])
+            }
+        },
+        {
+            id: "suspend",
+            title: "Sleep / Suspend",
+            desc: "Put the system into low power sleep mode",
+            glyph: "bedtime",
+            run: () => {
+                root.close()
+                Quickshell.execDetached(["systemctl", "suspend"])
+            }
+        },
+        {
+            id: "restart-shell",
+            title: "Restart Carbon Shell",
+            desc: "Reload Quickshell process and UI",
+            glyph: "refresh",
+            run: () => {
+                root.close()
+                Quickshell.execDetached(["sh", "-c", "systemctl --user restart carbon-quickshell.service 2>/dev/null || (pkill -9 quickshell; sleep 0.4; quickshell --config " + root.home + "/.local/share/quickshell/carbon &)"])
+            }
+        }
+    ]
+
+    /* Clipboard Fetcher via cliphist */
+    Process {
+        id: hubCliphistProcess
+        command: ["sh", "-c", "cliphist list | head -n 40"]
+        running: false
+        stdout: StdioCollector {
+            id: hubClipCol
+            waitForEnd: true
+        }
+        onExited: {
+            const raw = String(hubClipCol.text || "").trim()
+            if (!raw) return
+            const lines = raw.split("\n")
+            const items = []
+            for (let i = 0; i < lines.length; i++) {
+                const l = lines[i]
+                if (!l) continue
+                const tabIdx = l.indexOf("\t")
+                if (tabIdx > 0) {
+                    const id = l.substring(0, tabIdx).trim()
+                    const preview = l.substring(tabIdx + 1).trim()
+                    items.push({ id: id, raw: l, preview: preview })
+                }
+            }
+            root.clipboardItems = items
+            root.filterApps(appSearchInput ? appSearchInput.text : "")
+        }
+    }
+
+    function refreshClipboard() {
+        hubCliphistProcess.running = false
+        hubCliphistProcess.running = true
+    }
+
+    /* Calculator via qalc */
+    Timer {
+        id: hubQalcDebounceTimer
+        interval: 60
+        onTriggered: {
+            const q = appSearchInput ? appSearchInput.text.trim() : ""
+            if (q.length === 0) {
+                root.calcResult = ""
+                root.hasCalcResult = false
+                return
+            }
+            const hasMath = /^[=]/.test(q) || (/[0-9]/.test(q) && /[+\-*\/^%=()]/.test(q)) || /(sqrt|sin|cos|tan|log|ln|pi|to\s+[a-z]+)/i.test(q)
+            if (hasMath) {
+                const expr = q.replace(/^=\s*/, "")
+                hubQalcProcess.running = false
+                hubQalcProcess.command = ["qalc", "-t", "-m", "500", expr]
+                hubQalcProcess.running = true
+            } else {
+                root.calcResult = ""
+                root.hasCalcResult = false
+            }
+        }
+    }
+
+    Process {
+        id: hubQalcProcess
+        running: false
+        stdout: StdioCollector {
+            id: hubQalcCol
+            waitForEnd: true
+        }
+        onExited: {
+            const res = String(hubQalcCol.text || "").trim()
+            if (res.length > 0 && !res.toLowerCase().startsWith("error") && !res.toLowerCase().includes("syntax error") && !res.toLowerCase().includes("parse error")) {
+                root.calcResult = res
+                root.hasCalcResult = true
+            } else {
+                root.calcResult = ""
+                root.hasCalcResult = false
+            }
+            root.filterApps(appSearchInput ? appSearchInput.text : "")
+        }
+    }
+
+    function copyCalcResult() {
+        if (!root.calcResult) return
+        Quickshell.execDetached(["sh", "-c", "printf '%s' " + JSON.stringify(root.calcResult) + " | wl-copy"])
+        root.close()
+    }
+
     // 4. Notifications
     property int unreadNotifCount: 0
     Connections {
@@ -417,14 +1155,18 @@ Item {
     Rectangle {
         anchors.fill: parent
         color: "#000000"
-        opacity: root.hubProgress * 0.42
+        opacity: root.effectiveScrimOpacity
         visible: opacity > 0.005
+        Behavior on opacity {
+            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+        }
 
         MouseArea {
             anchors.fill: parent
             onClicked: {
                 if (root.activeMode === "power") {
-                    root.activeMode = "hub"
+                    // In power mode, do not close on background click — only close on Escape key
+                    return
                 } else {
                     root.close()
                 }
@@ -435,13 +1177,16 @@ Item {
     /* ── Keyboard Handling (Escape to close or back, typing to search) ── */
     Item {
         id: globalKeyHandler
-        focus: root.hubOpen && root.activeMode !== "appsearch"
+        focus: root.hubOpen && root.activeMode !== "appsearch" && root.activeMode !== "wifi" && root.activeMode !== "bluetooth" && root.activeMode !== "calendar"
         Keys.onEscapePressed: {
             if (controlRing && controlRing.isOpen) {
                 controlRing.closeRing()
             } else if (root.activeMode === "wifi" || root.activeMode === "bluetooth") {
                 if (connectivityPicker) connectivityPicker.goBack()
-            } else if (root.activeMode === "wallpapers" || root.activeMode === "appsearch" || root.activeMode === "power") {
+            } else if (root.activeMode === "power") {
+                if (root.cancelPowerAction()) return
+                root.close()
+            } else if (root.activeMode === "wallpapers" || root.activeMode === "appsearch" || root.activeMode === "calendar") {
                 root.activeMode = "hub"
             } else if (root.focusedLobe !== "") {
                 root.focusedLobe = ""
@@ -497,11 +1242,12 @@ Item {
     // Full Hub Arena Centered
     Item {
         id: hubCenter
-        anchors.centerIn: parent
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.verticalCenter: parent.verticalCenter
+        readonly property real maxSlideUp: Math.max(0.0, ((root.height / 2) + 340) - (root.height - 24))
+        anchors.verticalCenterOffset: -(maxSlideUp * (connectivityPicker ? connectivityPicker.transitionProgress : 0.0))
         width: 1
         height: 1
-
-
 
         /* ══════════════════════════════════════════════════════════════════════
            PHASE 2: The Four sp3 Hybrid Orbital Lobes
@@ -510,8 +1256,10 @@ Item {
         Item {
             id: lobesLayer
             anchors.centerIn: parent
-            visible: root.hubProgress > 0.05 && root.activeMode === "hub" && !(controlRing && controlRing.isOpen)
-            opacity: (root.activeMode === "hub" && !(controlRing && controlRing.isOpen)) ? root.hubProgress : 0.0
+            readonly property real pickerShrink: (connectivityPicker && (root.activeMode === "wifi" || root.activeMode === "bluetooth" || connectivityPicker.transitionProgress > 0.001)) ? Math.max(0.0, 1.0 - connectivityPicker.transitionProgress) : 1.0
+            scale: pickerShrink
+            visible: (root.hubProgress > 0.05) && (root.activeMode === "hub" || (connectivityPicker && connectivityPicker.transitionProgress > 0.001)) && !(controlRing && controlRing.isOpen)
+            opacity: (root.activeMode === "hub" && !(controlRing && controlRing.isOpen)) ? (root.hubProgress * pickerShrink) : pickerShrink
             Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
 
             // Lobe template component
@@ -645,15 +1393,15 @@ Item {
                 rotation: targetAngle + (isThisFocused ? 0.0 : idleAngleOffset)
                 scale: targetScale * bloomAnim
                 opacity: targetAlpha * bloomAnim
-                Behavior on scale { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
-                Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+                Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
                 property int hoveredSatellitesCount: 0
-                readonly property bool isClusterHovered: lobeMouse.containsMouse || (hoveredSatellitesCount > 0)
+                readonly property bool isClusterHovered: lobeMouse.containsMouse || bridgeMouse.containsMouse || (hoveredSatellitesCount > 0)
 
                 Timer {
                     id: unfocusDebounceTimer
-                    interval: 200
+                    interval: 180
                     repeat: false
                     onTriggered: {
                         if (!lobeItem.isClusterHovered && root.focusedLobe === lobeItem.lobeId && (root.activeMode === "hub" || root.activeMode === "")) {
@@ -675,6 +1423,35 @@ Item {
                             lobeItem.hoveredSatellitesCount = 0
                             unfocusDebounceTimer.stop()
                         }
+                    }
+                }
+
+                // ── Hit bridge keeping hover active when traversing between lobe button and satellites ──
+                Item {
+                    id: lobeHitBridge
+                    x: lobeItem.orbitalRadius - 30
+                    y: -95
+                    width: 145
+                    height: 190
+                    visible: lobeItem.isThisFocused
+                    z: -1
+                    MouseArea {
+                        id: bridgeMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onEntered: {
+                            lobeItem.hoveredSatellitesCount++
+                            unfocusDebounceTimer.stop()
+                        }
+                        onExited: {
+                            lobeItem.hoveredSatellitesCount = Math.max(0, lobeItem.hoveredSatellitesCount - 1)
+                            if (lobeItem.hoveredSatellitesCount === 0 && !lobeMouse.containsMouse) {
+                                unfocusDebounceTimer.restart()
+                            }
+                        }
+                        onPressed: (mouse) => { mouse.accepted = true }
+                        onReleased: (mouse) => { mouse.accepted = true }
+                        onClicked: (mouse) => { mouse.accepted = true }
                     }
                 }
 
@@ -818,7 +1595,9 @@ Item {
 
                                 MouseArea {
                                     id: satMouse
-                                    anchors.fill: parent
+                                    anchors.centerIn: parent
+                                    width: 46
+                                    height: 46
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onEntered: {
@@ -827,7 +1606,7 @@ Item {
                                     }
                                     onExited: {
                                         lobeItem.hoveredSatellitesCount = Math.max(0, lobeItem.hoveredSatellitesCount - 1)
-                                        if (lobeItem.hoveredSatellitesCount === 0 && !lobeMouse.containsMouse) {
+                                        if (lobeItem.hoveredSatellitesCount === 0 && !lobeMouse.containsMouse && !bridgeMouse.containsMouse) {
                                             unfocusDebounceTimer.restart()
                                         }
                                     }
@@ -1010,15 +1789,17 @@ Item {
                     {
                         icon: "calendar_month",
                         isFontIcon: true,
-                        isActive: false,
-                        action: function() {}
+                        isActive: root.activeMode === "calendar",
+                        action: function() {
+                            root.openCalendarMode()
+                        }
                     },
                     {
-                        icon: "bedtime",
+                        icon: "nightlight",
                         isFontIcon: true,
-                        isActive: Theme.dnd,
+                        isActive: root.nightLightOn,
                         action: function() {
-                            Theme.dnd = !Theme.dnd
+                            root.toggleNightLight()
                         }
                     },
                     {
@@ -1110,11 +1891,32 @@ Item {
         Item {
             id: nucleusCore
             anchors.centerIn: parent
-            width: root.hubOpen ? 58 : 16
+            width: {
+                if (root.activeMode === "power" && root.powerAction !== "none" && !root.powerReducedMotion) {
+                    var t = root.powerActionT
+                    if (t < 500.0) {
+                        return 44.0 - 28.0 * root.easeOutCubic(t / 500.0)
+                    }
+                    if (root.powerAction === "restart" && t >= 2100.0 && t <= 2600.0) {
+                        return 16.0 + 28.0 * root.easeOutCubic((t - 2100.0) / 500.0)
+                    }
+                    if (root.powerAction === "restart" && t > 2600.0) {
+                        return 44.0
+                    }
+                    return 16.0
+                }
+                if (root.activeMode === "power") return 44.0
+                return root.hubOpen ? 58 : 16
+            }
             height: width
             z: 10
             visible: (root.activeMode === "hub" || root.activeMode === "wallpapers" || root.activeMode === "power")
-            opacity: (root.activeMode === "hub" || root.activeMode === "wallpapers" || root.activeMode === "power") ? 1.0 : 0.0
+            opacity: {
+                if (root.activeMode === "power" && root.powerAction === "shutdown" && root.powerActionT >= 2200.0 && !root.powerReducedMotion) {
+                    return Math.max(0.0, 1.0 - (root.powerActionT - 2200.0) / 400.0)
+                }
+                return (root.activeMode === "hub" || root.activeMode === "wallpapers" || root.activeMode === "power") ? 1.0 : 0.0
+            }
             Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
             Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
 
@@ -1146,6 +1948,71 @@ Item {
                 Behavior on scale { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
             }
 
+            // Clockwise Halo Ring (radius 27px, fills white clockwise over 600ms on hold)
+            Shape {
+                id: nucleusHoldRingShape
+                anchors.centerIn: parent
+                width: 54
+                height: 54
+                z: 3
+                visible: root.nucleusHoldProgress > 0.001
+                layer.enabled: true
+                layer.samples: 4
+                ShapePath {
+                    strokeWidth: 2.5
+                    strokeColor: "#FFFFFF"
+                    fillColor: "transparent"
+                    capStyle: ShapePath.RoundCap
+                    PathAngleArc {
+                        centerX: 27
+                        centerY: 27
+                        radiusX: 27
+                        radiusY: 27
+                        startAngle: -90
+                        sweepAngle: Math.max(0.1, Math.min(359.9, root.nucleusHoldProgress * 360.0))
+                    }
+                }
+            }
+
+            // Lock Seal Ring (radius 52px, 2px white, sweeps clockwise 500-1000ms)
+            Shape {
+                id: lockSealRing
+                anchors.centerIn: parent
+                width: 104
+                height: 104
+                z: 4
+                visible: root.powerAction === "lock" && root.powerActionT >= 500.0 && root.powerActionT <= 1200.0 && !root.powerReducedMotion
+                layer.enabled: true
+                layer.samples: 4
+                ShapePath {
+                    strokeWidth: 2.0
+                    strokeColor: "#FFFFFF"
+                    fillColor: "transparent"
+                    capStyle: ShapePath.RoundCap
+                    PathAngleArc {
+                        centerX: 52
+                        centerY: 52
+                        radiusX: 52
+                        radiusY: 52
+                        startAngle: -90
+                        sweepAngle: Math.max(0.1, Math.min(359.9, 360.0 * root.easeOutCubic(Math.min(1.0, (root.powerActionT - 500.0) / 500.0))))
+                    }
+                }
+            }
+
+            // Restart Flash Disc (radius expands to 60px, alpha 0.5 -> 0, at 1300-1600ms)
+            Rectangle {
+                anchors.centerIn: parent
+                z: 5
+                visible: root.powerAction === "restart" && root.powerActionT >= 1300.0 && root.powerActionT <= 1600.0 && !root.powerReducedMotion
+                readonly property real pFlash: Math.min(1.0, (root.powerActionT - 1300.0) / 300.0)
+                width: (60.0 * 2) * root.easeOutCubic(pFlash)
+                height: width
+                radius: width / 2
+                color: "#FFFFFF"
+                opacity: 0.5 * (1.0 - pFlash)
+            }
+
             // Vibrant Core Disc (White with neon border, matching lockscreen ValenceDot)
             Rectangle {
                 id: nucleusCoreDisc
@@ -1157,19 +2024,31 @@ Item {
                 border.width: (root.activeMode === "power") ? 0 : (root.hubOpen ? 2.4 : 1.5)
                 Behavior on border.width { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
 
-                // Time readout inside disc when open (or volume/brightness readout when control ring is open, or wallpaper glyph in wallpaper mode)
+                // Time readout inside disc when open (fades out 0-500ms on action)
                 Text {
                     anchors.centerIn: parent
-                    visible: opacity > 0.01
-                    opacity: root.hubProgress
+                    visible: opacity > 0.01 && !(root.powerAction === "lock" && root.powerActionT >= 1000.0)
+                    opacity: (root.activeMode === "power" && root.powerAction !== "none" && !root.powerReducedMotion)
+                        ? Math.max(0.0, 1.0 - root.powerActionT / 500.0)
+                        : root.hubProgress
                     text: {
                         if (controlRing && controlRing.isOpen) return controlRing.centerReadoutText
                         if (root.activeMode === "wallpapers") return (wallpaperModel.count > 0 ? wallpaperModel.count : "✦")
                         return root.timeStr
                     }
                     font.family: (root.activeMode === "wallpapers" && wallpaperModel.count === 0) ? Theme.fontIcon : "Valley Sans"
-                    font.pixelSize: (controlRing && controlRing.isOpen) ? 15 : 13
+                    font.pixelSize: (controlRing && controlRing.isOpen) ? 15 : ((root.activeMode === "power") ? 11 : 13)
                     font.bold: true
+                    color: "#0b0e14"
+                }
+
+                // Lock glyph replacing nucleus at t >= 1000ms
+                Text {
+                    anchors.centerIn: parent
+                    visible: root.powerAction === "lock" && root.powerActionT >= 1000.0 && !root.powerReducedMotion
+                    text: "lock"
+                    font.family: Theme.fontIcon
+                    font.pixelSize: 10
                     color: "#0b0e14"
                 }
 
@@ -1177,8 +2056,25 @@ Item {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     acceptedButtons: Qt.LeftButton
-                    pressAndHoldInterval: 350
+
+                    onPressed: {
+                        root.justOpenedPower = false
+                        if (root.activeMode === "hub" || (root.activeMode === "power" && root.powerAction === "none")) {
+                            root.isPressingNucleus = true
+                        }
+                    }
+                    onReleased: {
+                        root.isPressingNucleus = false
+                    }
+                    onCanceled: {
+                        root.isPressingNucleus = false
+                    }
                     onClicked: {
+                        root.isPressingNucleus = false
+                        if (root.justOpenedPower) {
+                            root.justOpenedPower = false
+                            return
+                        }
                         if (controlRing && controlRing.isOpen) {
                             if (controlRing.kind === "volume") {
                                 controlRing.toggleMute()
@@ -1190,21 +2086,80 @@ Item {
                         } else if (root.activeMode === "wallpapers") {
                             root.cycleWallpaperSource()
                         } else if (root.activeMode === "power") {
-                            root.activeMode = "hub"
+                            // In power mode, do not close on click — only close on Escape key!
+                            return
                         } else {
                             root.toggle()
-                        }
-                    }
-                    onPressAndHold: {
-                        if (root.activeMode === "hub") {
-                            root.openPowerMode()
-                        } else if (root.activeMode === "power") {
-                            root.activeMode = "hub"
                         }
                     }
                     onWheel: wheel => {
                         var delta = (wheel.angleDelta.y > 0) ? 0.03 : -0.03
                         root.stepVolume(delta)
+                    }
+                }
+            }
+        }
+
+        /* ── Power Action Atom Bohr Orbit Layer (22px & 40px orbits + 6 electrons) ── */
+        Item {
+            id: powerAtomLayer
+            anchors.centerIn: parent
+            width: 240
+            height: 240
+            z: 9
+            visible: root.activeMode === "power" && root.powerAction !== "none" && !root.powerReducedMotion
+
+            // Orbit Ring 1 (Inner, r=22)
+            Rectangle {
+                anchors.centerIn: parent
+                width: 44; height: 44; radius: 22
+                color: "transparent"
+                border.color: "#FFFFFF"
+                border.width: 1.0
+                opacity: root.powerOrbitRingAlpha
+            }
+
+            // Orbit Ring 2 (Outer, r=40)
+            Rectangle {
+                anchors.centerIn: parent
+                width: 80; height: 80; radius: 40
+                color: "transparent"
+                border.color: "#FFFFFF"
+                border.width: 1.0
+                opacity: root.powerOrbitRingAlpha
+            }
+
+            // 6 Bohr Electrons (2 inner, 4 outer)
+            Repeater {
+                model: 6
+                delegate: Item {
+                    id: powerElectronItem
+                    required property int index
+                    readonly property var pos: root.getPowerElectronPos(index)
+
+                    x: (powerAtomLayer.width / 2) + pos.x - 3
+                    y: (powerAtomLayer.height / 2) + pos.y - 3
+                    width: 6
+                    height: 6
+                    opacity: pos.alpha
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 3
+                        color: "#FFFFFF"
+                    }
+
+                    // Restart speed trail ghost dot (ramps mult 500-1300ms)
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 3
+                        color: "#FFFFFF"
+                        visible: root.powerAction === "restart" && root.powerActionT >= 500.0 && root.powerActionT <= 1300.0
+                        opacity: 0.35
+                        transform: Translate {
+                            x: -powerElectronItem.pos.vx * 4.5
+                            y: -powerElectronItem.pos.vy * 4.5
+                        }
                     }
                 }
             }
@@ -1338,6 +2293,7 @@ Item {
             anchors.topMargin: 56
             width: 320
             height: 84
+            z: 15
             visible: (opacity > 0.01) && LyricsService.hasTrack && root.activeMode === "hub" && !(controlRing && controlRing.isOpen)
             opacity: (root.hubProgress > 0.25 && LyricsService.hasTrack && root.activeMode === "hub" && !(controlRing && controlRing.isOpen)) ? 1.0 : 0.0
             Behavior on opacity { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
@@ -1438,7 +2394,7 @@ Item {
                         color: root.colFgDim
                     }
 
-                    // Skip Previous Button (26px circle)
+                    // Skip Previous Button (26px circle, 36px hit target)
                     Rectangle {
                         Layout.preferredWidth: 26
                         Layout.preferredHeight: 26
@@ -1459,14 +2415,16 @@ Item {
 
                         MouseArea {
                             id: prevMouse
-                            anchors.fill: parent
+                            anchors.centerIn: parent
+                            width: 36
+                            height: 36
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: LyricsService.skipPrevious()
                         }
                     }
 
-                    // Play / Pause Button (32px ValenceDot circle with halo)
+                    // Play / Pause Button (32px ValenceDot circle with halo, 44px hit target)
                     Item {
                         Layout.preferredWidth: 32
                         Layout.preferredHeight: 32
@@ -1498,18 +2456,20 @@ Item {
                                 font.pixelSize: 18
                                 color: LyricsService.isPlaying ? "#0b0e14" : root.colTeal
                             }
+                        }
 
-                            MouseArea {
-                                id: playMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: LyricsService.togglePlaying()
-                            }
+                        MouseArea {
+                            id: playMouse
+                            anchors.centerIn: parent
+                            width: 44
+                            height: 44
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: LyricsService.togglePlaying()
                         }
                     }
 
-                    // Skip Next Button (26px circle)
+                    // Skip Next Button (26px circle, 36px hit target)
                     Rectangle {
                         Layout.preferredWidth: 26
                         Layout.preferredHeight: 26
@@ -1530,7 +2490,9 @@ Item {
 
                         MouseArea {
                             id: nextMouse
-                            anchors.fill: parent
+                            anchors.centerIn: parent
+                            width: 36
+                            height: 36
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: LyricsService.skipNext()
@@ -1727,11 +2689,28 @@ Item {
 
                 Text {
                     anchors.centerIn: parent
-                    text: "power actions / tap nucleus or Esc to return"
+                    text: {
+                        if (root.powerErrorMessage.length > 0) return root.powerErrorMessage
+                        if (root.powerAction === "lock") return "Locking..."
+                        if (root.powerAction === "sleep") return "sleeping"
+                        if (root.powerAction === "restart") return "Restarting..."
+                        if (root.powerAction === "shutdown") return "shutting down..."
+
+                        if (root.heldPowerOrb === "restart" || root.heldPowerOrb === "shutdown") {
+                            return (root.heldPowerOrb === "restart" ? "Restart" : "Shut down") + " (holding to confirm...)"
+                        }
+                        if (root.hoveredPowerOrb === "lock") {
+                            return root.powerEnableLogout ? "Lock (hold for log out)" : "Lock"
+                        }
+                        if (root.hoveredPowerOrb === "sleep") return "Sleep"
+                        if (root.hoveredPowerOrb === "restart") return "Restart — hold to confirm"
+                        if (root.hoveredPowerOrb === "shutdown") return "Shut down — hold to confirm"
+                        return "power actions / tap nucleus or Esc to return"
+                    }
                     font.family: "Valley Sans"
                     font.pixelSize: 12
                     font.bold: true
-                    color: root.colFgDim
+                    color: (root.powerErrorMessage.length > 0) ? root.colCoral : root.colFgDim
                     elide: Text.ElideMiddle
                     width: parent.width - 24
                     horizontalAlignment: Text.AlignHCenter
@@ -1758,20 +2737,27 @@ Item {
 
                 onClicked: {
                     if (root.activeMode === "hub") {
-                        dateLyricsCaption.showLyrics = !dateLyricsCaption.showLyrics
+                        if (dateLyricsCaption.showLyrics) {
+                            dateLyricsCaption.showLyrics = false
+                        } else {
+                            root.openCalendarMode()
+                        }
                     }
                 }
             }
         }
 
         /* ══════════════════════════════════════════════════════════════════════
-           PHASE 3: Keyboard-First App Search (Inside Vanish Mode)
+           PHASE 3: Enhanced Spotlight App Launcher (Inside Vanish Mode)
+           Exact preserved dimensions: width: 380, height: 460
+           Features: Apps, Clipboard, Commands & Real-time Calculator
            ══════════════════════════════════════════════════════════════════════ */
         Item {
             id: appSearchContainer
             anchors.centerIn: parent
-            visible: root.activeMode === "appsearch"
-            opacity: root.activeMode === "appsearch" ? 1.0 : 0.0
+            z: 80
+            visible: root.hubOpen && root.activeMode === "appsearch"
+            opacity: (root.hubOpen && root.activeMode === "appsearch") ? 1.0 : 0.0
             Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
             width: 380
             height: 460
@@ -1803,14 +2789,14 @@ Item {
 
                 ColumnLayout {
                     anchors.fill: parent
-                    anchors.margins: 18
-                    spacing: 12
+                    anchors.margins: 16
+                    spacing: 8
 
                     // 1. Search Bar Pill
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 44
-                        radius: 22
+                        Layout.preferredHeight: 42
+                        radius: 21
                         color: Qt.rgba(0, 0, 0, 0.42)
                         border.color: appSearchInput.activeFocus ? root.colPurple : Qt.rgba(root.colPurple.r, root.colPurple.g, root.colPurple.b, 0.3)
                         border.width: appSearchInput.activeFocus ? 2 : 1
@@ -1818,12 +2804,16 @@ Item {
 
                         RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 14
-                            anchors.rightMargin: 12
-                            spacing: 10
+                            anchors.leftMargin: 12
+                            anchors.rightMargin: 10
+                            spacing: 8
 
                             Text {
-                                text: "search"
+                                text: {
+                                    if (root.launcherTab === "clipboard") return "content_paste"
+                                    if (root.launcherTab === "commands") return "terminal"
+                                    return "search"
+                                }
                                 font.family: Theme.fontIcon
                                 font.pixelSize: 18
                                 color: root.colPurple
@@ -1834,7 +2824,7 @@ Item {
                                 Layout.fillWidth: true
                                 Layout.alignment: Qt.AlignVCenter
                                 font.family: "Valley Sans"
-                                font.pixelSize: 14
+                                font.pixelSize: 13
                                 font.weight: Font.Medium
                                 color: "#ffffff"
                                 clip: true
@@ -1842,15 +2832,22 @@ Item {
                                 selectionColor: Qt.rgba(root.colPurple.r, root.colPurple.g, root.colPurple.b, 0.5)
 
                                 Text {
-                                    text: "Search apps..."
+                                    text: {
+                                        if (root.launcherTab === "clipboard") return "Search clipboard history..."
+                                        if (root.launcherTab === "commands") return "Search system commands..."
+                                        return "Search apps, math (=2+2), or >cmd..."
+                                    }
                                     font.family: "Valley Sans"
-                                    font.pixelSize: 14
+                                    font.pixelSize: 13
                                     color: Qt.rgba(1, 1, 1, 0.35)
                                     visible: !appSearchInput.text && !appSearchInput.inputMethodComposing
                                     anchors.verticalCenter: parent.verticalCenter
                                 }
 
-                                onTextChanged: root.filterApps(text)
+                                onTextChanged: {
+                                    hubQalcDebounceTimer.restart()
+                                    root.filterApps(text)
+                                }
 
                                 Keys.onDownPressed: (event) => {
                                     if (appMatches.count > 0) {
@@ -1867,10 +2864,7 @@ Item {
                                     event.accepted = true
                                 }
                                 Keys.onReturnPressed: (event) => {
-                                    if (appMatches.count > 0 && root.selectedAppIndex >= 0 && root.selectedAppIndex < appMatches.count) {
-                                        const item = appMatches.get(root.selectedAppIndex)
-                                        root.launchAppIndex(item.appIndex)
-                                    }
+                                    root.executeCurrentItem()
                                     event.accepted = true
                                 }
                                 Keys.onEscapePressed: (event) => {
@@ -1881,22 +2875,29 @@ Item {
                                     }
                                     event.accepted = true
                                 }
+                                Keys.onTabPressed: (event) => {
+                                    const tabs = ["apps", "clipboard", "commands"]
+                                    const nextIdx = (tabs.indexOf(root.launcherTab) + 1) % tabs.length
+                                    root.launcherTab = tabs[nextIdx]
+                                    root.filterApps(text)
+                                    event.accepted = true
+                                }
                             }
 
                             // Clear / Close button
                             Item {
-                                Layout.preferredWidth: 24
-                                Layout.preferredHeight: 24
+                                Layout.preferredWidth: 22
+                                Layout.preferredHeight: 22
                                 visible: appSearchInput.text.length > 0
                                 Rectangle {
                                     anchors.fill: parent
-                                    radius: 12
+                                    radius: 11
                                     color: clearHover.hovered ? Qt.rgba(1, 1, 1, 0.15) : "transparent"
                                     Text {
                                         anchors.centerIn: parent
                                         text: "close"
                                         font.family: Theme.fontIcon
-                                        font.pixelSize: 14
+                                        font.pixelSize: 13
                                         color: Qt.rgba(1, 1, 1, 0.6)
                                     }
                                     HoverHandler { id: clearHover }
@@ -1913,7 +2914,139 @@ Item {
                         }
                     }
 
-                    // 2. Apps List
+                    // 2. Category Filter Tabs (Apps | Clipboard | Commands)
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 24
+                        spacing: 6
+
+                        Repeater {
+                            model: [
+                                { id: "apps", label: "Apps", icon: "apps" },
+                                { id: "clipboard", label: "Clipboard", icon: "content_paste" },
+                                { id: "commands", label: "Commands", icon: "terminal" }
+                            ]
+                            delegate: Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 24
+                                radius: 12
+                                readonly property bool isCurrent: root.launcherTab === modelData.id
+                                color: isCurrent ? Qt.rgba(root.colPurple.r, root.colPurple.g, root.colPurple.b, 0.28) : (tabHov.hovered ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.25))
+                                border.color: isCurrent ? root.colPurple : "transparent"
+                                border.width: 1
+
+                                Behavior on color { ColorAnimation { duration: 120 } }
+
+                                RowLayout {
+                                    anchors.centerIn: parent
+                                    spacing: 4
+                                    Text {
+                                        text: modelData.icon
+                                        font.family: Theme.fontIcon
+                                        font.pixelSize: 12
+                                        color: isCurrent ? root.colPurple : Qt.rgba(1, 1, 1, 0.5)
+                                    }
+                                    Text {
+                                        text: modelData.label
+                                        font.family: "Valley Sans"
+                                        font.pixelSize: 11
+                                        font.weight: isCurrent ? Font.Bold : Font.Normal
+                                        color: isCurrent ? "#ffffff" : Qt.rgba(1, 1, 1, 0.6)
+                                    }
+                                }
+
+                                HoverHandler { id: tabHov }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.launcherTab = modelData.id
+                                        root.filterApps(appSearchInput.text)
+                                        appSearchInput.forceActiveFocus()
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. Live Calculation Card (When Math Expression Detected)
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 44
+                        radius: 12
+                        color: Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.16)
+                        border.color: Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.5)
+                        border.width: 1
+                        visible: root.hasCalcResult && root.calcResult.length > 0
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            anchors.rightMargin: 10
+                            spacing: 8
+
+                            Rectangle {
+                                width: 28
+                                height: 28
+                                radius: 8
+                                color: root.colTeal
+                                Layout.alignment: Qt.AlignVCenter
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "calculate"
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: 16
+                                    color: "#0b0e14"
+                                }
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 1
+                                Text {
+                                    text: root.calcResult
+                                    font.family: "Valley Sans"
+                                    font.pixelSize: 14
+                                    font.weight: Font.Bold
+                                    color: "#ffffff"
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                                Text {
+                                    text: "Press Enter to copy result"
+                                    font.family: "Valley Sans"
+                                    font.pixelSize: 9
+                                    color: Qt.rgba(1, 1, 1, 0.55)
+                                }
+                            }
+
+                            Rectangle {
+                                width: 56
+                                height: 22
+                                radius: 6
+                                color: Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.28)
+                                Layout.alignment: Qt.AlignVCenter
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "↵ Copy"
+                                    font.family: "Valley Sans"
+                                    font.pixelSize: 10
+                                    font.weight: Font.Bold
+                                    color: root.colTeal
+                                }
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.copyCalcResult()
+                        }
+                    }
+
+                    // 4. Results List (Apps / Clipboard / Commands)
                     Item {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
@@ -1929,8 +3062,8 @@ Item {
                             delegate: Rectangle {
                                 id: appRow
                                 width: appListView.width
-                                height: 46
-                                radius: 14
+                                height: 44
+                                radius: 12
                                 readonly property bool isSelected: index === root.selectedAppIndex
 
                                 color: isSelected
@@ -1952,20 +3085,23 @@ Item {
                                 MouseArea {
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.launchAppIndex(model.appIndex)
+                                    onClicked: {
+                                        root.selectedAppIndex = index
+                                        root.executeCurrentItem()
+                                    }
                                 }
 
                                 RowLayout {
                                     anchors.fill: parent
                                     anchors.leftMargin: 10
                                     anchors.rightMargin: 12
-                                    spacing: 12
+                                    spacing: 10
 
-                                    // App Icon with Fallback Initial
+                                    // Icon / Glyph
                                     Rectangle {
-                                        Layout.preferredWidth: 32
-                                        Layout.preferredHeight: 32
-                                        radius: 16
+                                        Layout.preferredWidth: 30
+                                        Layout.preferredHeight: 30
+                                        radius: 15
                                         color: Qt.rgba(0, 0, 0, 0.35)
                                         border.color: isSelected ? root.colPurple : Qt.rgba(1, 1, 1, 0.1)
                                         border.width: 1
@@ -1973,26 +3109,30 @@ Item {
                                         Image {
                                             id: appIconImg
                                             anchors.centerIn: parent
-                                            width: 22
-                                            height: 22
-                                            source: model.icon ? Quickshell.iconPath(model.icon, "application-x-executable") : ""
-                                            sourceSize: Qt.size(44, 44)
+                                            width: 20
+                                            height: 20
+                                            source: (model.itemType === "app" && model.icon) ? Quickshell.iconPath(model.icon, "application-x-executable") : ""
+                                            sourceSize: Qt.size(40, 40)
                                             fillMode: Image.PreserveAspectFit
-                                            visible: status === Image.Ready
+                                            visible: model.itemType === "app" && status === Image.Ready
                                         }
 
                                         Text {
                                             anchors.centerIn: parent
-                                            visible: appIconImg.status !== Image.Ready
-                                            text: (model.name && model.name.length > 0) ? model.name.charAt(0).toUpperCase() : "?"
-                                            font.family: "Valley Sans"
-                                            font.pixelSize: 13
+                                            visible: !appIconImg.visible
+                                            text: {
+                                                if (model.glyph && model.glyph.length > 0) return model.glyph
+                                                if (model.name && model.name.length > 0) return model.name.charAt(0).toUpperCase()
+                                                return "apps"
+                                            }
+                                            font.family: (model.glyph && model.glyph.length > 0) ? Theme.fontIcon : "Valley Sans"
+                                            font.pixelSize: (model.glyph && model.glyph.length > 0) ? 15 : 12
                                             font.bold: true
                                             color: root.colPurple
                                         }
                                     }
 
-                                    // App Details
+                                    // Details (Title & Subtitle)
                                     ColumnLayout {
                                         Layout.fillWidth: true
                                         spacing: 1
@@ -2001,7 +3141,7 @@ Item {
                                             Layout.fillWidth: true
                                             text: model.name || ""
                                             font.family: "Valley Sans"
-                                            font.pixelSize: 13
+                                            font.pixelSize: 12
                                             font.weight: isSelected ? Font.DemiBold : Font.Normal
                                             color: isSelected ? "#ffffff" : Qt.rgba(1, 1, 1, 0.88)
                                             elide: Text.ElideRight
@@ -2018,7 +3158,7 @@ Item {
                                         }
                                     }
 
-                                    // Enter Glyph indicator for selected item
+                                    // Action Return Glyph
                                     Text {
                                         visible: isSelected
                                         text: "keyboard_return"
@@ -2031,87 +3171,104 @@ Item {
                             }
                         }
 
-                        // Empty State if no apps match
+                        // Empty State
                         Item {
                             anchors.fill: parent
-                            visible: appMatches.count === 0
+                            visible: appMatches.count === 0 && (!root.hasCalcResult || root.calcResult.length === 0)
 
                             ColumnLayout {
                                 anchors.centerIn: parent
-                                spacing: 8
+                                spacing: 6
 
                                 Text {
                                     Layout.alignment: Qt.AlignHCenter
                                     text: "search_off"
                                     font.family: Theme.fontIcon
-                                    font.pixelSize: 32
+                                    font.pixelSize: 28
                                     color: Qt.rgba(root.colPurple.r, root.colPurple.g, root.colPurple.b, 0.4)
                                 }
 
                                 Text {
                                     Layout.alignment: Qt.AlignHCenter
-                                    text: "No applications found"
+                                    text: "No matches found"
                                     font.family: "Valley Sans"
-                                    font.pixelSize: 12
+                                    font.pixelSize: 11
                                     color: Qt.rgba(1, 1, 1, 0.4)
                                 }
                             }
                         }
                     }
 
-                    // 3. Bottom Footer Hint Pill
+                    // 5. Bottom Footer Hint Pill
                     RowLayout {
                         Layout.fillWidth: true
                         Layout.alignment: Qt.AlignHCenter
-                        spacing: 16
+                        spacing: 12
 
                         RowLayout {
-                            spacing: 4
+                            spacing: 3
                             Text {
                                 text: "↑↓"
                                 font.family: "Valley Sans"
-                                font.pixelSize: 11
+                                font.pixelSize: 10
                                 font.bold: true
                                 color: Qt.rgba(1, 1, 1, 0.45)
                             }
                             Text {
                                 text: "Navigate"
                                 font.family: "Valley Sans"
-                                font.pixelSize: 10
+                                font.pixelSize: 9
                                 color: Qt.rgba(1, 1, 1, 0.35)
                             }
                         }
 
                         RowLayout {
-                            spacing: 4
+                            spacing: 3
                             Text {
-                                text: "↵"
+                                text: "Tab"
                                 font.family: "Valley Sans"
-                                font.pixelSize: 11
+                                font.pixelSize: 10
                                 font.bold: true
                                 color: root.colPurple
                             }
                             Text {
-                                text: "Launch"
+                                text: "Mode"
                                 font.family: "Valley Sans"
-                                font.pixelSize: 10
+                                font.pixelSize: 9
                                 color: Qt.rgba(1, 1, 1, 0.35)
                             }
                         }
 
                         RowLayout {
-                            spacing: 4
+                            spacing: 3
+                            Text {
+                                text: "↵"
+                                font.family: "Valley Sans"
+                                font.pixelSize: 10
+                                font.bold: true
+                                color: root.colPurple
+                            }
+                            Text {
+                                text: "Select"
+                                font.family: "Valley Sans"
+                                font.pixelSize: 9
+                                color: Qt.rgba(1, 1, 1, 0.35)
+                            }
+                        }
+
+                        RowLayout {
+                            spacing: 3
                             Text {
                                 text: "ESC"
                                 font.family: "Valley Sans"
-                                font.pixelSize: 10
+                                font.pixelSize: 9
                                 font.bold: true
                                 color: Qt.rgba(1, 1, 1, 0.45)
                             }
                             Text {
                                 text: "Back"
                                 font.family: "Valley Sans"
-                                font.pixelSize: 10
+                                font.pixelSize: 9
                                 color: Qt.rgba(1, 1, 1, 0.35)
                             }
                         }
@@ -2579,12 +3736,12 @@ Item {
         ConnectivityOrbitPicker {
             id: connectivityPicker
             anchors.centerIn: parent
-            visible: root.activeMode === "wifi" || root.activeMode === "bluetooth"
-            opacity: (root.activeMode === "wifi" || root.activeMode === "bluetooth") ? 1.0 : 0.0
-            Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+            visible: root.hubOpen && (root.activeMode === "wifi" || root.activeMode === "bluetooth") && (transitionProgress > 0.001)
+            opacity: visible ? 1.0 : 0.0
 
             onBackRequested: {
                 root.activeMode = "hub"
+                root.focusedLobe = "connect"
             }
         }
 
@@ -2600,7 +3757,8 @@ Item {
         Connections {
             target: controlRing
             function onIsOpenChanged() {
-                if (!controlRing.isOpen) {
+                if (!controlRing.isOpen && root.osdOpenedHub) {
+                    root.osdOpenedHub = false
                     root.close()
                 }
             }
@@ -2616,12 +3774,13 @@ Item {
             height: 320
             z: 2
             visible: opacity > 0.005
-            opacity: (root.activeMode === "power" && root.hubOpen) ? 1.0 : 0.0
-            scale: (root.activeMode === "power" && root.hubOpen) ? 1.0 : 0.3
-            Behavior on opacity { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
-            Behavior on scale { NumberAnimation { duration: 320; easing.type: Easing.OutBack; easing.overshoot: 1.15 } }
+            opacity: (root.activeMode === "power" && root.hubOpen && root.powerAction === "none") ? 1.0 : 0.0
+            Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
 
-            // 4 Circular Satellite Action Buttons (randomized across 360°, continuously roaming around anchor position)
+            property real bloomRadius: (root.activeMode === "power" && root.hubOpen && root.powerAction === "none") ? 86.0 : 0.0
+            Behavior on bloomRadius { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+
+            // 4 Circular Satellite Action Buttons (angles: -150°, -60°, 30°, 120°, 38px orbs)
             Repeater {
                 model: root.powerOrbData
 
@@ -2630,49 +3789,42 @@ Item {
                     required property var modelData
                     required property int index
 
-                    // Base anchor position from randomized sector
-                    readonly property real orbitRadius: modelData.dist !== undefined ? modelData.dist : 114.0
-                    readonly property real rad: (modelData.deg !== undefined ? modelData.deg : 0.0) * (Math.PI / 180.0)
-                    readonly property real targetX: (powerOrbitLayer.width / 2) + (orbitRadius * Math.cos(rad)) - (width / 2)
-                    readonly property real targetY: (powerOrbitLayer.height / 2) + (orbitRadius * Math.sin(rad)) - (height / 2)
+                    readonly property real rad: modelData.deg * (Math.PI / 180.0)
+                    readonly property real targetX: (powerOrbitLayer.width / 2) + (powerOrbitLayer.bloomRadius * Math.cos(rad)) - (width / 2)
+                    readonly property real targetY: (powerOrbitLayer.height / 2) + (powerOrbitLayer.bloomRadius * Math.sin(rad)) - (height / 2)
 
                     x: targetX
                     y: targetY
-                    width: 48
-                    height: 48
+                    width: 38
+                    height: 38
 
-                    Behavior on x { NumberAnimation { duration: 380; easing.type: Easing.OutBack; easing.overshoot: 1.1 } }
-                    Behavior on y { NumberAnimation { duration: 380; easing.type: Easing.OutBack; easing.overshoot: 1.1 } }
+                    scale: orbMouse.containsMouse ? 1.12 : 1.0
+                    Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
-                    // Continuous, organic roaming around anchor position
-                    // Multi-sine frequencies and phases give each orb distinct floating wander
-                    property real roamX: 0.0
-                    property real roamY: 0.0
-
-                    FrameAnimation {
-                        running: root.activeMode === "power" && root.hubOpen && !orbMouse.containsMouse
-                        readonly property real f1: 1.35 + index * 0.32
-                        readonly property real f2: 1.05 + (3 - index) * 0.38
-                        readonly property real phaseOffset: index * 1.5708
-
-                        property real roamTimer: 0.0
-                        onTriggered: {
-                            roamTimer += frameTime
-                            // Organic floating drift with ~9-12px visible wander
-                            var rx = Math.sin(roamTimer * f1 + phaseOffset) * 9.5 + Math.cos(roamTimer * 0.72 + phaseOffset) * 3.5
-                            var ry = Math.cos(roamTimer * f2 + phaseOffset) * 8.5 + Math.sin(roamTimer * 0.65 + phaseOffset) * 3.5
-                            powerOrbItem.roamX = rx
-                            powerOrbItem.roamY = ry
+                    // Destructive Orb Hold Confirmation Ring (radius 24px, fills clockwise over 800ms)
+                    Shape {
+                        anchors.centerIn: parent
+                        width: 48
+                        height: 48
+                        visible: (root.heldPowerOrb === powerOrbItem.modelData.id ||
+                                 (root.heldPowerOrb === "" && root.lastHeldPowerOrb === powerOrbItem.modelData.id && root.orbHoldProgress > 0.001))
+                        layer.enabled: true
+                        layer.samples: 4
+                        ShapePath {
+                            strokeWidth: 2.2
+                            strokeColor: powerOrbItem.modelData.holdColor
+                            fillColor: "transparent"
+                            capStyle: ShapePath.RoundCap
+                            PathAngleArc {
+                                centerX: 24
+                                centerY: 24
+                                radiusX: 24
+                                radiusY: 24
+                                startAngle: -90
+                                sweepAngle: Math.max(0.1, Math.min(359.9, root.orbHoldProgress * 360.0))
+                            }
                         }
                     }
-
-                    transform: Translate {
-                        x: powerOrbItem.roamX
-                        y: powerOrbItem.roamY
-                    }
-
-                    scale: orbMouse.containsMouse ? 1.14 : 1.0
-                    Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
                     // Circular satellite disk
                     Rectangle {
@@ -2689,7 +3841,7 @@ Item {
                             anchors.centerIn: parent
                             text: powerOrbItem.modelData.icon
                             font.family: Theme.fontIcon
-                            font.pixelSize: 24
+                            font.pixelSize: 20
                             color: powerOrbItem.modelData.iconColor
                         }
                     }
@@ -2699,9 +3851,37 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
+                        onEntered: root.hoveredPowerOrb = powerOrbItem.modelData.id
+                        onExited: {
+                            if (root.hoveredPowerOrb === powerOrbItem.modelData.id) {
+                                root.hoveredPowerOrb = ""
+                            }
+                        }
+                        onPressed: {
+                            if (powerOrbItem.modelData.isDestructive) {
+                                root.lastHeldPowerOrb = powerOrbItem.modelData.id
+                                root.heldPowerOrb = powerOrbItem.modelData.id
+                            } else if (powerOrbItem.modelData.id === "lock" && root.powerEnableLogout) {
+                                root.lastHeldPowerOrb = "lock"
+                                root.heldPowerOrb = "lock"
+                            }
+                        }
+                        onReleased: {
+                            if (root.heldPowerOrb === powerOrbItem.modelData.id) {
+                                root.heldPowerOrb = ""
+                            }
+                        }
+                        onCanceled: {
+                            if (root.heldPowerOrb === powerOrbItem.modelData.id) {
+                                root.heldPowerOrb = ""
+                            }
+                        }
                         onClicked: {
-                            if (powerOrbItem.modelData.action) {
-                                powerOrbItem.modelData.action()
+                            if (!powerOrbItem.modelData.isDestructive) {
+                                if (powerOrbItem.modelData.id === "lock" && root.powerEnableLogout && root.orbHoldProgress >= 0.99) {
+                                    return
+                                }
+                                root.triggerPowerAction(powerOrbItem.modelData.id)
                             }
                         }
                     }
@@ -2979,23 +4159,106 @@ Item {
 
     function filterApps(needle) {
         appMatches.clear()
-        const n = (needle || "").trim().toLowerCase()
+        const raw = (needle || "").trim()
+        const n = raw.toLowerCase()
+
+        // 1. If in clipboard mode or prefixed with "clip " or "c "
+        if (root.launcherTab === "clipboard" || n.startsWith("c ") || n.startsWith("clip ")) {
+            const subQ = n.startsWith("clip ") ? n.substring(5).trim() : (n.startsWith("c ") ? n.substring(2).trim() : n)
+            for (let i = 0; i < root.clipboardItems.length; i++) {
+                const item = root.clipboardItems[i]
+                if (subQ.length === 0 || (item.preview && item.preview.toLowerCase().includes(subQ))) {
+                    appMatches.append({
+                        itemType: "clipboard",
+                        name: item.preview || "",
+                        comment: "Press Enter to copy to clipboard",
+                        icon: "",
+                        glyph: "content_paste",
+                        appIndex: i,
+                        clipId: item.id || ""
+                    })
+                }
+            }
+            root.selectedAppIndex = 0
+            return
+        }
+
+        // 2. If in commands mode or prefixed with ">"
+        if (root.launcherTab === "commands" || n.startsWith(">")) {
+            const subQ = n.startsWith(">") ? n.substring(1).trim() : n
+            for (let i = 0; i < root.systemActions.length; i++) {
+                const act = root.systemActions[i]
+                if (subQ.length === 0 || act.title.toLowerCase().includes(subQ) || act.desc.toLowerCase().includes(subQ)) {
+                    appMatches.append({
+                        itemType: "action",
+                        name: act.title,
+                        comment: act.desc,
+                        icon: "",
+                        glyph: act.glyph || "terminal",
+                        appIndex: i,
+                        actionId: act.id
+                    })
+                }
+            }
+            root.selectedAppIndex = 0
+            return
+        }
+
+        // 3. Applications mode (default)
         let count = 0
-        for (let i = 0; i < root.allAppsList.length && count < 20; i++) {
+        for (let i = 0; i < root.allAppsList.length && count < 30; i++) {
             const a = root.allAppsList[i]
             const name = a.name || ""
             const comment = a.comment || a.genericName || ""
             if (n.length === 0 || name.toLowerCase().includes(n) || comment.toLowerCase().includes(n)) {
                 appMatches.append({
+                    itemType: "app",
                     name: name,
                     comment: comment,
                     icon: a.icon || "",
-                    appIndex: i
+                    glyph: "apps",
+                    appIndex: i,
+                    clipId: "",
+                    actionId: ""
                 })
                 count++
             }
         }
         root.selectedAppIndex = 0
+    }
+
+    function executeCurrentItem() {
+        const q = appSearchInput ? appSearchInput.text.trim() : ""
+        const isMathQuery = root.hasCalcResult && (/^[=]/.test(q) || /[+\-*\/^%]/.test(q) || /(sqrt|sin|cos|tan|log|ln)/i.test(q))
+
+        if (root.hasCalcResult && (root.selectedAppIndex <= 0 || isMathQuery)) {
+            root.copyCalcResult()
+            return
+        }
+
+        if (root.selectedAppIndex < 0 || root.selectedAppIndex >= appMatches.count) {
+            if (root.hasCalcResult) {
+                root.copyCalcResult()
+            }
+            return
+        }
+
+        const item = appMatches.get(root.selectedAppIndex)
+        if (!item) return
+
+        if (item.itemType === "action") {
+            for (let i = 0; i < root.systemActions.length; i++) {
+                if (root.systemActions[i].id === item.actionId) {
+                    root.systemActions[i].run()
+                    return
+                }
+            }
+        } else if (item.itemType === "clipboard") {
+            root.close()
+            Quickshell.execDetached(["sh", "-c", "cliphist decode " + item.clipId + " | wl-copy"])
+        } else {
+            root.launchAppIndex(item.appIndex)
+        }
     }
 
     function launchAppIndex(idx) {
@@ -3018,5 +4281,18 @@ Item {
             entry.execute()
         }
         root.close()
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       PHASE 5.5: Modular Carbon Calendar UI Modal (Top-Level Fullscreen Layer)
+       ══════════════════════════════════════════════════════════════════════ */
+    CarbonCalendar {
+        id: calendarModal
+        anchors.fill: parent
+        z: 100
+        open: root.hubOpen && root.activeMode === "calendar"
+        onCloseRequested: {
+            root.activeMode = "hub"
+        }
     }
 }

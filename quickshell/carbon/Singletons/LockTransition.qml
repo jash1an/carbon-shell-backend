@@ -6,33 +6,56 @@ import Quickshell.Io
 /**
  * LockTransition.qml
  *
- * Singleton that unifies the lock / unlock transition across Carbon desktop
- * shell and WlSessionLock into ONE continuous shared timeline.
+ * Singleton that drives the unified single-timeline lock/unlock transition.
+ * Stage is the WlSessionLockSurface itself (lock-first architecture).
  */
 Item {
     id: root
 
-    // "idle" | "locking" | "locked" | "unlocking" | "post_unlock"
+    // "idle" | "locking" | "locked" | "unlocking"
     property string phase: "idle"
     property real t: 0.0 // lock timeline in ms (0 -> 1250)
-    property real u: 0.0 // unlock timeline in ms (0 -> 1250)
+    property real u: 0.0 // unlock timeline in ms (0 -> 1650)
 
     // Configuration
     property bool lockSync: true
     property real durationScale: 1.0
     property bool reducedMotion: false
-    property bool isSystemLock: false
+    property bool debugTimeline: false
 
     readonly property string home: Quickshell.env("HOME") || ""
     readonly property string cacheDir: root.home + "/.cache/carbon"
-    readonly property string screenshotPath: root.cacheDir + "/lock_screen_snap.jpg"
     readonly property string configPath: root.home + "/.config/hypr/carbon-lockscreen.json"
 
+    readonly property real lockTotalDuration: 1250.0
+    readonly property real unlockTotalDuration: 1650.0
+    readonly property string screenshotPath: ""
+
+    // Legacy signals for lockSync: false compatibility
     signal handoffToSessionLock()
     signal unlockComplete()
+    signal unlockAnimationFinished()
 
-    property bool handoffTriggered: false
-    property bool unlockHandoffTriggered: false
+    // First-frame safety flag
+    property bool lockSurfaceReady: false
+    property bool unlockFinishedSignaled: false
+
+    // Timing diagnostics for QSG_RENDER_TIMING / debug HUD
+    property real lastFrameTimeMs: 16.6
+    property real minFrameTimeMs: 999.0
+    property real maxFrameTimeMs: 0.0
+    property real avgFrameTimeMs: 16.6
+    property int frameCount: 0
+    property real totalFrameTimeMs: 0.0
+
+    function resetTimingStats() {
+        root.minFrameTimeMs = 999.0
+        root.maxFrameTimeMs = 0.0
+        root.totalFrameTimeMs = 0.0
+        root.frameCount = 0
+        root.avgFrameTimeMs = 16.6
+        root.lastFrameTimeMs = 16.6
+    }
 
     FileView {
         id: cfgFile
@@ -54,6 +77,8 @@ Item {
                         root.durationScale = Math.max(0.1, Number(parsed.transition.durationScale) || 1.0)
                     if (parsed.transition.reducedMotion !== undefined)
                         root.reducedMotion = Boolean(parsed.transition.reducedMotion)
+                    if (parsed.transition.debug !== undefined)
+                        root.debugTimeline = Boolean(parsed.transition.debug)
                 }
             }
         } catch (e) {
@@ -63,52 +88,63 @@ Item {
 
     Component.onCompleted: {
         root.reloadConfig()
+        root.ensureBlurredWallpaper()
     }
 
-    // Slower, graceful timeline parameters: no rushing, silky smooth delivery
-    readonly property real lockPreRollDuration: 1400.0 // Pre-roll before WlSessionLock handoff (was 780ms)
-    readonly property real lockTotalDuration: 1800.0   // Total lock settling timeline (was 1250ms)
-    readonly property real unlockHandoffTime: 1100.0  // Sharp front reaches full screen before unlock handoff (was 900ms)
-    readonly property real unlockTotalDuration: 1400.0 // Desktop restore timeline (was 1250ms)
+    // Ensure blurred wallpaper exists on disk once
+    function ensureBlurredWallpaper() {
+        var scaled = root.cacheDir + "/wallpaper_scaled.jpg"
+        var blurred = root.cacheDir + "/wallpaper_blurred.jpg"
+        wpBlurCheckProc.command = ["sh", "-c", "if [ ! -s \"" + blurred + "\" ] || [ \"" + blurred + "\" -ot \"" + scaled + "\" ]; then magick \"" + scaled + "\" -resize 25% -blur 0x16 -resize 1366x768! -fill '#050508' -colorize 55% -quality 85 \"" + blurred + "\" 2>/dev/null || true; fi"]
+        wpBlurCheckProc.running = true
+    }
 
-    property bool screenshotReady: false
+    Process {
+        id: wpBlurCheckProc
+        command: []
+    }
 
-    // Single FrameAnimation driving continuous timeline
+    // Single FrameAnimation driving the continuous timeline
     FrameAnimation {
         id: timeDriver
-        running: root.phase === "locking" || root.phase === "unlocking" || root.phase === "post_unlock"
+        running: (root.phase === "locking" && root.lockSurfaceReady) || root.phase === "unlocking"
         onTriggered: {
-            var dt = (frameTime * 1000.0) / Math.max(0.1, root.durationScale)
+            var fMs = frameTime * 1000.0
+            root.lastFrameTimeMs = fMs
+            root.frameCount++
+            root.totalFrameTimeMs += fMs
+            root.avgFrameTimeMs = root.totalFrameTimeMs / root.frameCount
+            if (fMs < root.minFrameTimeMs) root.minFrameTimeMs = fMs
+            if (fMs > root.maxFrameTimeMs) root.maxFrameTimeMs = fMs
+
+            var dt = fMs / Math.max(0.1, root.durationScale)
 
             if (root.phase === "locking") {
                 root.t += dt
-
-                if (root.t >= root.lockPreRollDuration && !root.handoffTriggered) {
-                    root.handoffTriggered = true
-                    root.handoffToSessionLock()
-                }
-
                 if (root.t >= root.lockTotalDuration) {
                     root.t = root.lockTotalDuration
                     root.phase = "locked"
+                    console.log("[LockTransition] Lock timeline complete. Stats: min=" + root.minFrameTimeMs.toFixed(1) + "ms avg=" + root.avgFrameTimeMs.toFixed(1) + "ms max=" + root.maxFrameTimeMs.toFixed(1) + "ms")
                 }
             } else if (root.phase === "unlocking") {
                 root.u += dt
-
-                if (root.u >= root.unlockHandoffTime && !root.unlockHandoffTriggered) {
-                    root.unlockHandoffTriggered = true
-                    root.phase = "post_unlock"
-                    root.unlockComplete()
-                }
-            } else if (root.phase === "post_unlock") {
-                root.u += dt
-
                 if (root.u >= root.unlockTotalDuration) {
-                    root.phase = "idle"
-                    root.t = 0.0
-                    root.u = 0.0
+                    root.u = root.unlockTotalDuration
+                    if (!root.unlockFinishedSignaled) {
+                        root.unlockFinishedSignaled = true
+                        console.log("[LockTransition] Unlock timeline complete. Stats: min=" + root.minFrameTimeMs.toFixed(1) + "ms avg=" + root.avgFrameTimeMs.toFixed(1) + "ms max=" + root.maxFrameTimeMs.toFixed(1) + "ms")
+                        root.unlockAnimationFinished()
+                    }
                 }
             }
+        }
+    }
+
+    // Called by LockSurface on its first frameSwapped (First-Frame Safety)
+    function notifyLockSurfaceReady() {
+        if (!root.lockSurfaceReady) {
+            root.lockSurfaceReady = true
+            console.log("[LockTransition] LockSurface first frame presented -> starting t timeline")
         }
     }
 
@@ -122,29 +158,15 @@ Item {
             return
         }
 
-        if (isSystem) {
-            root.isSystemLock = true
-            root.handoffTriggered = true
-            root.t = root.lockPreRollDuration
-            root.phase = "locked"
-            root.handoffToSessionLock()
-            return
-        }
-
-        root.isSystemLock = false
-        root.handoffTriggered = false
-        root.unlockHandoffTriggered = false
-        root.screenshotReady = false
+        root.resetTimingStats()
+        root.lockSurfaceReady = false
         root.t = 0.0
         root.u = 0.0
         root.phase = "locking"
-
-        snapProc.command = ["sh", "-c", "grim -t jpeg -q 85 \"" + root.screenshotPath + "\" 2>/dev/null || true"]
-        snapProc.running = true
     }
 
     function startUnlock() {
-        if (root.phase === "unlocking" || root.phase === "idle" || root.phase === "post_unlock") return
+        if (root.phase === "unlocking" || root.phase === "idle") return
 
         if (!root.lockSync) {
             root.phase = "idle"
@@ -154,17 +176,26 @@ Item {
             return
         }
 
+        root.resetTimingStats()
         root.u = 0.0
-        root.unlockHandoffTriggered = false
+        root.unlockFinishedSignaled = false
         root.phase = "unlocking"
+    }
+
+    function finishUnlock() {
+        root.phase = "idle"
+        root.t = 0.0
+        root.u = 0.0
+        root.lockSurfaceReady = false
+        root.unlockFinishedSignaled = false
+        root.unlockComplete()
     }
 
     function cancelLock() {
         root.phase = "idle"
         root.t = 0.0
         root.u = 0.0
-        root.handoffTriggered = false
-        root.unlockHandoffTriggered = false
+        root.lockSurfaceReady = false
     }
 
     function testLock() {
@@ -173,19 +204,5 @@ Item {
 
     function testUnlock() {
         startUnlock()
-    }
-
-    function failSafeLock() {
-        root.phase = "locked"
-        root.t = root.lockTotalDuration
-        root.handoffToSessionLock()
-    }
-
-    Process {
-        id: snapProc
-        command: []
-        onExited: {
-            root.screenshotReady = true
-        }
     }
 }

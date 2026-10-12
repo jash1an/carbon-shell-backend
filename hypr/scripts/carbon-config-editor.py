@@ -37,6 +37,7 @@ VANISH_KEYBINDS_CONF_PATH = os.path.join(CONFIG_DIR, "vanish-keybinds.conf")
 VANISH_DISPATCH_SCRIPT = os.path.join(CONFIG_DIR, "scripts/carbon-vanish-dispatch.sh")
 VARIABLES_PATH = os.path.join(CONFIG_DIR, "variables.lua")
 THEME_PATH = os.path.join(CONFIG_DIR, "theme.json")
+WALLPAPER_SOURCE_PATH = os.path.join(CONFIG_DIR, "carbon-wallpaper-source.json")
 
 DEFAULT_VANISH_SHORTCUTS = {
     "hub_toggle": {
@@ -351,6 +352,12 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             self.bar_mode["nucleus"] = {"transition": True, "animation": "quantum", "transitionWord": "Wooshh!!"}
         if "musicVisualizer" not in self.bar_mode:
             self.bar_mode["musicVisualizer"] = "liquidHalo"
+        self.wallpaper_source_cfg = read_json(WALLPAPER_SOURCE_PATH, {
+            "provider": "unsplash",
+            "unsplash_access_key": ""
+        })
+        if "provider" not in self.wallpaper_source_cfg:
+            self.wallpaper_source_cfg["provider"] = "unsplash"
         self.var_data = read_variables()
 
         # Navigation History
@@ -835,6 +842,37 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         card.append(row)
         return dropdown
 
+    def add_entry_row(self, card, title, subtitle, cur_val, placeholder="", on_change=None):
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        row.add_css_class("settings-row")
+
+        label_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        label_box.set_hexpand(True)
+        lbl_t = Gtk.Label(label=title)
+        lbl_t.set_halign(Gtk.Align.START)
+        lbl_t.add_css_class("row-title")
+        label_box.append(lbl_t)
+
+        if subtitle:
+            lbl_s = Gtk.Label(label=subtitle)
+            lbl_s.set_halign(Gtk.Align.START)
+            lbl_s.add_css_class("row-subtitle")
+            label_box.append(lbl_s)
+        row.append(label_box)
+
+        entry = Gtk.Entry()
+        entry.set_text(cur_val or "")
+        if placeholder:
+            entry.set_placeholder_text(placeholder)
+        entry.set_valign(Gtk.Align.CENTER)
+        entry.set_size_request(220, -1)
+        if on_change:
+            entry.connect("changed", lambda e: on_change(e.get_text()))
+        row.append(entry)
+
+        card.append(row)
+        return entry
+
     # ── Category 1: Bar & Island ───────────────────────────────────────────
     def build_bar_page(self, icon, title, subtitle):
         page = self.create_page_container(icon, title, subtitle)
@@ -1224,6 +1262,36 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         self.add_slider_row(card, "Shell UI Scale", "Scale bars, menus, and widgets", 0.75, 1.50, 0.05, cur_scale, "x", on_scale_changed)
 
         page.append(card)
+
+        # ── Online Wallpaper Catalog Settings ──
+        wp_card = self.create_settings_card()
+
+        provider_options = ["Unsplash (High-Res Curated Photography)", "Wallhaven (Anime & Digital Art)"]
+        provider_ids = ["unsplash", "wallhaven"]
+        cur_prov = str(self.wallpaper_source_cfg.get("provider", "unsplash")).lower()
+        cur_p_idx = provider_ids.index(cur_prov) if cur_prov in provider_ids else 0
+
+        def on_provider_sel(idx):
+            p = provider_ids[idx]
+            self.wallpaper_source_cfg["provider"] = p
+            write_json(WALLPAPER_SOURCE_PATH, self.wallpaper_source_cfg)
+            hypr_wp_path = os.path.expanduser("~/.config/hypr/carbon-wallpaper-source.json")
+            if hypr_wp_path != WALLPAPER_SOURCE_PATH:
+                write_json(hypr_wp_path, self.wallpaper_source_cfg)
+
+        self.add_combo_row(wp_card, "Online Wallpaper Provider", "Source catalog used for online wallpapers in the wallpaper picker", provider_options, cur_p_idx, on_provider_sel)
+
+        cur_key = self.wallpaper_source_cfg.get("unsplash_access_key", "")
+        def on_key_change(val):
+            self.wallpaper_source_cfg["unsplash_access_key"] = val.strip()
+            write_json(WALLPAPER_SOURCE_PATH, self.wallpaper_source_cfg)
+            hypr_wp_path = os.path.expanduser("~/.config/hypr/carbon-wallpaper-source.json")
+            if hypr_wp_path != WALLPAPER_SOURCE_PATH:
+                write_json(hypr_wp_path, self.wallpaper_source_cfg)
+
+        self.add_entry_row(wp_card, "Unsplash Access Key (Optional)", "Custom developer API key for quotas (leave empty for built-in catalog)", cur_key, "Leave empty for built-in catalog", on_key_change)
+
+        page.append(wp_card)
         return page
 
     # ── Category 5: Motion (EXACT MATCH FOR SCREENSHOT 2!) ──────────────────

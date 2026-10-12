@@ -61,6 +61,7 @@ Item {
     transform: Translate {
         y: cardRoot.revealed ? 0 : 28
         Behavior on y {
+            enabled: LockTransition.phase === "locked"
             NumberAnimation {
                 duration: cardRoot.revealed ? 380 : 240
                 easing.type: cardRoot.revealed ? Easing.OutBack : Easing.InCubic
@@ -70,6 +71,7 @@ Item {
     }
 
     Behavior on opacity {
+        enabled: LockTransition.phase === "locked"
         NumberAnimation {
             duration: cardRoot.revealed ? 220 : 180
             easing.type: Easing.OutQuad
@@ -77,6 +79,7 @@ Item {
     }
 
     Behavior on scale {
+        enabled: LockTransition.phase === "locked"
         NumberAnimation {
             duration: cardRoot.revealed ? 380 : 220
             easing.type: cardRoot.revealed ? Easing.OutBack : Easing.InCubic
