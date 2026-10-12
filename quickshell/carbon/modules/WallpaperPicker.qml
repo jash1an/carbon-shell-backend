@@ -938,6 +938,7 @@ Item {
                             Image {
                                 anchors.fill: parent
                                 source: cardItem.modelData.thumb
+                                sourceSize: Qt.size(260, 165)
                                 fillMode: Image.PreserveAspectCrop
                                 asynchronous: true
                                 cache: true

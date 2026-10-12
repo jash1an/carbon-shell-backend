@@ -803,6 +803,7 @@ Item {
                                 width: 20
                                 height: 20
                                 source: rowDelegate.iconSource
+                                sourceSize: Qt.size(40, 40)
                                 visible: rowDelegate.iconSource.length > 0
                             }
 

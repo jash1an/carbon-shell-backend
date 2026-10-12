@@ -479,6 +479,7 @@ Item {
                             id: albumImg
                             anchors.fill: parent
                             source: root.artUrl
+                            sourceSize: Qt.size(44, 44)
                             fillMode: Image.PreserveAspectCrop
                             visible: status === Image.Ready
                             asynchronous: true

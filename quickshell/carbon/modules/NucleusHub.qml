@@ -1289,8 +1289,7 @@ Item {
                 property real idleDistOffset: 0.0
 
                 SequentialAnimation {
-                    running: true
-                    paused: !(root.hubOpen && !root.isClosingHub && !lobeItem.isThisFocused)
+                    running: root.hubOpen && !root.isClosingHub && !lobeItem.isThisFocused && (root.activeMode === "hub" || root.activeMode === "")
                     loops: Animation.Infinite
                     PauseAnimation { duration: lobeItem.idlePhaseDelay }
                     ParallelAnimation {
@@ -1878,6 +1877,14 @@ Item {
                         anchors.horizontalCenter: parent.horizontalCenter
                         y: parent.height - 2.5; width: 6; height: 6; radius: 3; color: root.colTeal
                     }
+
+                    NumberAnimation on rotation {
+                        from: 0
+                        to: 360
+                        duration: 18000
+                        loops: Animation.Infinite
+                        running: hubRestingElectrons.visible && hubRestingElectrons.opacity > 0.01
+                    }
                 }
             }
 
@@ -1905,14 +1912,14 @@ Item {
                             }
                         }
                     }
-                }
-            }
 
-            FrameAnimation {
-                running: hubRestingElectrons.visible
-                onTriggered: {
-                    hubRing1Orbit.rotation += frameTime * (360.0 / 18.0)
-                    hubRing2Orbit.rotation -= frameTime * (360.0 / 28.0)
+                    NumberAnimation on rotation {
+                        from: 45
+                        to: -315
+                        duration: 28000
+                        loops: Animation.Infinite
+                        running: hubRestingElectrons.visible && hubRestingElectrons.opacity > 0.01
+                    }
                 }
             }
         }
@@ -2354,6 +2361,7 @@ Item {
                             Image {
                                 anchors.fill: parent
                                 source: LyricsService.artUrl
+                                sourceSize: Qt.size(52, 52)
                                 fillMode: Image.PreserveAspectCrop
                                 visible: status === Image.Ready && source !== ""
                             }
