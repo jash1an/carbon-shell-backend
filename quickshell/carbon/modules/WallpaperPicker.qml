@@ -515,8 +515,8 @@ Item {
                             }
                             Text {
                                 text: "Best"
-                                font.family: "Valley Sans"
-                                font.pixelSize: 12
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(12)
                                 font.weight: Font.Bold
                                 color: bestBtn.isActive ? "#111111" : Theme.fg
                             }
@@ -558,8 +558,8 @@ Item {
                             }
                             Text {
                                 text: "Latest"
-                                font.family: "Valley Sans"
-                                font.pixelSize: 12
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(12)
                                 font.weight: Font.Bold
                                 color: latestBtn.isActive ? "#111111" : Theme.fg
                             }
@@ -638,8 +638,8 @@ Item {
                         TextInput {
                             id: searchInput
                             Layout.fillWidth: true
-                            font.family: "Valley Sans"
-                            font.pixelSize: 13
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(13)
                             color: Theme.fg
                             selectByMouse: true
                             clip: true
@@ -822,8 +822,8 @@ Item {
                     }
                     Text {
                         text: root.noticeMessage
-                        font.family: "Valley Sans"
-                        font.pixelSize: 11
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(11)
                         color: Theme.fg
                     }
                 }
@@ -857,9 +857,9 @@ Item {
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: root.activeSource === "wallhaven" ? "Searching Online Wallpapers..." : (root.activeSource === "live" ? "Loading Live Wallpapers..." : "Loading Wallpapers...")
-                        font.family: "Valley Sans"
-                        font.pixelSize: 13
+                        text: root.activeSource === "wallhaven" ? "Searching Wallhaven..." : (root.activeSource === "live" ? "Loading Live Wallpapers..." : "Loading Wallpapers...")
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(13)
                         color: Theme.fgDim
                     }
                 }
@@ -881,8 +881,8 @@ Item {
                     Text {
                         Layout.alignment: Qt.AlignHCenter
                         text: root.searchQuery ? ("No wallpapers found for \"" + root.searchQuery + "\"") : (root.activeSource === "live" ? "No live wallpapers found in ~/Pictures/Live_Wallpapers" : "No wallpapers found")
-                        font.family: "Valley Sans"
-                        font.pixelSize: 13
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(13)
                         color: Theme.fgDim
                     }
                 }
@@ -983,8 +983,8 @@ Item {
                                     id: resTxt
                                     anchors.centerIn: parent
                                     text: (cardItem.modelData.is_live || cardItem.modelData.category === "live") ? "LIVE" : (cardItem.modelData.resolution || "HD")
-                                    font.family: "Valley Sans"
-                                    font.pixelSize: 9
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(9)
                                     font.weight: Font.Bold
                                     color: (cardItem.modelData.is_live || cardItem.modelData.category === "live") ? "#111111" : "#FFFFFF"
                                 }
@@ -1013,8 +1013,8 @@ Item {
                                     }
                                     Text {
                                         text: "Active"
-                                        font.family: "Valley Sans"
-                                        font.pixelSize: 9
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(9)
                                         font.weight: Font.Bold
                                         color: "#111111"
                                     }
@@ -1049,8 +1049,8 @@ Item {
                                     Text {
                                         Layout.alignment: Qt.AlignHCenter
                                         text: "Applying..."
-                                        font.family: "Valley Sans"
-                                        font.pixelSize: 11
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(11)
                                         font.weight: Font.Bold
                                         color: "#FFFFFF"
                                     }
@@ -1094,8 +1094,8 @@ Item {
                                     }
                                     Text {
                                         text: cardItem.modelData.is_local ? "Apply" : "Get"
-                                        font.family: "Valley Sans"
-                                        font.pixelSize: 11
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(11)
                                         font.weight: Font.Bold
                                         color: Theme.fg
                                     }
@@ -1150,8 +1150,8 @@ Item {
                                     }
                                     Text {
                                         text: root.isLoadingMore ? "Loading more..." : (root.hasMore ? "Load more" : "End of results")
-                                        font.family: "Valley Sans"
-                                        font.pixelSize: 11
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(11)
                                         font.weight: Font.Medium
                                         color: Theme.fgDim
                                     }

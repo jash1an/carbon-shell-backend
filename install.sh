@@ -264,7 +264,39 @@ if [[ "$NO_DEPS" -eq 0 ]]; then
         fi
     done
 
-    if [[ ${#MISSING_CORE[@]} -gt 0 || ${#MISSING_PY_MODS[@]} -gt 0 ]]; then
+    # M3Shapes QML module (required by the lock screen, bars and overview)
+    M3SHAPES_FOUND=0
+    for qmlroot in "/usr/lib/qt6/qml" "/usr/lib64/qt6/qml" \
+                   "$HOME/.local/lib/qt6/qml" "$HOME/.config/quickshell"; do
+        if [[ -f "$qmlroot/M3Shapes/qmldir" ]]; then
+            M3SHAPES_FOUND=1
+            break
+        fi
+    done
+    if [[ "$M3SHAPES_FOUND" -eq 1 ]]; then
+        ok "M3Shapes QML module"
+    else
+        notice "M3Shapes QML module (missing)"
+    fi
+
+    # QtMultimedia QML module (optional: only used for video wallpapers).
+    # The shell degrades gracefully without it, so it is not treated as a
+    # hard requirement.
+    QTMULTIMEDIA_FOUND=0
+    for qmlroot in "/usr/lib/qt6/qml" "/usr/lib64/qt6/qml" \
+                   "$HOME/.local/lib/qt6/qml" "$HOME/.config/quickshell"; do
+        if [[ -d "$qmlroot/QtMultimedia" ]]; then
+            QTMULTIMEDIA_FOUND=1
+            break
+        fi
+    done
+    if [[ "$QTMULTIMEDIA_FOUND" -eq 1 ]]; then
+        ok "QtMultimedia QML module"
+    else
+        notice "QtMultimedia QML module (optional, video wallpapers only)"
+    fi
+
+    if [[ ${#MISSING_CORE[@]} -gt 0 || ${#MISSING_PY_MODS[@]} -gt 0 || "$M3SHAPES_FOUND" -eq 0 ]]; then
         warn "Some required or recommended dependencies are missing."
         printf "\n"
         if prompt_confirm "  Would you like to install missing dependencies via system package manager? [Y/n]: " "Y"; then
@@ -280,12 +312,23 @@ if [[ "$NO_DEPS" -eq 0 ]]; then
                         gtk4 libadwaita cava playerctl brightnessctl grim slurp
                         socat jq fastfetch pipewire wireplumber
                         ttf-jetbrains-mono-nerd ttf-material-symbols-variable
+                        qt6-multimedia
                     )
 
                     if [[ -n "$AUR_HELPER" ]]; then
                         "$AUR_HELPER" -S --needed --noconfirm "${ARCH_PKGS[@]}" || true
                     else
                         sudo pacman -S --needed --noconfirm "${ARCH_PKGS[@]}" || true
+                    fi
+
+                    if [[ "$M3SHAPES_FOUND" -eq 0 ]]; then
+                        if [[ -n "$AUR_HELPER" ]]; then
+                            info "Installing required M3Shapes QML module..."
+                            "$AUR_HELPER" -S --needed --noconfirm qt6-m3shapes-git || true
+                        else
+                            warn "M3Shapes is required by the Carbon shell but is not in the official repos."
+                            info "Install the AUR package: yay -S qt6-m3shapes-git"
+                        fi
                     fi
                     ;;
                 fedora|nobara|centos|rhel)
@@ -347,6 +390,15 @@ if [[ "$NO_DEPS" -eq 0 ]]; then
                     warn "Unrecognized distribution. Please install required dependencies manually."
                     ;;
             esac
+
+            if [[ "$M3SHAPES_FOUND" -eq 0 ]] \
+               && [[ "$DISTRO_ID" != "arch" && "$DISTRO_ID" != "cachyos" && "$DISTRO_ID" != "endeavouros" && "$DISTRO_ID" != "manjaro" && "$DISTRO_ID" != "artix" ]]; then
+                warn "The Carbon shell needs the 'M3Shapes' QML module, which is not packaged on your distro."
+                info "Build and install it from https://github.com/soramanew/m3shapes"
+            fi
+            if [[ "$QTMULTIMEDIA_FOUND" -eq 0 ]]; then
+                info "Optional: install Qt6 Multimedia (e.g. qt6-qtmultimedia / qml6-module-qtmultimedia) to enable video wallpapers."
+            fi
         else
             info "Skipping automatic package installation as requested."
         fi
@@ -459,6 +511,13 @@ fi
 cp -f "$REPO_DIR/hypr/keybinds.conf" "$CONFIG_DIR/keybinds.conf"
 cp -f "$REPO_DIR/hypr/keybinds-shell-only.conf" "$CONFIG_DIR/keybinds-shell-only.conf"
 
+# Deploy default Vanish/nucleus-mode keybindings. These are self-gated at
+# runtime (the dispatcher exits unless the bar is in nucleus mode), so they
+# are always safe to source alongside the regular keybindings.
+if [[ -f "$REPO_DIR/hypr/configs/vanish-keybinds.conf" && ! -f "$CONFIG_DIR/vanish-keybinds.conf" ]]; then
+    cp -f "$REPO_DIR/hypr/configs/vanish-keybinds.conf" "$CONFIG_DIR/vanish-keybinds.conf"
+fi
+
 # Deploy colors template if not already present
 if [[ ! -f "$CONFIG_DIR/colors.conf" && -f "$REPO_DIR/hypr/colors.conf" ]]; then
     cp -f "$REPO_DIR/hypr/colors.conf" "$CONFIG_DIR/colors.conf"
@@ -473,6 +532,9 @@ cat << EOF > "$CONFIG_DIR/carbon.conf"
 
 # Isolated Config Environment
 env = CARBON_CONFIG_DIR,\$HOME/.config/carbon
+
+# Include user-local binaries (kitty, yazi, wl-copy, cliphist, ...)
+env = PATH, \$HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl
 
 # Dynamic Material You Theme Colors
 source = ~/.config/carbon/colors.conf
@@ -492,10 +554,17 @@ else
     echo "source = ~/.config/carbon/keybinds.conf" >> "$CONFIG_DIR/carbon.conf"
 fi
 
+# Vanish-mode dedicated shortcuts (nucleus mode), self-gated at runtime
+echo "source = ~/.config/carbon/vanish-keybinds.conf" >> "$CONFIG_DIR/carbon.conf"
+
 cat << EOF >> "$CONFIG_DIR/carbon.conf"
 
 # Autostart Carbon Quickshell Service
 exec-once = systemctl --user start carbon-quickshell.service
+
+# Clipboard history daemon (Cliphist)
+exec-once = bash -c 'wl-paste --watch cliphist store'
+exec-once = bash -c 'wl-paste --type image --watch cliphist store'
 EOF
 
 ok "Generated $CONFIG_DIR/carbon.conf"

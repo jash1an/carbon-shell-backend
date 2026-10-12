@@ -252,8 +252,8 @@ Item {
 
                     Text {
                         text: root.hoveredAppName ? root.hoveredAppName : "Background Apps"
-                        font.family: "Valley Sans"
-                        font.pixelSize: 10
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(10)
                         font.weight: Font.Bold
                         color: Theme.fg
                         elide: Text.ElideRight
@@ -262,8 +262,8 @@ Item {
 
                     Text {
                         text: root.hoveredAppSub ? root.hoveredAppSub : (root.allItems.length + " running")
-                        font.family: "Valley Sans"
-                        font.pixelSize: 8
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(8)
                         color: Theme.fgDim
                         elide: Text.ElideRight
                         width: parent.width
@@ -286,8 +286,8 @@ Item {
                     anchors.centerIn: parent
                     visible: root.allItems.length === 0
                     text: "No background apps"
-                    font.family: "Valley Sans"
-                    font.pixelSize: 10
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(10)
                     color: Theme.fgDim
                 }
 

@@ -88,7 +88,7 @@ Item {
             Text {
                 text: root.hourStr
                 font.family: "Titan One"
-                font.pixelSize: 15
+                font.pixelSize: Theme.fontPx(15)
                 font.weight: Font.Black
                 color: Theme.fg
                 style: Theme.isDark ? Text.Raised : Text.Normal
@@ -98,7 +98,7 @@ Item {
             Text {
                 text: ":"
                 font.family: "Titan One"
-                font.pixelSize: 15
+                font.pixelSize: Theme.fontPx(15)
                 font.weight: Font.Black
                 color: Theme.accent
                 style: Theme.isDark ? Text.Raised : Text.Normal
@@ -108,7 +108,7 @@ Item {
             Text {
                 text: root.minStr
                 font.family: "Titan One"
-                font.pixelSize: 15
+                font.pixelSize: Theme.fontPx(15)
                 font.weight: Font.Black
                 color: Theme.accent
                 style: Theme.isDark ? Text.Raised : Text.Normal
@@ -135,16 +135,16 @@ Item {
 
                 Text {
                     text: root.hourStr
-                    font.family: "Google Sans Flex"
-                    font.pixelSize: 12
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(12)
                     font.weight: Font.Black
                     color: Theme.fg
                 }
 
                 Text {
                     text: root.minStr
-                    font.family: "Google Sans Flex"
-                    font.pixelSize: 12
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(12)
                     font.weight: Font.Black
                     color: Theme.accent
                 }
@@ -161,7 +161,7 @@ Item {
             Text {
                 text: root.hourStr
                 font.family: "JetBrainsMono Nerd Font"
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPx(13)
                 font.weight: Font.Bold
                 color: Theme.fg
             }
@@ -177,7 +177,7 @@ Item {
             Text {
                 text: root.minStr
                 font.family: "JetBrainsMono Nerd Font"
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPx(13)
                 font.weight: Font.Bold
                 color: Theme.accentLit
             }
@@ -201,8 +201,8 @@ Item {
                 Text {
                     anchors.centerIn: parent
                     text: root.hourStr
-                    font.family: "Google Sans Flex"
-                    font.pixelSize: 12
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(12)
                     font.weight: Font.Bold
                     color: Theme.fg
                 }
@@ -210,8 +210,8 @@ Item {
 
             Text {
                 text: ":"
-                font.family: "Google Sans Flex"
-                font.pixelSize: 12
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(12)
                 font.weight: Font.Black
                 color: Theme.accent
             }
@@ -227,8 +227,8 @@ Item {
                 Text {
                     anchors.centerIn: parent
                     text: root.minStr
-                    font.family: "Google Sans Flex"
-                    font.pixelSize: 12
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(12)
                     font.weight: Font.Bold
                     color: Theme.accentLit
                 }
@@ -245,31 +245,31 @@ Item {
             Text {
                 text: "["
                 font.family: "JetBrainsMono Nerd Font"
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPx(13)
                 font.weight: Font.Bold
                 color: Theme.accent
             }
 
             Text {
                 text: root.hourStr
-                font.family: "Google Sans Flex"
-                font.pixelSize: 12
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(12)
                 font.weight: Font.Black
                 color: Theme.fg
             }
 
             Text {
                 text: ":"
-                font.family: "Google Sans Flex"
-                font.pixelSize: 12
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(12)
                 font.weight: Font.Black
                 color: Theme.accent
             }
 
             Text {
                 text: root.minStr
-                font.family: "Google Sans Flex"
-                font.pixelSize: 12
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(12)
                 font.weight: Font.Black
                 color: Theme.fg
             }
@@ -277,7 +277,7 @@ Item {
             Text {
                 text: "]"
                 font.family: "JetBrainsMono Nerd Font"
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontPx(13)
                 font.weight: Font.Bold
                 color: Theme.accent
             }
@@ -304,24 +304,24 @@ Item {
 
                 Text {
                     text: root.hourStr
-                    font.family: "Google Sans Flex"
-                    font.pixelSize: 12
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(12)
                     font.weight: Font.Bold
                     color: Theme.fg
                 }
 
                 Text {
                     text: ":"
-                    font.family: "Google Sans Flex"
-                    font.pixelSize: 12
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(12)
                     font.weight: Font.Black
                     color: Theme.accent
                 }
 
                 Text {
                     text: root.minStr
-                    font.family: "Google Sans Flex"
-                    font.pixelSize: 12
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(12)
                     font.weight: Font.Bold
                     color: Theme.accentLit
                 }

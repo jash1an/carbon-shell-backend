@@ -502,7 +502,7 @@ Item {
                 anchors.verticalCenterOffset: -5
                 text: "C"
                 font.family: Theme.font
-                font.pixelSize: 76
+                font.pixelSize: Theme.fontPx(76)
                 font.bold: true
                 color: Theme.accent ? Theme.accent : "#00F0FF"
             }
@@ -513,7 +513,7 @@ Item {
                 anchors.verticalCenterOffset: -5
                 text: "C"
                 font.family: Theme.font
-                font.pixelSize: 76
+                font.pixelSize: Theme.fontPx(76)
                 font.bold: true
                 color: "#FFFFFF"
                 opacity: 0.45

@@ -168,15 +168,15 @@ NotchContainer {
                         spacing: 3
                         Text {
                             text: "CPU"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 8
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(8)
                             font.weight: Font.Medium
                             color: Theme.fgFaint
                         }
                         Text {
                             text: root.cpuUsage + "%"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 8
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(8)
                             font.weight: Font.Bold
                             color: root.cpuUsage > 80 ? Theme.err : (root.cpuUsage > 50 ? Theme.warn : Theme.fgDim)
                         }
@@ -186,15 +186,15 @@ NotchContainer {
                         spacing: 3
                         Text {
                             text: "RAM"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: Font.Bold
                             color: Theme.fg
                         }
                         Text {
                             text: root.ramUsageGB + "G"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: Font.Bold
                             color: root.ramPct > 85 ? Theme.warn : Theme.accent
                         }

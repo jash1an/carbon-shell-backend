@@ -10,7 +10,7 @@ import "../../Singletons"
  * Geometry & Visual Specs:
  *   - Orbits: Inner K-shell r = 24px (2 electrons), Outer L-shell r = 38px (4 electrons)
  *   - Seal Ring: r = 50px (strokeWidth: 1.8)
- *   - Central Glyph: "C" in Theme.accent / #00F0FF (bold, pixelSize: 32)
+ *   - Central Glyph: "C" in Theme.accent / #00F0FF (bold, pixelSize: Theme.fontPx(32))
  *   - Flash Disc: expanding white core (r up to 40px)
  *   - Pulse Rings: shockwaves expanding outward at key transition stamps
  *   - Rotation: continuous rotation driven by continuous time (0.0004 rad/ms)
@@ -122,7 +122,7 @@ Item {
         anchors.verticalCenterOffset: 1
         text: "C"
         font.family: Theme.font
-        font.pixelSize: 24
+        font.pixelSize: Theme.fontPx(24)
         font.bold: true
         color: "#FFFFFF"
 

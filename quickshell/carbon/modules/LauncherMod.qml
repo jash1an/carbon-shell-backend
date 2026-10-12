@@ -427,7 +427,7 @@ Item {
             text: "Search apps — type \">\" for commands"
             color: Theme.fgFaint
             font.family: Theme.font
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontPx(12)
             visible: searchField.text.length === 0
         }
 
@@ -441,7 +441,7 @@ Item {
             color: Theme.fg
             clip: true
             font.family: Theme.font
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontPx(13)
             selectByMouse: true
             onTextChanged: root.refresh()
             onAccepted: {
@@ -484,12 +484,12 @@ Item {
 
         Repeater {
             model: [
-                { name: "Terminal", icon: "terminal", cmd: "kitty" },
-                { name: "Browser",  icon: "public", cmd: "brave || firefox || google-chrome-stable" },
-                { name: "Files",    icon: "folder", cmd: "nautilus || dolphin" },
-                { name: "Discord",  icon: "forum", cmd: "discord" },
-                { name: "Code",     icon: "code", cmd: "code || vscodium" },
-                { name: "Config",   icon: "settings", cmd: "python3 " + root.home + "/.config/hypr/scripts/carbon-config-editor.py" }
+                { name: "Terminal", icon: "terminal", appIcon: "kitty", cmd: "kitty" },
+                { name: "Browser",  icon: "public",   appIcon: "firefox", cmd: "brave || firefox || google-chrome-stable" },
+                { name: "Files",    icon: "folder",   appIcon: "org.gnome.Nautilus", cmd: "nautilus || dolphin" },
+                { name: "Discord",  icon: "forum",    appIcon: "discord", cmd: "discord" },
+                { name: "Code",     icon: "code",     appIcon: "com.visualstudio.code.oss", cmd: "code || vscodium" },
+                { name: "Config",   icon: "settings", appIcon: "carbon-settings", cmd: "carbon-config-editor || python3 " + root.home + "/.config/hypr/scripts/carbon-config-editor.py" }
             ]
 
             delegate: Rectangle {
@@ -508,8 +508,20 @@ Item {
                 Behavior on color { ColorAnimation { duration: 100 } }
                 Behavior on border.color { ColorAnimation { duration: 100 } }
 
+                Image {
+                    id: chipAppIcon
+                    anchors.centerIn: parent
+                    width: 18
+                    height: 18
+                    source: pinnedChip.modelData.appIcon ? Quickshell.iconPath(pinnedChip.modelData.appIcon, "") : ""
+                    sourceSize: Qt.size(36, 36)
+                    fillMode: Image.PreserveAspectFit
+                    visible: status === Image.Ready
+                }
+
                 Text {
                     anchors.centerIn: parent
+                    visible: chipAppIcon.status !== Image.Ready
                     text: pinnedChip.modelData.icon
                     font.family: Theme.fontIcon
                     font.pixelSize: 16
@@ -576,7 +588,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         text: model.firstLetter ?? ""
                         font.family: Theme.font
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.fontPx(13)
                         font.bold: true
                         color: Theme.accent
                     }
@@ -660,7 +672,7 @@ Item {
                         text: rowItem.isAction ? (rowItem.action ? rowItem.action.name : "") : (rowItem.entry ? rowItem.entry.name : "")
                         color: rowItem.isAction ? Theme.accentLit : (resultsList.currentIndex === index ? Theme.fg : Theme.fgDim)
                         font.family: Theme.font
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.fontPx(13)
                         font.weight: resultsList.currentIndex === index ? Font.DemiBold : Font.Normal
                         elide: Text.ElideRight
                     }
@@ -679,7 +691,7 @@ Item {
                             : (rowItem.entry ? (rowItem.entry.comment || rowItem.entry.genericName || "") : "")
                         color: Theme.fgFaint
                         font.family: Theme.font
-                        font.pixelSize: 10
+                        font.pixelSize: Theme.fontPx(10)
                         elide: Text.ElideRight
                     }
 
@@ -752,7 +764,7 @@ Item {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: niagaraWaveBar.activeLetter
                     font.family: Theme.font
-                    font.pixelSize: 22
+                    font.pixelSize: Theme.fontPx(22)
                     font.bold: true
                     color: Theme.accentLit
                 }
@@ -760,8 +772,8 @@ Item {
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: (root.letterCounts[niagaraWaveBar.activeLetter] || 0) > 0 ? (root.letterCounts[niagaraWaveBar.activeLetter] + " apps") : ""
-                    font.family: "Valley Sans"
-                    font.pixelSize: 8
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(8)
                     font.weight: Font.Medium
                     color: Theme.fgFaint
                     visible: text.length > 0
@@ -801,7 +813,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         text: letterItem.letterChar
                         font.family: Theme.font
-                        font.pixelSize: 10
+                        font.pixelSize: Theme.fontPx(10)
                         font.bold: letterItem.hasApps && (letterItem.waveCurve > 0.35)
                         color: letterItem.waveCurve > 0.35 ? Theme.accentLit : (letterItem.hasApps ? Theme.fg : Theme.fgFaint)
                         opacity: letterItem.hasApps ? (0.55 + letterItem.waveCurve * 0.45) : (letterItem.waveCurve > 0.25 ? 0.4 : 0.15)
@@ -1017,8 +1029,8 @@ Item {
 
             Text {
                 text: root.mode === "actions" ? "Commands" : (root.allApps.length + " apps")
-                font.family: "Valley Sans"
-                font.pixelSize: 10
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(10)
                 font.weight: Font.DemiBold
                 color: Theme.fgFaint
             }

@@ -301,7 +301,7 @@ Item {
                         anchors.centerIn: parent
                         text: ""
                         font.family: Theme.font
-                        font.pixelSize: 18
+                        font.pixelSize: Theme.fontPx(18)
                         color: Theme.isDark ? "#111111" : "#ffffff"
                     }
                 }
@@ -310,15 +310,15 @@ Item {
                     spacing: 2
                     Text {
                         text: "Workspaces & Tasks"
-                        font.family: "Valley Sans"
-                        font.pixelSize: 20
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(20)
                         font.weight: Font.Bold
                         color: Theme.fg
                     }
                     Text {
                         text: "Active Workspace " + root.activeWsId + " • Swipe down or ESC to dismiss"
-                        font.family: "Valley Sans"
-                        font.pixelSize: 12
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(12)
                         color: Theme.fgDim
                     }
                 }
@@ -351,15 +351,15 @@ Item {
                         spacing: 8
                         Text {
                             text: "+"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 18
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(18)
                             font.weight: Font.Bold
                             color: (root.isDragging && root.hoveredNewWs) ? (Theme.isDark ? "#111111" : "#ffffff") : Theme.accent
                         }
                         Text {
                             text: (root.isDragging && root.hoveredNewWs) ? "Drop to Move Here" : "New Workspace"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 13
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(13)
                             font.weight: Font.DemiBold
                             color: (root.isDragging && root.hoveredNewWs) ? (Theme.isDark ? "#111111" : "#ffffff") : Theme.fg
                         }
@@ -394,7 +394,7 @@ Item {
                     Text {
                         anchors.centerIn: parent
                         text: "✕"
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.fontPx(13)
                         font.weight: Font.Bold
                         color: closeMouse.containsMouse ? "#ffffff" : Theme.fg
                     }
@@ -509,8 +509,8 @@ Item {
                                     Text {
                                         anchors.centerIn: parent
                                         text: String(modelData.id)
-                                        font.family: "Valley Sans"
-                                        font.pixelSize: 13
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(13)
                                         font.weight: Font.Bold
                                         color: cardDelegate.isCurrent ? (Theme.isDark ? "#111111" : "#ffffff") : Theme.fg
                                     }
@@ -521,15 +521,15 @@ Item {
                                     Layout.fillWidth: true
                                     Text {
                                         text: modelData.name || ("Workspace " + modelData.id)
-                                        font.family: "Valley Sans"
-                                        font.pixelSize: 15
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(15)
                                         font.weight: Font.Bold
                                         color: Theme.fg
                                     }
                                     Text {
                                         text: cardDelegate.winList.length > 0 ? (cardDelegate.winList.length + (cardDelegate.winList.length === 1 ? " application" : " applications")) : "Empty"
-                                        font.family: "Valley Sans"
-                                        font.pixelSize: 11
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(11)
                                         color: Theme.fgDim
                                     }
                                 }
@@ -554,8 +554,8 @@ Item {
                                         }
                                         Text {
                                             text: "ACTIVE"
-                                            font.family: "Valley Sans"
-                                            font.pixelSize: 9
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: Theme.fontPx(9)
                                             font.weight: Font.Black
                                             color: Theme.isDark ? "#111111" : "#ffffff"
                                         }
@@ -680,8 +680,8 @@ Item {
 
                                                     Text {
                                                         text: modelData.appName || modelData.class
-                                                        font.family: "Valley Sans"
-                                                        font.pixelSize: 13
+                                                        font.family: "JetBrainsMono Nerd Font"
+                                                        font.pixelSize: Theme.fontPx(13)
                                                         font.weight: Font.Bold
                                                         color: Theme.fg
                                                         elide: Text.ElideRight
@@ -690,8 +690,8 @@ Item {
 
                                                     Text {
                                                         text: modelData.title || ""
-                                                        font.family: "Valley Sans"
-                                                        font.pixelSize: 11
+                                                        font.family: "JetBrainsMono Nerd Font"
+                                                        font.pixelSize: Theme.fontPx(11)
                                                         color: Theme.fgDim
                                                         elide: Text.ElideRight
                                                         Layout.fillWidth: true
@@ -711,7 +711,7 @@ Item {
                                                     Text {
                                                         anchors.centerIn: parent
                                                         text: "✕"
-                                                        font.pixelSize: 10
+                                                        font.pixelSize: Theme.fontPx(10)
                                                         font.weight: Font.Bold
                                                         color: winCloseMouse.containsMouse ? "#ffffff" : Theme.fgDim
                                                     }
@@ -742,15 +742,15 @@ Item {
                                                 Layout.alignment: Qt.AlignHCenter
                                                 text: ""
                                                 font.family: Theme.font
-                                                font.pixelSize: 32
+                                                font.pixelSize: Theme.fontPx(32)
                                                 color: Theme.fgFaint
                                             }
 
                                             Text {
                                                 Layout.alignment: Qt.AlignHCenter
                                                 text: "No open applications"
-                                                font.family: "Valley Sans"
-                                                font.pixelSize: 13
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: Theme.fontPx(13)
                                                 font.weight: Font.DemiBold
                                                 color: Theme.fgDim
                                             }
@@ -758,8 +758,8 @@ Item {
                                             Text {
                                                 Layout.alignment: Qt.AlignHCenter
                                                 text: "Click to switch here"
-                                                font.family: "Valley Sans"
-                                                font.pixelSize: 11
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: Theme.fontPx(11)
                                                 color: Theme.fgFaint
                                             }
                                         }
@@ -781,8 +781,8 @@ Item {
                                 Text {
                                     anchors.centerIn: parent
                                     text: cardDelegate.isCurrent ? "Current Workspace" : "Switch to Workspace " + cardDelegate.modelData.id
-                                    font.family: "Valley Sans"
-                                    font.pixelSize: 12
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(12)
                                     font.weight: Font.Bold
                                     color: switchMouse.containsMouse && !cardDelegate.isCurrent ? (Theme.isDark ? "#111111" : "#ffffff") : Theme.fg
                                 }
@@ -823,8 +823,8 @@ Item {
                                 Text {
                                     Layout.alignment: Qt.AlignHCenter
                                     text: "Move " + (root.draggingWindow ? root.draggingWindow.appName : "Window")
-                                    font.family: "Valley Sans"
-                                    font.pixelSize: 16
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(16)
                                     font.weight: Font.Bold
                                     color: Theme.fg
                                 }
@@ -840,8 +840,8 @@ Item {
                                         id: dropBadgeText
                                         anchors.centerIn: parent
                                         text: "Workspace " + cardDelegate.modelData.id
-                                        font.family: "Valley Sans"
-                                        font.pixelSize: 12
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(12)
                                         font.weight: Font.Black
                                         color: Theme.isDark ? "#111111" : "#ffffff"
                                     }
@@ -904,8 +904,8 @@ Item {
 
                     Text {
                         text: root.draggingWindow ? (root.draggingWindow.appName || root.draggingWindow.class) : ""
-                        font.family: "Valley Sans"
-                        font.pixelSize: 13
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(13)
                         font.weight: Font.Bold
                         color: Theme.fg
                         elide: Text.ElideRight
@@ -916,8 +916,8 @@ Item {
                         text: root.hoveredNewWs ? "Release to move to New Workspace" :
                               (root.hoveredTargetWsId !== -1 ? ("Drop into Workspace " + root.hoveredTargetWsId) :
                               ("Moving from Workspace " + (root.draggingWindow ? root.draggingWindow.sourceWsId : "")))
-                        font.family: "Valley Sans"
-                        font.pixelSize: 11
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(11)
                         font.weight: (root.hoveredTargetWsId !== -1 || root.hoveredNewWs) ? Font.Bold : Font.Normal
                         color: (root.hoveredTargetWsId !== -1 || root.hoveredNewWs) ? Theme.accent : Theme.fgDim
                     }

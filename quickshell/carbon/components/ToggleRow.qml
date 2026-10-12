@@ -48,7 +48,7 @@ Item {
             Layout.alignment: Qt.AlignVCenter
             text: root.glyph
             font.family: Theme.font
-            font.pixelSize: 15
+            font.pixelSize: Theme.fontPx(15)
             color: root.disabled ? Theme.fgFaint : (root.on ? Theme.accentLit : Theme.fgDim)
             horizontalAlignment: Text.AlignHCenter
         }
@@ -61,8 +61,8 @@ Item {
             Text {
                 Layout.fillWidth: true
                 text: root.label + (root.disabled ? " · missing" : "")
-                font.family: "Valley Sans"
-                font.pixelSize: 15
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(15)
                 color: root.disabled ? Theme.fgFaint : Theme.fg
                 elide: Text.ElideRight
             }
@@ -71,8 +71,8 @@ Item {
                 Layout.fillWidth: true
                 visible: root.subtitle
                 text: root.subText
-                font.family: "Valley Sans"
-                font.pixelSize: 12
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(12)
                 color: root.disabled ? Theme.fgFaint : Theme.fgDim
                 elide: Text.ElideRight
             }

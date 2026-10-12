@@ -129,8 +129,8 @@ Item {
 
                 Text {
                     text: "Notifications"
-                    font.family: "Valley Sans"
-                    font.pixelSize: 13
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(13)
                     font.weight: Font.Bold
                     color: Theme.fg
                 }
@@ -147,8 +147,8 @@ Item {
                         id: countText
                         anchors.centerIn: parent
                         text: String(root.total)
-                        font.family: "Valley Sans"
-                        font.pixelSize: 10
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(10)
                         font.weight: Font.Bold
                         color: "#0e0e12"
                     }
@@ -184,8 +184,8 @@ Item {
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             text: "Clear all"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: Font.Medium
                             color: clearHov.containsMouse ? Theme.accent : Theme.fgDim
                         }
@@ -256,8 +256,8 @@ Item {
                     Text {
                         Layout.alignment: Qt.AlignHCenter
                         text: "No Notifications"
-                        font.family: "Valley Sans"
-                        font.pixelSize: 13
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(13)
                         font.weight: Font.DemiBold
                         color: Theme.fgDim
                     }
@@ -265,8 +265,8 @@ Item {
                     Text {
                         Layout.alignment: Qt.AlignHCenter
                         text: "You are all caught up!"
-                        font.family: "Valley Sans"
-                        font.pixelSize: 10
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(10)
                         color: Theme.fgFaint
                     }
                 }
@@ -408,8 +408,8 @@ Item {
                                                 ? cardItem.modelData.summary
                                                 : cardItem.modelData.appName
                                         }
-                                        font.family: "Valley Sans"
-                                        font.pixelSize: 11
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(11)
                                         font.weight: Font.Bold
                                         color: Theme.fg
                                         elide: Text.ElideRight
@@ -427,8 +427,8 @@ Item {
                                 Text {
                                     Layout.fillWidth: true
                                     text: cardItem.modelData ? String(cardItem.modelData.body || "") : ""
-                                    font.family: "Valley Sans"
-                                    font.pixelSize: 10
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(10)
                                     color: Theme.fgDim
                                     wrapMode: Text.Wrap
                                     maximumLineCount: 2

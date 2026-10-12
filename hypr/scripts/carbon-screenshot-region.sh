@@ -8,5 +8,9 @@ DIR="$HOME/Pictures/Screenshots"
 mkdir -p "$DIR"
 FILE="$DIR/screenshot-$(date '+%Y-%m-%d_%H-%M-%S').png"
 grim -g "$GEOM" "$FILE"
-wl-copy --type image/png < "$FILE"
-notify-send "Screenshot" "$(basename "$FILE")" 2>/dev/null || true
+if command -v wl-copy >/dev/null 2>&1; then
+    wl-copy --type image/png < "$FILE" || true
+fi
+if command -v notify-send >/dev/null 2>&1; then
+    notify-send "Screenshot" "$(basename "$FILE")" || true
+fi

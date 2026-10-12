@@ -458,8 +458,8 @@ Item {
                                 if (!root.defaultSink) return "No output device"
                                 return root.nodeName(root.defaultSink)
                             }
-                            font.family: "Valley Sans"
-                            font.pixelSize: 12
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(12)
                             font.weight: Font.Bold
                             color: Theme.fg
                             elide: Text.ElideRight
@@ -506,8 +506,8 @@ Item {
                             visible: root.outputPorts.length > 0
                             width: parent.width
                             text: "Outputs"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: Font.Bold
                             color: Theme.fgDim
                         }
@@ -570,8 +570,8 @@ Item {
                                             Layout.fillWidth: true
                                             Layout.preferredWidth: 1
                                             text: modelData.desc
-                                            font.family: "Valley Sans"
-                                            font.pixelSize: 11
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: Theme.fontPx(11)
                                             font.weight: isActive ? Font.DemiBold : Font.Normal
                                             color: isActive ? Theme.fg : Theme.fgDim
                                             elide: Text.ElideRight
@@ -604,8 +604,8 @@ Item {
                             visible: root.sinks.length > 0
                             width: parent.width
                             text: "Devices"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: Font.Bold
                             color: Theme.fgDim
                         }
@@ -675,8 +675,8 @@ Item {
                                             Layout.fillWidth: true
                                             Layout.preferredWidth: 1
                                             text: root.nodeName(node)
-                                            font.family: "Valley Sans"
-                                            font.pixelSize: 11
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: Theme.fontPx(11)
                                             font.weight: isCurDefault ? Font.DemiBold : Font.Normal
                                             color: isCurDefault ? Theme.fg : Theme.fgDim
                                             elide: Text.ElideRight
@@ -711,8 +711,8 @@ Item {
                         Text {
                             width: parent.width
                             text: "Applications"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: Font.Bold
                             color: Theme.fgDim
                         }
@@ -742,8 +742,8 @@ Item {
                                     Layout.fillWidth: true
                                     Layout.preferredWidth: 1
                                     text: root.nodeName(node)
-                                    font.family: "Valley Sans"
-                                    font.pixelSize: 11
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(11)
                                     color: node.muted ? Theme.fgFaint : Theme.fg
                                     elide: Text.ElideRight
                                 }
@@ -764,8 +764,8 @@ Item {
                             visible: root.streams.length === 0
                             width: parent.width
                             text: "No applications playing right now"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 11
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(11)
                             color: Theme.fgDim
                             horizontalAlignment: Text.AlignHCenter
                             topPadding: 6
@@ -810,8 +810,8 @@ Item {
                                 if (!root.defaultSource) return "No input device"
                                 return root.nodeName(root.defaultSource)
                             }
-                            font.family: "Valley Sans"
-                            font.pixelSize: 12
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(12)
                             font.weight: Font.Bold
                             color: Theme.fg
                             elide: Text.ElideRight
@@ -858,8 +858,8 @@ Item {
                             visible: root.inputPorts.length > 0
                             width: parent.width
                             text: "Inputs"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: Font.Bold
                             color: Theme.fgDim
                         }
@@ -922,8 +922,8 @@ Item {
                                             Layout.fillWidth: true
                                             Layout.preferredWidth: 1
                                             text: modelData.desc
-                                            font.family: "Valley Sans"
-                                            font.pixelSize: 11
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: Theme.fontPx(11)
                                             font.weight: isActive ? Font.DemiBold : Font.Normal
                                             color: isActive ? Theme.fg : Theme.fgDim
                                             elide: Text.ElideRight
@@ -955,8 +955,8 @@ Item {
                         Text {
                             width: parent.width
                             text: "Devices"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: Font.Bold
                             color: Theme.fgDim
                         }
@@ -1024,8 +1024,8 @@ Item {
                                             Layout.fillWidth: true
                                             Layout.preferredWidth: 1
                                             text: root.nodeName(node)
-                                            font.family: "Valley Sans"
-                                            font.pixelSize: 11
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: Theme.fontPx(11)
                                             font.weight: isCurDefault ? Font.DemiBold : Font.Normal
                                             color: isCurDefault ? Theme.fg : Theme.fgDim
                                             elide: Text.ElideRight
@@ -1060,8 +1060,8 @@ Item {
                             visible: root.sources.length === 0
                             width: parent.width
                             text: "No input devices found"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 11
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(11)
                             color: Theme.fgDim
                             horizontalAlignment: Text.AlignHCenter
                             topPadding: 6

@@ -18,7 +18,7 @@ hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
 
 -- Programs
 local terminal    = "kitty"
-local fileManager = "nautilus"
+local fileManager = "/home/zily/.local/opt/kitty/bin/kitty -e /home/zily/.local/bin/yazi"
 
 -- Autostart
 hl.on("hyprland.start", function()

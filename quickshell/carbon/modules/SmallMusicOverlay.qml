@@ -155,8 +155,8 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         text: root.deviceName
-                        font.family: "Inter"
-                        font.pixelSize: 10
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(10)
                         font.weight: Font.DemiBold
                         color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.78)
                         elide: Text.ElideRight
@@ -200,8 +200,8 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         text: root.hasTrack ? LyricsService.trackTitle : "No Media Playing"
-                        font.family: "Inter"
-                        font.pixelSize: 13
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(13)
                         font.weight: Font.Bold
                         color: Theme.fg
                         elide: Text.ElideRight
@@ -210,8 +210,8 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         text: root.hasTrack ? (LyricsService.trackArtist || "Unknown Artist") : "Waiting for playback..."
-                        font.family: "Inter"
-                        font.pixelSize: 10
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(10)
                         font.weight: Font.Normal
                         color: Theme.accent
                         elide: Text.ElideRight

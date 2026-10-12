@@ -77,15 +77,15 @@ Item {
                             spacing: 6
                             Text {
                                 text: WeatherService.temp
-                                font.family: "Open Sans"
-                                font.pixelSize: 20
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(20)
                                 font.weight: Font.Bold
                                 color: Theme.fg
                             }
                             Text {
                                 text: WeatherService.condition
-                                font.family: "Open Sans"
-                                font.pixelSize: 11
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(11)
                                 font.weight: Font.Medium
                                 color: Theme.accentLit
                                 anchors.bottom: parent.bottom
@@ -97,8 +97,8 @@ Item {
 
                         Text {
                             text: WeatherService.city.length > 0 ? WeatherService.city : "Current Location"
-                            font.family: "Open Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: Font.DemiBold
                             color: Theme.fg
                             elide: Text.ElideRight
@@ -119,7 +119,7 @@ Item {
                                 Text {
                                     text: WeatherService.feelsLike
                                     font.family: Theme.font
-                                    font.pixelSize: 9
+                                    font.pixelSize: Theme.fontPx(9)
                                     color: Theme.fgDim
                                 }
                             }
@@ -134,7 +134,7 @@ Item {
                                 Text {
                                     text: WeatherService.wind
                                     font.family: Theme.font
-                                    font.pixelSize: 9
+                                    font.pixelSize: Theme.fontPx(9)
                                     color: Theme.fgDim
                                 }
                             }
@@ -149,7 +149,7 @@ Item {
                                 Text {
                                     text: WeatherService.humidity
                                     font.family: Theme.font
-                                    font.pixelSize: 9
+                                    font.pixelSize: Theme.fontPx(9)
                                     color: Theme.fgDim
                                 }
                             }
@@ -165,8 +165,8 @@ Item {
 
                 Text {
                     text: "SEARCH LOCATION"
-                    font.family: "Open Sans"
-                    font.pixelSize: 9
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(9)
                     font.weight: Font.Bold
                     color: Theme.fgDim
                 }
@@ -196,8 +196,8 @@ Item {
                             id: cityInput
                             Layout.fillWidth: true
                             text: WeatherService.configCity
-                            font.family: "Open Sans"
-                            font.pixelSize: 11
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(11)
                             color: Theme.fg
                             selectByMouse: true
                             selectionColor: Theme.accent
@@ -209,8 +209,8 @@ Item {
                             Text {
                                 visible: parent.text.length === 0 && !parent.activeFocus
                                 text: "Type city (e.g. London, Tokyo)..."
-                                font.family: "Open Sans"
-                                font.pixelSize: 10
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(10)
                                 color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.35)
                                 anchors.verticalCenter: parent.verticalCenter
                             }
@@ -271,8 +271,8 @@ Item {
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             text: "Auto-Detect"
-                            font.family: "Open Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: Font.Medium
                             color: Theme.fg
                         }
@@ -313,8 +313,8 @@ Item {
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             text: WeatherService.isFetching ? "..." : "Search"
-                            font.family: "Open Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: Font.Bold
                             color: Theme.isDark ? "#0e0e12" : "#ffffff"
                         }
@@ -340,8 +340,8 @@ Item {
 
                 Text {
                     text: "3-DAY FORECAST"
-                    font.family: "Open Sans"
-                    font.pixelSize: 9
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(9)
                     font.weight: Font.Bold
                     color: Theme.fgDim
                 }
@@ -368,8 +368,8 @@ Item {
                                 Text {
                                     Layout.alignment: Qt.AlignHCenter
                                     text: modelData.day
-                                    font.family: "Open Sans"
-                                    font.pixelSize: 9
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(9)
                                     font.weight: Font.DemiBold
                                     color: Theme.fgDim
                                 }
@@ -385,8 +385,8 @@ Item {
                                 Text {
                                     Layout.alignment: Qt.AlignHCenter
                                     text: modelData.tempMax + " / " + modelData.tempMin
-                                    font.family: "Open Sans"
-                                    font.pixelSize: 9
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(9)
                                     font.weight: Font.Bold
                                     color: Theme.fg
                                 }
@@ -411,8 +411,8 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     text: WeatherService.statusMessage
-                    font.family: "Open Sans"
-                    font.pixelSize: 9
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(9)
                     color: WeatherService.isError ? Theme.err : Theme.fgDim
                     elide: Text.ElideRight
                 }

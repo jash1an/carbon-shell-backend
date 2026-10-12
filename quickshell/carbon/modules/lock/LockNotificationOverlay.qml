@@ -249,8 +249,8 @@ Item {
 
                     Text {
                         text: root.toastApp
-                        font.family: "Google Sans Flex"
-                        font.pixelSize: 10
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(10)
                         font.weight: Font.Medium
                         color: Theme.accent ? Theme.accent : "#00F0FF"
                         elide: Text.ElideRight
@@ -260,8 +260,8 @@ Item {
 
                     Text {
                         text: "Just now"
-                        font.family: "Google Sans Flex"
-                        font.pixelSize: 9
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(9)
                         color: "#66FFFFFF"
                     }
                 }
@@ -269,8 +269,8 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     text: root.toastSummary
-                    font.family: "Google Sans Flex"
-                    font.pixelSize: 12
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(12)
                     font.weight: Font.DemiBold
                     color: "#FFFFFF"
                     elide: Text.ElideRight
@@ -280,8 +280,8 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     text: root.toastBody
-                    font.family: "Google Sans Flex"
-                    font.pixelSize: 11
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(11)
                     color: "#A0FFFFFF"
                     elide: Text.ElideRight
                     maximumLineCount: 1
@@ -373,16 +373,16 @@ Item {
 
                 Text {
                     text: "Notifications"
-                    font.family: "Google Sans Flex"
-                    font.pixelSize: 13
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(13)
                     font.weight: Font.DemiBold
                     color: "#FFFFFF"
                 }
 
                 Text {
                     text: "(" + root.notifCount + ")"
-                    font.family: "Google Sans Flex"
-                    font.pixelSize: 11
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(11)
                     font.weight: Font.Medium
                     color: "#77FFFFFF"
                 }
@@ -403,8 +403,8 @@ Item {
                         id: clearText
                         anchors.centerIn: parent
                         text: "Clear all"
-                        font.family: "Google Sans Flex"
-                        font.pixelSize: 10
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(10)
                         font.weight: Font.Medium
                         color: clearBtnHover.hovered ? "#FFFFFF" : "#B0FFFFFF"
                     }
@@ -444,8 +444,8 @@ Item {
                     Text {
                         Layout.alignment: Qt.AlignHCenter
                         text: "No notifications"
-                        font.family: "Google Sans Flex"
-                        font.pixelSize: 12
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(12)
                         font.weight: Font.Medium
                         color: "#66FFFFFF"
                     }
@@ -503,7 +503,7 @@ Item {
                             Text {
                                 anchors.centerIn: parent
                                 text: "•"
-                                font.pixelSize: 15
+                                font.pixelSize: Theme.fontPx(15)
                                 color: Theme.accent ? Theme.accent : "#00F0FF"
                             }
                         }
@@ -516,8 +516,8 @@ Item {
                                 text: delegateCard.modelData
                                     ? (delegateCard.modelData.summary || delegateCard.modelData.appName || "Notification")
                                     : ""
-                                font.family: "Google Sans Flex"
-                                font.pixelSize: 11
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(11)
                                 font.weight: Font.DemiBold
                                 color: "#FFFFFF"
                                 elide: Text.ElideRight
@@ -526,8 +526,8 @@ Item {
 
                             Text {
                                 text: delegateCard.modelData ? (delegateCard.modelData.body || "") : ""
-                                font.family: "Google Sans Flex"
-                                font.pixelSize: 10
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(10)
                                 color: "#99FFFFFF"
                                 elide: Text.ElideRight
                                 Layout.fillWidth: true

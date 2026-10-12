@@ -177,8 +177,8 @@ Item {
                 Text {
                     anchors.centerIn: parent
                     text: "Pomodoro"
-                    font.family: "Valley Sans"
-                    font.pixelSize: 11
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(11)
                     font.weight: Font.Bold
                     color: root.mode === "pomo" ? "#0e0e12" : Theme.fgDim
                 }
@@ -199,8 +199,8 @@ Item {
                 Text {
                     anchors.centerIn: parent
                     text: "Stopwatch"
-                    font.family: "Valley Sans"
-                    font.pixelSize: 11
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(11)
                     font.weight: Font.Bold
                     color: root.mode === "stop" ? "#0e0e12" : Theme.fgDim
                 }
@@ -224,7 +224,7 @@ Item {
                 return root.cycles === 0 ? "FOCUS" : "FOCUS " + ((root.cycles % 4) || 4)
             }
             font.family: Theme.font
-            font.pixelSize: 8
+            font.pixelSize: Theme.fontPx(8)
             font.letterSpacing: 2
             color: root.onBreak ? Theme.accentLit : Theme.fgFaint
             horizontalAlignment: Text.AlignHCenter
@@ -234,8 +234,8 @@ Item {
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignHCenter
             text: root.mode === "pomo" ? root.fmt(root.remaining) : root.fmt(root.elapsed)
-            font.family: "Valley Sans"
-            font.pixelSize: 32
+            font.family: "JetBrainsMono Nerd Font"
+            font.pixelSize: Theme.fontPx(32)
             font.weight: Font.Bold
             color: root.running ? Theme.accentLit : Theme.fg
             horizontalAlignment: Text.AlignHCenter
@@ -266,8 +266,8 @@ Item {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "session " + ((root.cycles % 4) || 4) + " of 4"
-                font.family: "Valley Sans"
-                font.pixelSize: 9
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(9)
                 color: Theme.fgFaint
             }
         }
@@ -336,8 +336,8 @@ Item {
                     }
                     Text {
                         text: root.running ? "PAUSE" : "START"
-                        font.family: "Valley Sans"
-                        font.pixelSize: 11
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(11)
                         font.weight: Font.Bold
                         color: root.running ? Theme.fg : "#0e0e12"
                     }
