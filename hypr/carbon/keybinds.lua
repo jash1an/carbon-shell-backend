@@ -20,7 +20,7 @@ local fileManager = "/home/zily/.local/opt/kitty/bin/kitty -e /home/zily/.local/
 -- APPLICATIONS & WINDOW CONTROL
 -- ==============================================================================
 hl.bind(mainMod .. " + Return", hl.dsp.exec_cmd("/home/zily/.local/opt/kitty/bin/kitty"))
-hl.bind(mainMod .. " + " .. "SHIFT" .. " + Return", hl.dsp.exec_cmd("kitty"))
+hl.bind(mainMod .. " + " .. "SHIFT" .. " + Return", hl.dsp.exec_cmd("[float; size 800 550] kitty"))
 hl.bind(mainMod .. " + Q", hl.dsp.window.close())
 hl.bind("ALT" .. " + F4", hl.dsp.window.close())
 hl.bind("CTRL" .. " + " .. "ALT" .. " + Delete", hl.dsp.exec_cmd("hyprctl dispatch exit 0"))
