@@ -237,7 +237,7 @@ def apply_hyprland_layer_blur(enable: bool):
             else:
                 f.write("# blur disabled\n")
         # Ensure windowrules.lua reloads with the new state
-        subprocess.run(["hyprctl", "eval", 'dofile("/home/reduct/.config/hypr/carbon/windowrules.lua")'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["hyprctl", "eval", 'dofile("' + os.path.expanduser("~/.config/hypr/carbon/windowrules.lua") + '")'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(["hyprctl", "reload"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
         print(f"Error updating layer blur: {e}", file=sys.stderr)

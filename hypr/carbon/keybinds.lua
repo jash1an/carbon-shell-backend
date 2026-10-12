@@ -36,20 +36,20 @@ hl.bind(mainMod .. " + " .. "SHIFT" .. " + Q", hl.dsp.exec_cmd("~/.config/hypr/s
 -- CARBON SHELL FEATURES & CONTROLS
 -- ==============================================================================
 -- Carbon Config Editor GUI (Settings)
-hl.bind(mainMod .. " + C", hl.dsp.exec_cmd("/home/reduct/.config/hypr/scripts/carbon-config-editor"))
-hl.bind(mainMod .. " + comma", hl.dsp.exec_cmd("/home/reduct/.config/hypr/scripts/carbon-config-editor"))
+hl.bind(mainMod .. " + C", hl.dsp.exec_cmd("~/.config/hypr/scripts/carbon-config-editor"))
+hl.bind(mainMod .. " + comma", hl.dsp.exec_cmd("~/.config/hypr/scripts/carbon-config-editor"))
 
 -- Carbon Controls / Quick Settings Menu
-hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("sh /home/reduct/.config/hypr/scripts/carbon-ipc.sh controls"))
+hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh controls"))
 
 -- Carbon Spotlight Search
-hl.bind(mainMod .. " + R", hl.dsp.exec_cmd("sh /home/reduct/.config/hypr/scripts/carbon-ipc.sh spotlight"))
+hl.bind(mainMod .. " + R", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh spotlight"))
 
 -- Carbon Overview (Atom-Fluid bohr model & workspace switcher)
-hl.bind("SUPER" .. " + Tab", hl.dsp.exec_cmd("sh /home/reduct/.config/hypr/scripts/carbon-ipc.sh toggle-overview"))
+hl.bind("SUPER" .. " + Tab", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh toggle-overview"))
 
 -- Carbon Wallpaper Picker
-hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("sh /home/reduct/.config/hypr/scripts/carbon-ipc.sh wallpaper"))
+hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh wallpaper"))
 
 -- Carbon Pomodoro Timer
 hl.bind(mainMod .. " + T", hl.dsp.exec_cmd("~/.config/hypr/scripts/carbon-pomodoro"))
