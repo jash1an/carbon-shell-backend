@@ -104,7 +104,7 @@ Item {
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideRight
             text: root.label
-            font.family: "Valley Sans"
+            font.family: "JetBrainsMono Nerd Font"
             font.pixelSize: Math.max(9, Math.round(root.tileSize * 0.18))
             font.weight: Font.DemiBold
             color: root.disabled ? Theme.fgFaint

@@ -76,7 +76,7 @@ Item {
     property string clockStyle: "titan"
     property string clockFont: root.clockStyle === "titan" ? "Titan One"
                              : (root.clockStyle === "digital" ? "Orbitron"
-                             : (root.clockStyle === "pixel" ? "Pixelon" : "Valley Sans"))
+                             : (root.clockStyle === "pixel" ? "Pixelon" : "JetBrainsMono Nerd Font"))
 
     readonly property int clockPixelSize: root.clockStyle === "titan" ? 19
                                         : (root.clockStyle === "digital" ? 15
@@ -407,8 +407,8 @@ Item {
                     id: titleMarquee
                     Layout.fillWidth: true
                     text: root.hasTrack ? root.trackTitle : "Nothing Playing"
-                    fontFamily: "Valley Sans"
-                    pixelSize: 11
+                    fontFamily: "JetBrainsMono Nerd Font"
+                    pixelSize: Theme.fontPx(11)
                     fontWeight: Font.Bold
                     textColor: Theme.fg
                     scrolling: root.isPlaying
@@ -417,8 +417,8 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     text: root.hasTrack ? (root.trackArtist !== "" ? root.trackArtist : root.trackAlbum) : "Idle"
-                    font.family: "Valley Sans"
-                    font.pixelSize: 9
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(9)
                     font.weight: Font.Medium
                     color: Theme.fgDim
                     elide: Text.ElideRight
@@ -565,8 +565,8 @@ Item {
                             Text {
                                 anchors.centerIn: parent
                                 text: "\u2039"
-                                font.family: "Valley Sans"
-                                font.pixelSize: 18
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(18)
                                 color: Theme.fg
                             }
                             MouseArea {
@@ -586,8 +586,8 @@ Item {
                                 Layout.fillWidth: true
                                 horizontalAlignment: Text.AlignHCenter
                                 text: root.monthNames[root.calMonth]
-                                font.family: "Valley Sans"
-                                font.pixelSize: 13
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(13)
                                 font.weight: Font.Bold
                                 color: Theme.fg
                             }
@@ -596,8 +596,8 @@ Item {
                                 Layout.fillWidth: true
                                 horizontalAlignment: Text.AlignHCenter
                                 text: String(root.calYear)
-                                font.family: "Valley Sans"
-                                font.pixelSize: 10
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(10)
                                 color: Theme.fgDim
                             }
                         }
@@ -610,8 +610,8 @@ Item {
                             Text {
                                 anchors.centerIn: parent
                                 text: "\u203A"
-                                font.family: "Valley Sans"
-                                font.pixelSize: 18
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(18)
                                 color: Theme.fg
                             }
                             MouseArea {
@@ -637,8 +637,8 @@ Item {
                             width: 260 / 7
                             horizontalAlignment: Text.AlignHCenter
                             text: modelData
-                            font.family: "Valley Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: Font.Bold
                             color: Theme.fgDim
                         }
@@ -667,8 +667,8 @@ Item {
                             Text {
                                 anchors.centerIn: parent
                                 text: String(modelData.day)
-                                font.family: "Valley Sans"
-                                font.pixelSize: 11
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(11)
                                 font.weight: modelData.isToday ? Font.Bold : Font.Normal
                                 color: modelData.isToday ? Theme.bg
                                      : (modelData.isCurrent ? Theme.fg : Theme.fgDim)
@@ -818,8 +818,8 @@ Item {
 
                         Text {
                             text: root.playerIdentity
-                            font.family: "Valley Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: Font.Medium
                             color: Theme.fgDim
                         }
@@ -844,8 +844,8 @@ Item {
                         Layout.maximumWidth: 263
                         horizontalAlignment: Text.AlignHCenter
                         text: root.hasTrack ? root.trackTitle : "Nothing Playing"
-                        font.family: "Valley Sans"
-                        font.pixelSize: 14
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(14)
                         font.weight: Font.Bold
                         color: Theme.fg
                         elide: Text.ElideRight
@@ -857,8 +857,8 @@ Item {
                         Layout.maximumWidth: 263
                         horizontalAlignment: Text.AlignHCenter
                         text: root.hasTrack ? (root.trackArtist + (root.trackAlbum !== "" ? " · " + root.trackAlbum : "")) : "Idle"
-                        font.family: "Valley Sans"
-                        font.pixelSize: 11
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(11)
                         color: Theme.fgDim
                         elide: Text.ElideRight
                         wrapMode: Text.NoWrap
@@ -879,8 +879,8 @@ Item {
 
                     Text {
                         text: root.formatTime(root.currentPosition)
-                        font.family: "Valley Sans"
-                        font.pixelSize: 10
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(10)
                         color: Theme.fgDim
                     }
 
@@ -897,8 +897,8 @@ Item {
 
                     Text {
                         text: root.formatTime(root.totalLength)
-                        font.family: "Valley Sans"
-                        font.pixelSize: 10
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(10)
                         color: Theme.fgDim
                     }
                 }

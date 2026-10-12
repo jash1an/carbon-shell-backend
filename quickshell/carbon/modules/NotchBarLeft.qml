@@ -228,8 +228,8 @@ NotchContainer {
                     Text {
                         anchors.centerIn: parent
                         text: String(wsBtn.wsId)
-                        font.family: "Valley Sans"
-                        font.pixelSize: 10
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(10)
                         font.weight: wsBtn.isActive ? Font.Bold : Font.Medium
                         color: wsBtn.isActive ? (Theme.isDark ? "#111111" : "#ffffff") : (wsBtn.isOccupied ? Theme.fg : (Theme.isDark ? Theme.fgFaint : Theme.fgDim))
                     }
@@ -274,16 +274,16 @@ NotchContainer {
 
                 Text {
                     text: "Desktop"
-                    font.family: "Valley Sans"
-                    font.pixelSize: 8
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(8)
                     font.weight: Font.Medium
                     color: Theme.isDark ? Theme.fgFaint : Theme.fgDim
                 }
 
                 Text {
                     text: "Workspace " + root.activeWs
-                    font.family: "Valley Sans"
-                    font.pixelSize: 10
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(10)
                     font.weight: Font.Bold
                     color: Theme.fg
                 }

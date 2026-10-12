@@ -1,7 +1,7 @@
 -- Auto-synchronized from ~/.config/hypr/carbon/keybinds.conf
 local mainMod = "SUPER"
-local terminal = "kitty"
-local fileManager = "nautilus"
+local terminal = "/home/zily/.local/opt/kitty/bin/kitty"
+local fileManager = "/home/zily/.local/opt/kitty/bin/kitty -e /home/zily/.local/bin/yazi"
 
 -- 
 -- CARBON SHELL — DEDICATED HYPRLAND KEYBINDINGS
@@ -13,18 +13,18 @@ local fileManager = "nautilus"
 -- 
 
 local mainMod = "SUPER"
-local terminal = "kitty"
-local fileManager = "nautilus"
+local terminal = "/home/zily/.local/opt/kitty/bin/kitty"
+local fileManager = "/home/zily/.local/opt/kitty/bin/kitty -e /home/zily/.local/bin/yazi"
 
 -- ==============================================================================
 -- APPLICATIONS & WINDOW CONTROL
 -- ==============================================================================
-hl.bind(mainMod .. " + Return", hl.dsp.exec_cmd("kitty"))
+hl.bind(mainMod .. " + Return", hl.dsp.exec_cmd("/home/zily/.local/opt/kitty/bin/kitty"))
 hl.bind(mainMod .. " + " .. "SHIFT" .. " + Return", hl.dsp.exec_cmd("[float; size 800 550] kitty"))
 hl.bind(mainMod .. " + Q", hl.dsp.window.close())
 hl.bind("ALT" .. " + F4", hl.dsp.window.close())
 hl.bind("CTRL" .. " + " .. "ALT" .. " + Delete", hl.dsp.exec_cmd("hyprctl dispatch exit 0"))
-hl.bind(mainMod .. " + E", hl.dsp.exec_cmd("nautilus"))
+hl.bind(mainMod .. " + E", hl.dsp.exec_cmd("/home/zily/.local/opt/kitty/bin/kitty -e /home/zily/.local/bin/yazi"))
 hl.bind(mainMod .. " + Space", hl.dsp.window.float({ action = "toggle" }))
 hl.bind(mainMod .. " + " .. "SHIFT" .. " + R", hl.dsp.exec_cmd("hyprctl reload"))
 hl.bind(mainMod .. " + F", hl.dsp.window.fullscreen())
@@ -36,20 +36,20 @@ hl.bind(mainMod .. " + " .. "SHIFT" .. " + Q", hl.dsp.exec_cmd("~/.config/hypr/s
 -- CARBON SHELL FEATURES & CONTROLS
 -- ==============================================================================
 -- Carbon Config Editor GUI (Settings)
-hl.bind(mainMod .. " + C", hl.dsp.exec_cmd("/home/reduct/.config/hypr/scripts/carbon-config-editor"))
-hl.bind(mainMod .. " + comma", hl.dsp.exec_cmd("/home/reduct/.config/hypr/scripts/carbon-config-editor"))
+hl.bind(mainMod .. " + C", hl.dsp.exec_cmd("~/.config/hypr/scripts/carbon-config-editor"))
+hl.bind(mainMod .. " + comma", hl.dsp.exec_cmd("~/.config/hypr/scripts/carbon-config-editor"))
 
 -- Carbon Controls / Quick Settings Menu
-hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("sh /home/reduct/.config/hypr/scripts/carbon-ipc.sh controls"))
+hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh controls"))
 
 -- Carbon Spotlight Search
-hl.bind(mainMod .. " + R", hl.dsp.exec_cmd("sh /home/reduct/.config/hypr/scripts/carbon-ipc.sh spotlight"))
+hl.bind(mainMod .. " + R", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh spotlight"))
 
 -- Carbon Overview (Atom-Fluid bohr model & workspace switcher)
-hl.bind("SUPER" .. " + Tab", hl.dsp.exec_cmd("sh /home/reduct/.config/hypr/scripts/carbon-ipc.sh toggle-overview"))
+hl.bind("SUPER" .. " + Tab", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh toggle-overview"))
 
 -- Carbon Wallpaper Picker
-hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("sh /home/reduct/.config/hypr/scripts/carbon-ipc.sh wallpaper"))
+hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh wallpaper"))
 
 -- Carbon Pomodoro Timer
 hl.bind(mainMod .. " + T", hl.dsp.exec_cmd("~/.config/hypr/scripts/carbon-pomodoro"))
@@ -58,7 +58,7 @@ hl.bind(mainMod .. " + T", hl.dsp.exec_cmd("~/.config/hypr/scripts/carbon-pomodo
 hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("~/.config/hypr/scripts/hyprlock.sh"))
 
 -- Clipboard Manager (Cliphist + Rofi)
-hl.bind(mainMod .. " + V", hl.dsp.exec_cmd("bash -c 'cliphist list | rofi -dmenu | cliphist decode | wl-copy'"))
+hl.bind(mainMod .. " + V", hl.dsp.exec_cmd("bash -c 'kitty -e python3 /home/zily/.local/bin/carbon-clip-picker'"))
 
 -- ==============================================================================
 -- NAVIGATION & WINDOW MOVEMENT

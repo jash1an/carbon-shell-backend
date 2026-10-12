@@ -324,7 +324,7 @@ Item {
                         return "Enter your password"
                     }
                     font.family: Theme.font
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontPx(13)
                     font.italic: !cardRoot.isError && !cardRoot.isSuccess
                     color: {
                         if (cardRoot.isSuccess) return Theme.ok ? Theme.ok : "#a6e3a1"

@@ -82,6 +82,8 @@ The installer will automatically prompt and install all required packages:
 | Component | Packages |
 |---|---|
 | **Compositor & Shell** | `hyprland`, `quickshell` |
+| **M3 Shapes (QML module)** | `qt6-m3shapes-git` (AUR — required by the shell UI) |
+| **Video Wallpapers (optional)** | `qt6-multimedia` (QML module; animated `.mp4`/`.webm` wallpapers only) |
 | **Theme & Color Engine** | `matugen`, `python-pillow` |
 | **Config & UI** | `python-gobject`, `gtk4`, `libadwaita` |
 | **Audio & Media** | `playerctl`, `pipewire`, `wireplumber`, `cava` |
@@ -94,7 +96,10 @@ The installer will automatically prompt and install all required packages:
 
 - <kbd>Super</kbd> + <kbd>Tab</kbd> — Open Workspaces & Windows Overview
 - <kbd>Super</kbd> + <kbd>C</kbd> — Open Carbon Settings
-- <kbd>Super</kbd> + <kbd>Space</kbd> — App Launcher
+- <kbd>Super</kbd> + <kbd>R</kbd> — App Launcher / Spotlight Search
+- <kbd>Super</kbd> + <kbd>N</kbd> — Wallpaper Picker
+- <kbd>Super</kbd> + <kbd>B</kbd> — Control Center
+- <kbd>Super</kbd> + <kbd>Space</kbd> — Toggle Floating (active window)
 - <kbd>Super</kbd> + <kbd>Return</kbd> — Terminal
 - <kbd>Super</kbd> + <kbd>L</kbd> — Lock Screen
 

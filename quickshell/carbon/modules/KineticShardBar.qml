@@ -174,7 +174,7 @@ Item {
                         rotation: -45
                         text: "⌘"
                         font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.fontPx(11)
                         font.weight: Font.Bold
                         color: launcherBtnMouse.containsMouse ? Theme.accentFg : Theme.fg
                     }
@@ -335,7 +335,7 @@ Item {
                 Text {
                     text: root.timeStr
                     font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: 15
+                    font.pixelSize: Theme.fontPx(15)
                     font.weight: Font.Bold
                     color: Theme.fg
                     Layout.alignment: Qt.AlignVCenter
@@ -356,7 +356,7 @@ Item {
                     elide: Text.ElideRight
                     text: root.isPlaying ? ("♫ " + root.trackTitle) : "SHARD · KINETIC"
                     font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: 10
+                    font.pixelSize: Theme.fontPx(10)
                     font.weight: Font.Bold
                     color: root.isPlaying ? Theme.accent : Theme.fgDim
                     Layout.alignment: Qt.AlignVCenter
@@ -461,7 +461,7 @@ Item {
                     Text {
                         text: root.volumePct + "%"
                         font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: 10
+                        font.pixelSize: Theme.fontPx(10)
                         font.weight: Font.Bold
                         color: Theme.fgDim
                         anchors.verticalCenter: parent.verticalCenter
@@ -491,7 +491,7 @@ Item {
                     Text {
                         text: root.batteryPct + "%"
                         font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: 10
+                        font.pixelSize: Theme.fontPx(10)
                         font.weight: Font.Bold
                         color: Theme.fgDim
                         anchors.verticalCenter: parent.verticalCenter

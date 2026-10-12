@@ -147,7 +147,7 @@ Item {
                 Text {
                     anchors.centerIn: parent
                     text: chip.active ? String(chip.modelData) : ""
-                    font.family: chip.active ? "Valley Sans" : Theme.font
+                    font.family: chip.active ? "JetBrainsMono Nerd Font" : Theme.font
                     font.pixelSize: chip.active ? 11 : 16
                     font.weight: chip.active ? Font.Bold : Font.Normal
                     color: chip.active ? (Theme.isDark ? "#111111" : "#ffffff")

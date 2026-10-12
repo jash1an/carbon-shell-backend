@@ -280,7 +280,7 @@ Item {
                     Text {
                         text: "Ψ"
                         font.family: Theme.font
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.fontPx(11)
                         font.bold: true
                         color: Theme.accent
                     }
@@ -289,7 +289,7 @@ Item {
                         Layout.fillWidth: true
                         text: root.activeWinTitle
                         font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: 10
+                        font.pixelSize: Theme.fontPx(10)
                         font.weight: Font.Medium
                         color: Theme.fg
                         elide: Text.ElideRight
@@ -376,7 +376,7 @@ Item {
                                 Text {
                                     text: "e⁻"
                                     font.family: "JetBrainsMono Nerd Font"
-                                    font.pixelSize: 8
+                                    font.pixelSize: Theme.fontPx(8)
                                     font.bold: true
                                     color: isActive ? (Theme.isDark ? "#111111" : "#ffffff") : Theme.accent
                                 }
@@ -384,7 +384,7 @@ Item {
                                 Text {
                                     text: "n=" + modelData.id
                                     font.family: "JetBrainsMono Nerd Font"
-                                    font.pixelSize: 10
+                                    font.pixelSize: Theme.fontPx(10)
                                     font.weight: isActive ? Font.Bold : Font.Normal
                                     color: isActive ? (Theme.isDark ? "#111111" : "#ffffff") : Theme.fg
                                 }
@@ -489,7 +489,7 @@ Item {
                             Text {
                                 text: root.timeStr
                                 font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: 10
+                                font.pixelSize: Theme.fontPx(10)
                                 font.weight: Font.Black
                                 color: Theme.fg
                             }
@@ -497,7 +497,7 @@ Item {
                             Text {
                                 text: ":" + root.secStr
                                 font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: 8
+                                font.pixelSize: Theme.fontPx(8)
                                 font.weight: Font.Bold
                                 color: Theme.accent
                             }
@@ -507,7 +507,7 @@ Item {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "¹²C · Z=6"
                             font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: 7
+                            font.pixelSize: Theme.fontPx(7)
                             font.weight: Font.Bold
                             color: Theme.fgDim
                         }
@@ -568,7 +568,7 @@ Item {
                                 Text {
                                     text: "e⁻"
                                     font.family: "JetBrainsMono Nerd Font"
-                                    font.pixelSize: 8
+                                    font.pixelSize: Theme.fontPx(8)
                                     font.bold: true
                                     color: isActive ? (Theme.isDark ? "#111111" : "#ffffff") : Theme.accent
                                 }
@@ -576,7 +576,7 @@ Item {
                                 Text {
                                     text: "n=" + modelData.id
                                     font.family: "JetBrainsMono Nerd Font"
-                                    font.pixelSize: 10
+                                    font.pixelSize: Theme.fontPx(10)
                                     font.weight: isActive ? Font.Bold : Font.Normal
                                     color: isActive ? (Theme.isDark ? "#111111" : "#ffffff") : Theme.fg
                                 }
@@ -651,7 +651,7 @@ Item {
                             visible: root.hasTrack
                             text: root.trackTitle
                             font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: 9
+                            font.pixelSize: Theme.fontPx(9)
                             font.weight: Font.Medium
                             color: Theme.fg
                             elide: Text.ElideRight

@@ -5,8 +5,8 @@ Item {
     id: root
 
     property string text: ""
-    property string fontFamily: "Valley Sans"
-    property int pixelSize: 13
+    property string fontFamily: "JetBrainsMono Nerd Font"
+    property int pixelSize: Theme.fontPx(13)
     property int fontWeight: Font.Medium
     property color textColor: Theme.fg
     property bool scrolling: true

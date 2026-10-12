@@ -44,7 +44,7 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             text: root.timeStr
             font.family: Theme.font
-            font.pixelSize: 76
+            font.pixelSize: Theme.fontPx(76)
             font.weight: Font.Bold
             color: Theme.fg
 
@@ -61,7 +61,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.dayStr
                 font.family: "Caveat"
-                font.pixelSize: 36
+                font.pixelSize: Theme.fontPx(36)
                 font.weight: Font.Bold
                 color: Theme.accentLit
 
@@ -81,7 +81,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.dateStr
                 font.family: Theme.font
-                font.pixelSize: 18
+                font.pixelSize: Theme.fontPx(18)
                 color: Theme.fgDim
             }
         }

@@ -827,8 +827,8 @@ Item {
                                 }
                                 Text {
                                     text: modelData.label
-                                    font.family: "Inter"
-                                    font.pixelSize: 8
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(8)
                                     font.weight: root.mode === index ? Font.Bold : Font.Normal
                                     color: root.mode === index ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
                                 }
@@ -992,8 +992,8 @@ Item {
                                     Text {
                                         Layout.fillWidth: true
                                         text: root.trackTitle.length > 0 ? root.trackTitle : "No Media Playing"
-                                        font.family: "Inter"
-                                        font.pixelSize: 10
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(10)
                                         font.weight: Font.Bold
                                         color: Theme.fg
                                         elide: Text.ElideRight
@@ -1002,8 +1002,8 @@ Item {
                                     Text {
                                         Layout.fillWidth: true
                                         text: root.trackArtist.length > 0 ? root.trackArtist : "Waiting for playback…"
-                                        font.family: "Inter"
-                                        font.pixelSize: 8
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(8)
                                         color: Theme.accentLit
                                         elide: Text.ElideRight
                                     }
@@ -1203,8 +1203,8 @@ Item {
                                 Text {
                                     Layout.alignment: Qt.AlignHCenter
                                     text: "Wi-Fi"
-                                    font.family: "Inter"
-                                    font.pixelSize: 8
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(8)
                                     font.weight: Font.DemiBold
                                     color: root.wifiOn ? Theme.accentLit : Theme.fgDim
                                 }
@@ -1258,8 +1258,8 @@ Item {
                                 Text {
                                     Layout.alignment: Qt.AlignHCenter
                                     text: "Bluetooth"
-                                    font.family: "Inter"
-                                    font.pixelSize: 8
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(8)
                                     font.weight: Font.DemiBold
                                     color: root.btOn ? Theme.accentLit : Theme.fgDim
                                 }
@@ -1310,8 +1310,8 @@ Item {
                                 Text {
                                     Layout.alignment: Qt.AlignHCenter
                                     text: "Night"
-                                    font.family: "Inter"
-                                    font.pixelSize: 8
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(8)
                                     font.weight: Font.DemiBold
                                     color: root.nightOn ? Theme.accentLit : Theme.fgDim
                                 }
@@ -1362,8 +1362,8 @@ Item {
                                 Text {
                                     Layout.alignment: Qt.AlignHCenter
                                     text: "DND"
-                                    font.family: "Inter"
-                                    font.pixelSize: 8
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(8)
                                     font.weight: Font.DemiBold
                                     color: root.dndOn ? Theme.accentLit : Theme.fgDim
                                 }
@@ -1414,8 +1414,8 @@ Item {
                                 Text {
                                     Layout.alignment: Qt.AlignHCenter
                                     text: "Game"
-                                    font.family: "Inter"
-                                    font.pixelSize: 8
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(8)
                                     font.weight: Font.DemiBold
                                     color: root.gameOn ? Theme.accentLit : Theme.fgDim
                                 }
@@ -1486,8 +1486,8 @@ Item {
 
                                 Text {
                                     text: "STUDIO TOOLBAR"
-                                    font.family: "Inter"
-                                    font.pixelSize: 8
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(8)
                                     font.weight: Font.Bold
                                     font.letterSpacing: 1.2
                                     color: Theme.fgDim
@@ -1497,8 +1497,8 @@ Item {
 
                                 Text {
                                     text: root.recStatus()
-                                    font.family: "Inter"
-                                    font.pixelSize: 8
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(8)
                                     font.weight: Font.DemiBold
                                     color: (root.recWorking || root.recFail) ? "#ff7b6b" : Theme.accentLit
                                     elide: Text.ElideRight
@@ -1598,8 +1598,8 @@ Item {
                                         }
                                         Text {
                                             text: root.recWorking ? "Stop" : "Record"
-                                            font.family: "Inter"
-                                            font.pixelSize: 9
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: Theme.fontPx(9)
                                             font.weight: Font.Bold
                                             color: root.recWorking ? "#ffffff" : (Theme.isDark ? "#101116" : "#ffffff")
                                         }
@@ -1652,8 +1652,8 @@ Item {
 
                                 Text {
                                     text: "NOTIFICATIONS"
-                                    font.family: "Inter"
-                                    font.pixelSize: 8
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(8)
                                     font.weight: Font.Bold
                                     font.letterSpacing: 1.2
                                     color: Theme.fgDim
@@ -1669,8 +1669,8 @@ Item {
                                         id: countTxt
                                         anchors.centerIn: parent
                                         text: String(root.notifCount)
-                                        font.family: "Inter"
-                                        font.pixelSize: 8
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(8)
                                         font.weight: Font.Bold
                                         color: Theme.isDark ? "#101116" : "#ffffff"
                                     }
@@ -1701,8 +1701,8 @@ Item {
                                         Text {
                                             anchors.verticalCenter: parent.verticalCenter
                                             text: "Clear all"
-                                            font.family: "Inter"
-                                            font.pixelSize: 8
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: Theme.fontPx(8)
                                             font.weight: Font.Medium
                                             color: clearMH.containsMouse ? Theme.accent : Theme.fgDim
                                         }
@@ -1744,8 +1744,8 @@ Item {
                                     }
                                     Text {
                                         text: "No new notifications"
-                                        font.family: "Inter"
-                                        font.pixelSize: 9
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(9)
                                         font.weight: Font.Medium
                                         color: Theme.fgDim
                                     }
@@ -1849,8 +1849,8 @@ Item {
                                                                 ? cardItem.modelData.summary
                                                                 : (cardItem.modelData.appName || "Notification")
                                                         }
-                                                        font.family: "Inter"
-                                                        font.pixelSize: 10
+                                                        font.family: "JetBrainsMono Nerd Font"
+                                                        font.pixelSize: Theme.fontPx(10)
                                                         font.weight: Font.Bold
                                                         color: cardItem.isSelected ? Theme.accentLit : Theme.fg
                                                         elide: Text.ElideRight
@@ -1879,8 +1879,8 @@ Item {
                                                 Text {
                                                     Layout.fillWidth: true
                                                     text: cardItem.modelData ? String(cardItem.modelData.body || "") : ""
-                                                    font.family: "Inter"
-                                                    font.pixelSize: 9
+                                                    font.family: "JetBrainsMono Nerd Font"
+                                                    font.pixelSize: Theme.fontPx(9)
                                                     color: Theme.fgDim
                                                     wrapMode: Text.Wrap
                                                     maximumLineCount: cardItem.isExpanded ? 10 : 2
@@ -1910,8 +1910,8 @@ Item {
                                                         id: actTxt
                                                         anchors.centerIn: parent
                                                         text: modelData.text || "Action"
-                                                        font.family: "Inter"
-                                                        font.pixelSize: 8
+                                                        font.family: "JetBrainsMono Nerd Font"
+                                                        font.pixelSize: Theme.fontPx(8)
                                                         font.weight: Font.Bold
                                                         color: Theme.isDark ? "#101116" : "#ffffff"
                                                     }
@@ -1939,8 +1939,8 @@ Item {
                                                 Text {
                                                     anchors.centerIn: parent
                                                     text: "Dismiss"
-                                                    font.family: "Inter"
-                                                    font.pixelSize: 8
+                                                    font.family: "JetBrainsMono Nerd Font"
+                                                    font.pixelSize: Theme.fontPx(8)
                                                     font.weight: Font.Medium
                                                     color: Theme.fgDim
                                                 }

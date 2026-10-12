@@ -292,8 +292,8 @@ Item {
             }
             Text {
                 text: "Bluetooth"
-                font.family: "Valley Sans"
-                font.pixelSize: 15
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(15)
                 font.weight: Font.Bold
                 color: Theme.fg
             }
@@ -302,8 +302,8 @@ Item {
                 text: root.btName.length > 0 ? root.btName
                      : (root.powerOn ? (deviceModel.count === 0 ? "No devices" : "On")
                                      : "Off")
-                font.family: "Valley Sans"
-                font.pixelSize: 12
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(12)
                 elide: Text.ElideRight
                 horizontalAlignment: Text.AlignRight
                 color: (root.btName.length > 0 || root.powerOn) ? Theme.accentLit : Theme.fgFaint
@@ -406,15 +406,15 @@ Item {
                             Layout.fillWidth: true
                             elide: Text.ElideRight
                             text: model.name.length > 0 ? model.name : model.mac
-                            font.family: "Valley Sans"
-                            font.pixelSize: 13
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(13)
                             color: model.connected ? Theme.accentLit : Theme.fg
                         }
                         Text {
                             Layout.fillWidth: true
                             text: model.connected ? "Connected" : (model.paired ? "Paired" : "Ready to pair")
-                            font.family: "Valley Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             color: model.connected ? Theme.accentLit : Theme.fgDim
                         }
                     }
@@ -431,7 +431,7 @@ Item {
                             anchors.centerIn: parent
                             text: model.connected ? "DROP" : (model.paired ? "LINK" : "PAIR")
                             font.family: Theme.font
-                            font.pixelSize: 9
+                            font.pixelSize: Theme.fontPx(9)
                             font.bold: true
                             color: model.connected ? "#ff6b6b" : Theme.accentLit
                         }
@@ -482,15 +482,15 @@ Item {
                         : !root.powerOn ? "Bluetooth is off"
                         : deviceModel.count === 0 ? "No known devices"
                         : "Tap a device to connect"
-                    font.family: "Valley Sans"
-                    font.pixelSize: 12
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(12)
                     color: root.status.length > 0 ? Theme.accentLit : Theme.fgFaint
                 }
 
                 Text {
                     text: "SCAN"
                     font.family: Theme.font
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontPx(11)
                     font.bold: true
                     color: (!root.powerOn || root.scanning || root.working) ? Theme.fgFaint : Theme.accentLit
                     MouseArea {

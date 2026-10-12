@@ -370,7 +370,7 @@ Item {
                 var exitStretch = 1.0 + 0.60 * easeOutCubic(pExit)
 
                 ctx.save()
-                ctx.font = "italic 900 46px 'Valley Sans', 'Rubik', 'Outfit', sans-serif"
+                ctx.font = "italic 900 46px 'JetBrainsMono Nerd Font', 'JetBrainsMono Nerd Font', 'JetBrainsMono Nerd Font', sans-serif"
                 ctx.textBaseline = "middle"
 
                 // Measure total text width for accurate centering
@@ -507,7 +507,7 @@ Item {
                 if (t >= 2300.0) {
                     var pCap = clamp((t - 2300.0) / 100.0, 0.0, 1.0)
                     ctx.save()
-                    ctx.font = "bold 12px 'Valley Sans', 'Rubik', sans-serif"
+                    ctx.font = "bold 12px 'JetBrainsMono Nerd Font', 'JetBrainsMono Nerd Font', sans-serif"
                     ctx.textAlign = "center"
                     ctx.textBaseline = "middle"
                     ctx.fillStyle = Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, pCap * 0.80)

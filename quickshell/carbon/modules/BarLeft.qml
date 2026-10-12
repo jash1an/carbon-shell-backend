@@ -321,8 +321,8 @@ Item {
                         Text {
                             anchors.centerIn: parent
                             text: String(wsChip.modelData)
-                            font.family: "Valley Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: wsChip.isActive ? Font.Bold : Font.Medium
                             color: wsChip.isActive ? (Theme.isDark ? "#111111" : "#ffffff") : (wsChip.isOccupied ? Theme.fg : Theme.fgDim)
                         }
@@ -364,8 +364,8 @@ Item {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Workspace " + root.activeWs
-                    font.family: "Valley Sans"
-                    font.pixelSize: 11
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(11)
                     font.weight: Font.Medium
                     color: Theme.fgDim
                 }
@@ -491,8 +491,8 @@ Item {
                         Text {
                             anchors.centerIn: parent
                             text: String(vWsChip.modelData)
-                            font.family: "Valley Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: vWsChip.isActive ? Font.Bold : Font.Medium
                             color: vWsChip.isActive ? (Theme.isDark ? "#111111" : "#ffffff") : (vWsChip.isOccupied ? Theme.fg : Theme.fgDim)
                         }
@@ -532,8 +532,8 @@ Item {
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "WS " + root.activeWs
-                    font.family: "Valley Sans"
-                    font.pixelSize: 9
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(9)
                     font.weight: Font.Bold
                     color: Theme.fg
                 }

@@ -787,10 +787,23 @@ Item {
                                 scale: satMouse.containsMouse ? 1.14 : 1.0
                                 Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
 
+                                Image {
+                                    id: satAppIcon
+                                    anchors.centerIn: parent
+                                    width: 18
+                                    height: 18
+                                    source: (modelData.appIcon && modelData.appIcon.length > 0) ? Quickshell.iconPath(modelData.appIcon, "") : ""
+                                    sourceSize: Qt.size(36, 36)
+                                    fillMode: Image.PreserveAspectFit
+                                    visible: modelData.appIcon !== undefined && status === Image.Ready
+                                    rotation: -lobeItem.rotation
+                                }
+
                                 Text {
                                     anchors.centerIn: parent
+                                    visible: !satAppIcon.visible
                                     text: modelData.icon
-                                    font.family: modelData.isFontIcon ? Theme.fontIcon : "Valley Sans"
+                                    font.family: modelData.isFontIcon ? Theme.fontIcon : "JetBrainsMono Nerd Font"
                                     font.pixelSize: modelData.isFontIcon ? 18 : 14
                                     font.bold: true
                                     color: lobeItem.lobeColor
@@ -809,8 +822,8 @@ Item {
                                     Text {
                                         anchors.centerIn: parent
                                         text: String(modelData.badgeCount || "")
-                                        font.family: "Valley Sans"
-                                        font.pixelSize: 9
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(9)
                                         font.bold: true
                                         color: "#ffffff"
                                     }
@@ -918,6 +931,7 @@ Item {
                     },
                     {
                         icon: "language",
+                        appIcon: "firefox",
                         isFontIcon: true,
                         isActive: false,
                         action: function() {
@@ -926,6 +940,7 @@ Item {
                     },
                     {
                         icon: "folder",
+                        appIcon: "org.gnome.Nautilus",
                         isFontIcon: true,
                         isActive: false,
                         action: function() {
@@ -1167,7 +1182,7 @@ Item {
                         if (root.activeMode === "wallpapers") return (wallpaperModel.count > 0 ? wallpaperModel.count : "✦")
                         return root.timeStr
                     }
-                    font.family: (root.activeMode === "wallpapers" && wallpaperModel.count === 0) ? Theme.fontIcon : "Valley Sans"
+                    font.family: (root.activeMode === "wallpapers" && wallpaperModel.count === 0) ? Theme.fontIcon : "JetBrainsMono Nerd Font"
                     font.pixelSize: (controlRing && controlRing.isOpen) ? 15 : 13
                     font.bold: true
                     color: "#0b0e14"
@@ -1390,8 +1405,8 @@ Item {
 
                             Text {
                                 text: LyricsService.trackTitle || "Playing Track"
-                                font.family: "Valley Sans"
-                                font.pixelSize: 12
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(12)
                                 font.bold: true
                                 color: "#FFFFFF"
                                 elide: Text.ElideRight
@@ -1401,8 +1416,8 @@ Item {
 
                             Text {
                                 text: LyricsService.trackArtist || "Unknown Artist"
-                                font.family: "Valley Sans"
-                                font.pixelSize: 10
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(10)
                                 color: root.colFgDim
                                 elide: Text.ElideRight
                                 maximumLineCount: 1
@@ -1434,7 +1449,7 @@ Item {
                     Text {
                         text: LyricsService.formatTime(LyricsService.currentPosition)
                         font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: 9
+                        font.pixelSize: Theme.fontPx(9)
                         color: root.colFgDim
                     }
 
@@ -1541,7 +1556,7 @@ Item {
                     Text {
                         text: (LyricsService.totalLength > 0) ? LyricsService.formatTime(LyricsService.totalLength) : "--:--"
                         font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: 9
+                        font.pixelSize: Theme.fontPx(9)
                         color: root.colFgDim
                     }
                 }
@@ -1590,8 +1605,8 @@ Item {
 
                     Text {
                         text: root.dateCaptionStr
-                        font.family: "Valley Sans"
-                        font.pixelSize: 12
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(12)
                         font.bold: true
                         color: root.colFgDim
                     }
@@ -1623,8 +1638,8 @@ Item {
 
                     Text {
                         text: "♪"
-                        font.family: "Valley Sans"
-                        font.pixelSize: 11
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(11)
                         font.bold: true
                         color: root.colTeal
                     }
@@ -1641,8 +1656,8 @@ Item {
                             }
                             return "No Synced Lyrics"
                         }
-                        font.family: "Valley Sans"
-                        font.pixelSize: 12
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(12)
                         font.bold: true
                         color: (LyricsService.hasLyrics && LyricsService.currentLine.trim().length > 0) ? root.colTeal : root.colFgDim
                         elide: Text.ElideRight
@@ -1667,8 +1682,8 @@ Item {
 
                     Text {
                         text: "♪"
-                        font.family: "Valley Sans"
-                        font.pixelSize: 11
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(11)
                         font.bold: true
                         color: root.colTeal
                     }
@@ -1686,8 +1701,8 @@ Item {
                 Text {
                     anchors.centerIn: parent
                     text: connectivityPicker ? connectivityPicker.captionText : ""
-                    font.family: "Valley Sans"
-                    font.pixelSize: 12
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(12)
                     font.bold: true
                     color: root.colFgDim
                     elide: Text.ElideMiddle
@@ -1707,8 +1722,8 @@ Item {
                 Text {
                     anchors.centerIn: parent
                     text: root.wallpaperCaptionText
-                    font.family: "Valley Sans"
-                    font.pixelSize: 12
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(12)
                     font.bold: true
                     color: root.colFgDim
                     elide: Text.ElideMiddle
@@ -1728,8 +1743,8 @@ Item {
                 Text {
                     anchors.centerIn: parent
                     text: "power actions / tap nucleus or Esc to return"
-                    font.family: "Valley Sans"
-                    font.pixelSize: 12
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(12)
                     font.bold: true
                     color: root.colFgDim
                     elide: Text.ElideMiddle
@@ -1833,8 +1848,8 @@ Item {
                                 id: appSearchInput
                                 Layout.fillWidth: true
                                 Layout.alignment: Qt.AlignVCenter
-                                font.family: "Valley Sans"
-                                font.pixelSize: 14
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(14)
                                 font.weight: Font.Medium
                                 color: "#ffffff"
                                 clip: true
@@ -1843,8 +1858,8 @@ Item {
 
                                 Text {
                                     text: "Search apps..."
-                                    font.family: "Valley Sans"
-                                    font.pixelSize: 14
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(14)
                                     color: Qt.rgba(1, 1, 1, 0.35)
                                     visible: !appSearchInput.text && !appSearchInput.inputMethodComposing
                                     anchors.verticalCenter: parent.verticalCenter
@@ -1985,8 +2000,8 @@ Item {
                                             anchors.centerIn: parent
                                             visible: appIconImg.status !== Image.Ready
                                             text: (model.name && model.name.length > 0) ? model.name.charAt(0).toUpperCase() : "?"
-                                            font.family: "Valley Sans"
-                                            font.pixelSize: 13
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: Theme.fontPx(13)
                                             font.bold: true
                                             color: root.colPurple
                                         }
@@ -2000,8 +2015,8 @@ Item {
                                         Text {
                                             Layout.fillWidth: true
                                             text: model.name || ""
-                                            font.family: "Valley Sans"
-                                            font.pixelSize: 13
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: Theme.fontPx(13)
                                             font.weight: isSelected ? Font.DemiBold : Font.Normal
                                             color: isSelected ? "#ffffff" : Qt.rgba(1, 1, 1, 0.88)
                                             elide: Text.ElideRight
@@ -2011,8 +2026,8 @@ Item {
                                             Layout.fillWidth: true
                                             visible: text.length > 0
                                             text: model.comment || ""
-                                            font.family: "Valley Sans"
-                                            font.pixelSize: 10
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: Theme.fontPx(10)
                                             color: Qt.rgba(1, 1, 1, 0.45)
                                             elide: Text.ElideRight
                                         }
@@ -2051,8 +2066,8 @@ Item {
                                 Text {
                                     Layout.alignment: Qt.AlignHCenter
                                     text: "No applications found"
-                                    font.family: "Valley Sans"
-                                    font.pixelSize: 12
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(12)
                                     color: Qt.rgba(1, 1, 1, 0.4)
                                 }
                             }
@@ -2069,15 +2084,15 @@ Item {
                             spacing: 4
                             Text {
                                 text: "↑↓"
-                                font.family: "Valley Sans"
-                                font.pixelSize: 11
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(11)
                                 font.bold: true
                                 color: Qt.rgba(1, 1, 1, 0.45)
                             }
                             Text {
                                 text: "Navigate"
-                                font.family: "Valley Sans"
-                                font.pixelSize: 10
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(10)
                                 color: Qt.rgba(1, 1, 1, 0.35)
                             }
                         }
@@ -2086,15 +2101,15 @@ Item {
                             spacing: 4
                             Text {
                                 text: "↵"
-                                font.family: "Valley Sans"
-                                font.pixelSize: 11
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(11)
                                 font.bold: true
                                 color: root.colPurple
                             }
                             Text {
                                 text: "Launch"
-                                font.family: "Valley Sans"
-                                font.pixelSize: 10
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(10)
                                 color: Qt.rgba(1, 1, 1, 0.35)
                             }
                         }
@@ -2103,15 +2118,15 @@ Item {
                             spacing: 4
                             Text {
                                 text: "ESC"
-                                font.family: "Valley Sans"
-                                font.pixelSize: 10
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(10)
                                 font.bold: true
                                 color: Qt.rgba(1, 1, 1, 0.45)
                             }
                             Text {
                                 text: "Back"
-                                font.family: "Valley Sans"
-                                font.pixelSize: 10
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(10)
                                 color: Qt.rgba(1, 1, 1, 0.35)
                             }
                         }
@@ -2275,7 +2290,7 @@ Item {
                         Text {
                             visible: model.is_favorite
                             text: "★"
-                            font.pixelSize: 10
+                            font.pixelSize: Theme.fontPx(10)
                             color: "#FFD700"
                             anchors.top: parent.top
                             anchors.right: parent.right
@@ -2405,7 +2420,7 @@ Item {
                         Text {
                             visible: model.is_favorite
                             text: "★"
-                            font.pixelSize: 10
+                            font.pixelSize: Theme.fontPx(10)
                             color: "#FFD700"
                             anchors.top: parent.top
                             anchors.right: parent.right
@@ -2486,8 +2501,8 @@ Item {
                     TextInput {
                         id: wpSearchInput
                         Layout.fillWidth: true
-                        font.family: "Valley Sans"
-                        font.pixelSize: 11
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(11)
                         color: "#ffffff"
                         clip: true
                         selectByMouse: true
@@ -2495,8 +2510,8 @@ Item {
 
                         Text {
                             text: (root.currentWallpaperSource === "local") ? "Filter local wallpapers..." : (root.currentWallpaperSource === "favorites" ? "Filter favorites..." : "Search Wallhaven (toplist)...")
-                            font.family: "Valley Sans"
-                            font.pixelSize: 11
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(11)
                             color: Qt.rgba(1, 1, 1, 0.35)
                             visible: !wpSearchInput.text && !wpSearchInput.inputMethodComposing
                             anchors.verticalCenter: parent.verticalCenter
