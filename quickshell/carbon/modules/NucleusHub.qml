@@ -39,6 +39,8 @@ Item {
 
     /* ── Properties & State ── */
     property bool hubOpen: false
+    property bool isClosingHub: false
+    property bool nucleusExpanded: false
     property string activeMode: "hub" // "hub" | "wallpapers" | "appsearch" | "wifi" | "bluetooth" | "power" | "calendar"
     property string focusedLobe: ""    // "" | "connect" | "launch" | "spaces" | "alerts"
     property bool nightLightOn: false
@@ -85,7 +87,7 @@ Item {
 
     /* External IPC Triggers */
     function toggle() {
-        if (root.hubOpen) {
+        if (root.hubOpen && !root.isClosingHub) {
             close()
         } else {
             open()
@@ -114,16 +116,32 @@ Item {
 
     function open() {
         closeFinishTimer.stop()
+        nucleusShrinkTimer.stop()
+        root.isClosingHub = false
         root.randomizeOrbitalPositions()
         root.hubOpen = true
+        root.nucleusExpanded = true
         root.activeMode = "hub"
         root.focusedLobe = ""
     }
 
     Timer {
-        id: closeFinishTimer
+        id: nucleusShrinkTimer
         interval: 380
+        repeat: false
         onTriggered: {
+            root.nucleusExpanded = false
+            closeFinishTimer.restart()
+        }
+    }
+
+    Timer {
+        id: closeFinishTimer
+        interval: 260
+        repeat: false
+        onTriggered: {
+            root.isClosingHub = false
+            root.hubOpen = false
             root.activeMode = "hub"
             if (connectivityPicker) connectivityPicker.resetPicker()
             root.closeRequested()
@@ -131,16 +149,17 @@ Item {
     }
 
     function close() {
-        if (!root.hubOpen) return
+        if (!root.hubOpen || root.isClosingHub) return
         if (connectivityPicker) connectivityPicker.resetPicker()
-        root.hubOpen = false
+        root.isClosingHub = true
         root.focusedLobe = ""
         root.activeMode = "hub"
         root.closingStarted()
-        closeFinishTimer.restart()
+        nucleusShrinkTimer.restart()
     }
 
     function focusLobe(name) {
+        if (root.isClosingHub) return
         if (!root.hubOpen) root.open()
         root.activeMode = "hub"
         root.focusedLobe = (root.focusedLobe === name) ? "" : name
@@ -170,9 +189,12 @@ Item {
 
     function openWifiMode() {
         closeFinishTimer.stop()
+        nucleusShrinkTimer.stop()
+        root.isClosingHub = false
         if (!root.hubOpen) {
             root.randomizeOrbitalPositions()
             root.hubOpen = true
+            root.nucleusExpanded = true
         }
         root.captureSatellitePositions()
         root.activeMode = "wifi"
@@ -181,9 +203,12 @@ Item {
 
     function openBluetoothMode() {
         closeFinishTimer.stop()
+        nucleusShrinkTimer.stop()
+        root.isClosingHub = false
         if (!root.hubOpen) {
             root.randomizeOrbitalPositions()
             root.hubOpen = true
+            root.nucleusExpanded = true
         }
         root.captureSatellitePositions()
         root.activeMode = "bluetooth"
@@ -203,9 +228,12 @@ Item {
 
     function openPowerMode() {
         closeFinishTimer.stop()
+        nucleusShrinkTimer.stop()
+        root.isClosingHub = false
         if (!root.hubOpen) {
             root.randomizeOrbitalPositions()
             root.hubOpen = true
+            root.nucleusExpanded = true
         }
         root.activeMode = "power"
         root.powerAction = "none"
@@ -217,9 +245,12 @@ Item {
 
     function openCalendarMode() {
         closeFinishTimer.stop()
+        nucleusShrinkTimer.stop()
+        root.isClosingHub = false
         if (!root.hubOpen) {
             root.randomizeOrbitalPositions()
             root.hubOpen = true
+            root.nucleusExpanded = true
         }
         root.activeMode = "calendar"
         root.focusedLobe = ""
@@ -236,9 +267,13 @@ Item {
     }
 
     function openLauncherMode(initialText) {
+        closeFinishTimer.stop()
+        nucleusShrinkTimer.stop()
+        root.isClosingHub = false
         if (!root.hubOpen) {
             root.randomizeOrbitalPositions()
             root.hubOpen = true
+            root.nucleusExpanded = true
         }
         root.activeMode = "appsearch"
         root.focusedLobe = "launch"
@@ -1142,11 +1177,11 @@ Item {
     }
 
     /* ── Animation Progress Constants ── */
-    property real hubProgress: root.hubOpen ? 1.0 : 0.0
+    property real hubProgress: root.nucleusExpanded ? 1.0 : 0.0
     Behavior on hubProgress {
         NumberAnimation {
-            duration: 380
-            easing.type: Easing.OutCubic
+            duration: 260
+            easing.type: Easing.InOutCubic
         }
     }
 
@@ -1163,6 +1198,7 @@ Item {
         MouseArea {
             anchors.fill: parent
             onClicked: {
+                if (root.isClosingHub) return
                 if (root.activeMode === "power") {
                     // In power mode, do not close on background click — only close on Escape key
                     return
@@ -1176,7 +1212,7 @@ Item {
     /* ── Keyboard Handling (Escape to close or back, typing to search) ── */
     Item {
         id: globalKeyHandler
-        focus: root.hubOpen && root.activeMode !== "appsearch" && root.activeMode !== "wifi" && root.activeMode !== "bluetooth" && root.activeMode !== "calendar"
+        focus: root.hubOpen && !root.isClosingHub && root.activeMode !== "appsearch" && root.activeMode !== "wifi" && root.activeMode !== "bluetooth" && root.activeMode !== "calendar"
         Keys.onEscapePressed: {
             if (controlRing && controlRing.isOpen) {
                 controlRing.closeRing()
@@ -1226,8 +1262,8 @@ Item {
             anchors.centerIn: parent
             readonly property real pickerShrink: (connectivityPicker && (root.activeMode === "wifi" || root.activeMode === "bluetooth" || connectivityPicker.transitionProgress > 0.001)) ? Math.max(0.0, 1.0 - connectivityPicker.transitionProgress) : 1.0
             scale: pickerShrink
-            visible: (root.hubProgress > 0.05) && (root.activeMode === "hub" || (connectivityPicker && connectivityPicker.transitionProgress > 0.001)) && !(controlRing && controlRing.isOpen)
-            opacity: (root.activeMode === "hub" && !(controlRing && controlRing.isOpen)) ? (root.hubProgress * pickerShrink) : pickerShrink
+            visible: ((root.hubProgress > 0.05) || root.isClosingHub) && (root.activeMode === "hub" || (connectivityPicker && connectivityPicker.transitionProgress > 0.001)) && !(controlRing && controlRing.isOpen)
+            opacity: (root.activeMode === "hub" && !(controlRing && controlRing.isOpen)) ? ((root.isClosingHub ? 1.0 : root.hubProgress) * pickerShrink) : pickerShrink
             Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
 
             // Lobe template component
@@ -1241,6 +1277,7 @@ Item {
                 property string iconGlyph: ""
                 property string lobeTitle: ""
                 property int staggerDelay: 0
+                property int retractDelay: 0
 
                 Behavior on orbitalRadius { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
                 Behavior on targetAngle { NumberAnimation { duration: 340; easing.type: Easing.OutCubic } }
@@ -1253,7 +1290,7 @@ Item {
 
                 SequentialAnimation {
                     running: true
-                    paused: !(root.hubOpen && !lobeItem.isThisFocused)
+                    paused: !(root.hubOpen && !root.isClosingHub && !lobeItem.isThisFocused)
                     loops: Animation.Infinite
                     PauseAnimation { duration: lobeItem.idlePhaseDelay }
                     ParallelAnimation {
@@ -1296,8 +1333,8 @@ Item {
 
                 // Origin is at center of hub, with gentle radial displacement
                 readonly property real idleRad: targetAngle * (Math.PI / 180.0)
-                x: isThisFocused ? 0 : (idleDistOffset * Math.cos(idleRad))
-                y: isThisFocused ? 0 : (idleDistOffset * Math.sin(idleRad))
+                x: (isThisFocused || root.isClosingHub) ? 0 : (idleDistOffset * Math.cos(idleRad))
+                y: (isThisFocused || root.isClosingHub) ? 0 : (idleDistOffset * Math.sin(idleRad))
                 width: 1
                 height: 1
                 transformOrigin: Item.TopLeft
@@ -1311,47 +1348,61 @@ Item {
                 readonly property real targetScale: isThisFocused ? 0.92 : (isAnyFocused ? (baseScale * 0.45) : baseScale)
                 readonly property real targetAlpha: isThisFocused ? 1.0 : (isAnyFocused ? 0.35 : 1.0)
 
+                property real focusScale: targetScale
+                Behavior on focusScale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+
+                property real focusAlpha: targetAlpha
+                Behavior on focusAlpha { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+
                 property real bloomAnim: 0.0
 
                 Connections {
                     target: root
                     function onHubOpenChanged() {
-                        if (root.hubOpen && root.activeMode === "hub") {
-                            lobeRetractAnim.stop()
+                        if (root.hubOpen && !root.isClosingHub && root.activeMode === "hub") {
+                            lobeRetractSeq.stop()
                             lobeBloomSeq.restart()
-                        } else {
+                        }
+                    }
+                    function onIsClosingHubChanged() {
+                        if (root.isClosingHub) {
                             lobeBloomSeq.stop()
-                            lobeRetractAnim.restart()
+                            lobeRetractSeq.restart()
+                        } else if (root.hubOpen && root.activeMode === "hub") {
+                            lobeRetractSeq.stop()
+                            lobeBloomSeq.restart()
                         }
                     }
                     function onActiveModeChanged() {
-                        if (root.hubOpen && root.activeMode === "hub") {
-                            lobeRetractAnim.stop()
+                        if (root.hubOpen && !root.isClosingHub && root.activeMode === "hub") {
+                            lobeRetractSeq.stop()
                             lobeBloomSeq.restart()
-                        } else {
+                        } else if (root.activeMode !== "hub") {
                             lobeBloomSeq.stop()
-                            lobeRetractAnim.restart()
+                            lobeRetractSeq.restart()
                         }
                     }
                 }
 
-                NumberAnimation {
-                    id: lobeRetractAnim
-                    target: lobeItem
-                    property: "bloomAnim"
-                    to: 0.0
-                    duration: 260
-                    easing.type: Easing.InCubic
+                SequentialAnimation {
+                    id: lobeRetractSeq
+                    PauseAnimation { duration: lobeItem.retractDelay }
+                    NumberAnimation {
+                        target: lobeItem
+                        property: "bloomAnim"
+                        to: 0.0
+                        duration: 240
+                        easing.type: Easing.InCubic
+                    }
                 }
 
                 SequentialAnimation {
                     id: lobeBloomSeq
-                    running: root.hubOpen && root.activeMode === "hub"
+                    running: root.hubOpen && !root.isClosingHub && root.activeMode === "hub"
                     PauseAnimation { duration: lobeItem.staggerDelay }
                     NumberAnimation {
                         target: lobeItem
                         property: "bloomAnim"
-                        from: 0.0
                         to: 1.0
                         duration: 340
                         easing.type: Easing.OutCubic
@@ -1359,10 +1410,13 @@ Item {
                 }
 
                 rotation: targetAngle + (isThisFocused ? 0.0 : idleAngleOffset)
-                scale: targetScale * bloomAnim
-                opacity: targetAlpha * bloomAnim
-                Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-                Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                scale: focusScale * bloomAnim
+                opacity: {
+                    if (root.isClosingHub) {
+                        return focusAlpha * Math.min(1.0, bloomAnim * 3.5)
+                    }
+                    return focusAlpha * bloomAnim
+                }
 
                 property int hoveredSatellitesCount: 0
                 readonly property bool isClusterHovered: lobeMouse.containsMouse || bridgeMouse.containsMouse || (hoveredSatellitesCount > 0)
@@ -1461,7 +1515,7 @@ Item {
                         cursorShape: Qt.PointingHandCursor
                         onEntered: {
                             unfocusDebounceTimer.stop()
-                            if (root.hubOpen && (root.activeMode === "hub" || root.activeMode === "")) {
+                            if (root.hubOpen && !root.isClosingHub && (root.activeMode === "hub" || root.activeMode === "")) {
                                 root.focusedLobe = lobeItem.lobeId
                             }
                         }
@@ -1471,7 +1525,9 @@ Item {
                             }
                         }
                         onClicked: {
-                            root.focusLobe(lobeItem.lobeId)
+                            if (!root.isClosingHub) {
+                                root.focusLobe(lobeItem.lobeId)
+                            }
                         }
                     }
                 }
@@ -1598,6 +1654,7 @@ Item {
                 targetAngle: 195
                 baseScale: 1.00
                 staggerDelay: 0
+                retractDelay: 135
                 idleDuration: 5200
                 idlePhaseDelay: 0
                 lobeColor: root.colTeal
@@ -1648,6 +1705,7 @@ Item {
                 targetAngle: 240
                 baseScale: 0.88
                 staggerDelay: 90
+                retractDelay: 90
                 idleDuration: 6200
                 idlePhaseDelay: 1200
                 lobeColor: root.colPurple
@@ -1697,6 +1755,7 @@ Item {
                 targetAngle: 300
                 baseScale: 1.05
                 staggerDelay: 180
+                retractDelay: 45
                 idleDuration: 5600
                 idlePhaseDelay: 2400
                 lobeColor: root.colCoral
@@ -1738,6 +1797,7 @@ Item {
                 targetAngle: 345
                 baseScale: 0.90
                 staggerDelay: 270
+                retractDelay: 0
                 idleDuration: 6800
                 idlePhaseDelay: 3600
                 lobeColor: root.colAmber
@@ -1796,6 +1856,7 @@ Item {
             anchors.centerIn: parent
             visible: root.hubProgress < 0.65 && root.activeMode === "hub"
             opacity: Math.max(0.0, Math.min(1.0, (0.65 - root.hubProgress) / 0.65))
+            Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.InOutCubic } }
 
             // Ring 1 (Inner, 2 electrons)
             Rectangle {
@@ -1874,7 +1935,7 @@ Item {
                     return 16.0
                 }
                 if (root.activeMode === "power") return 44.0
-                return root.hubOpen ? 58 : 16
+                return root.nucleusExpanded ? 58 : 16
             }
             height: width
             z: 10
@@ -1886,20 +1947,20 @@ Item {
                 return (root.activeMode === "hub" || root.activeMode === "power") ? 1.0 : 0.0
             }
             Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-            Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+            Behavior on width { NumberAnimation { duration: 240; easing.type: Easing.InOutCubic } }
 
             // Glowing Outer Halo (matches lockscreen ValenceDot halo)
             Rectangle {
                 id: nucleusHalo
                 z: 0
                 anchors.centerIn: parent
-                width: nucleusCore.width + (root.hubOpen ? 24 : 10)
+                width: nucleusCore.width + (root.nucleusExpanded ? 24 : 10)
                 height: width
                 radius: width / 2
                 color: Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.42)
-                opacity: (root.activeMode === "power") ? 0.0 : (root.hubOpen ? 0.70 : 0.45)
-                Behavior on opacity { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
-                Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+                opacity: (root.activeMode === "power") ? 0.0 : (root.nucleusExpanded ? 0.70 : 0.45)
+                Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+                Behavior on width { NumberAnimation { duration: 240; easing.type: Easing.InOutCubic } }
             }
 
             // Siri-style Audio Visualizer (Liquid Halo & Selectable Designs)
@@ -1989,8 +2050,8 @@ Item {
                 radius: width / 2
                 color: "#FFFFFF"
                 border.color: (root.activeMode === "power") ? "transparent" : root.colTeal
-                border.width: (root.activeMode === "power") ? 0 : (root.hubOpen ? 2.4 : 1.5)
-                Behavior on border.width { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+                border.width: (root.activeMode === "power") ? 0 : (root.nucleusExpanded ? 2.4 : 1.5)
+                Behavior on border.width { NumberAnimation { duration: 240; easing.type: Easing.InOutCubic } }
 
                 // Time readout inside disc when open (fades out 0-500ms on action)
                 Text {
@@ -2026,7 +2087,7 @@ Item {
 
                     onPressed: {
                         root.justOpenedPower = false
-                        if (root.activeMode === "hub" || (root.activeMode === "power" && root.powerAction === "none")) {
+                        if (!root.isClosingHub && (root.activeMode === "hub" || (root.activeMode === "power" && root.powerAction === "none"))) {
                             root.isPressingNucleus = true
                         }
                     }
@@ -2038,6 +2099,7 @@ Item {
                     }
                     onClicked: {
                         root.isPressingNucleus = false
+                        if (root.isClosingHub) return
                         if (root.justOpenedPower) {
                             root.justOpenedPower = false
                             return
