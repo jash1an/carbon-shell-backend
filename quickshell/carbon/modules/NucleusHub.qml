@@ -10,6 +10,7 @@ import Quickshell.Services.Pipewire
 import Quickshell.Services.UPower
 import Quickshell.Services.Notifications
 import "../Singletons"
+import "../components"
 import "visualizers"
 
 /**
@@ -45,6 +46,14 @@ Item {
     property string focusedLobe: ""    // "" | "connect" | "launch" | "spaces" | "alerts"
     property bool nightLightOn: false
     property bool justOpenedPower: false
+    property bool notifPanelOpen: false
+
+    function toggleNotifPanel() {
+        root.notifPanelOpen = !root.notifPanelOpen
+        if (root.notifPanelOpen) {
+            root.focusedLobe = "alerts"
+        }
+    }
 
     readonly property string nightScript: {
         const home = Quickshell.env("HOME") || ""
@@ -127,7 +136,7 @@ Item {
 
     Timer {
         id: nucleusShrinkTimer
-        interval: 380
+        interval: 400
         repeat: false
         onTriggered: {
             root.nucleusExpanded = false
@@ -150,6 +159,7 @@ Item {
 
     function close() {
         if (!root.hubOpen || root.isClosingHub) return
+        root.notifPanelOpen = false
         if (connectivityPicker) connectivityPicker.resetPicker()
         root.isClosingHub = true
         root.focusedLobe = ""
@@ -163,6 +173,12 @@ Item {
         if (!root.hubOpen) root.open()
         root.activeMode = "hub"
         root.focusedLobe = (root.focusedLobe === name) ? "" : name
+    }
+
+    onFocusedLobeChanged: {
+        if (root.focusedLobe !== "alerts") {
+            root.notifPanelOpen = false
+        }
     }
 
     function captureSatellitePositions() {
@@ -383,6 +399,29 @@ Item {
                 if (cfg.power.enableLogout !== undefined) root.powerEnableLogout = Boolean(cfg.power.enableLogout)
             }
         } catch (e) {}
+    }
+
+    /* ── Blank Tile Customization Configuration ── */
+    readonly property string blankTileConfigFile: {
+        var envDir = Quickshell.env("CARBON_CONFIG_DIR")
+        if (envDir && envDir.length > 0) return envDir + "/carbon-blank-tile.json"
+        return (Quickshell.env("HOME") || "") + "/.config/carbon/carbon-blank-tile.json"
+    }
+
+    property var blankTileConfig: ({ enabled: false, cropPath: "", opacity: 1.0, timestamp: 0 })
+
+    FileView {
+        id: blankTileConfigWatcher
+        path: root.blankTileConfigFile
+        watchChanges: true
+        printErrors: false
+        onFileChanged: blankTileConfigWatcher.reload()
+        onLoaded: {
+            try {
+                const raw = blankTileConfigWatcher.text().trim()
+                if (raw) root.blankTileConfig = JSON.parse(raw)
+            } catch (e) {}
+        }
     }
 
     /* ── Power State & Action Variables ── */
@@ -851,6 +890,9 @@ Item {
 
     /* ── Dynamic Screen Dimmer Scrim Opacity ── */
     readonly property real effectiveScrimOpacity: {
+        if (root.notifPanelOpen) {
+            return 0.50
+        }
         if (root.activeMode !== "power" || root.powerAction === "none") {
             return root.hubProgress * 0.42
         }
@@ -1168,13 +1210,7 @@ Item {
     }
 
     // 4. Notifications
-    property int unreadNotifCount: 0
-    Connections {
-        target: NotificationServer
-        function onNotification(notif) {
-            root.unreadNotifCount += 1
-        }
-    }
+    readonly property int unreadNotifCount: NotificationService.unreadCount
 
     /* ── Animation Progress Constants ── */
     property real hubProgress: root.nucleusExpanded ? 1.0 : 0.0
@@ -1199,6 +1235,10 @@ Item {
             anchors.fill: parent
             onClicked: {
                 if (root.isClosingHub) return
+                if (root.notifPanelOpen) {
+                    root.notifPanelOpen = false
+                    return
+                }
                 if (root.activeMode === "power") {
                     // In power mode, do not close on background click — only close on Escape key
                     return
@@ -1214,7 +1254,9 @@ Item {
         id: globalKeyHandler
         focus: root.hubOpen && !root.isClosingHub && root.activeMode !== "appsearch" && root.activeMode !== "wifi" && root.activeMode !== "bluetooth" && root.activeMode !== "calendar"
         Keys.onEscapePressed: {
-            if (controlRing && controlRing.isOpen) {
+            if (root.notifPanelOpen) {
+                root.notifPanelOpen = false
+            } else if (controlRing && controlRing.isOpen) {
                 controlRing.closeRing()
             } else if (root.activeMode === "wifi" || root.activeMode === "bluetooth") {
                 if (connectivityPicker) connectivityPicker.goBack()
@@ -1383,6 +1425,11 @@ Item {
                     }
                 }
 
+                // Dynamic distance: on closing, the satellites physically travel straight into the central nucleus
+                readonly property real currentRadius: root.isClosingHub
+                    ? (lobeItem.orbitalRadius * bloomAnim)
+                    : lobeItem.orbitalRadius
+
                 SequentialAnimation {
                     id: lobeRetractSeq
                     PauseAnimation { duration: lobeItem.retractDelay }
@@ -1390,7 +1437,7 @@ Item {
                         target: lobeItem
                         property: "bloomAnim"
                         to: 0.0
-                        duration: 240
+                        duration: 250
                         easing.type: Easing.InCubic
                     }
                 }
@@ -1409,10 +1456,10 @@ Item {
                 }
 
                 rotation: targetAngle + (isThisFocused ? 0.0 : idleAngleOffset)
-                scale: focusScale * bloomAnim
+                scale: focusScale * (root.isClosingHub ? (0.68 + 0.32 * bloomAnim) : bloomAnim)
                 opacity: {
                     if (root.isClosingHub) {
-                        return focusAlpha * Math.min(1.0, bloomAnim * 3.5)
+                        return focusAlpha * (bloomAnim > 0.04 ? 1.0 : (bloomAnim * 25.0))
                     }
                     return focusAlpha * bloomAnim
                 }
@@ -1425,6 +1472,9 @@ Item {
                     interval: 180
                     repeat: false
                     onTriggered: {
+                        if (lobeItem.lobeId === "alerts" && root.notifPanelOpen) {
+                            return
+                        }
                         if (!lobeItem.isClusterHovered && root.focusedLobe === lobeItem.lobeId && (root.activeMode === "hub" || root.activeMode === "")) {
                             root.focusedLobe = ""
                         }
@@ -1450,7 +1500,7 @@ Item {
                 // ── Hit bridge keeping hover active when traversing between lobe button and satellites ──
                 Item {
                     id: lobeHitBridge
-                    x: lobeItem.orbitalRadius - 30
+                    x: lobeItem.currentRadius - 30
                     y: -95
                     width: 145
                     height: 190
@@ -1479,7 +1529,7 @@ Item {
                 // ── 48px Standalone Round Icon Button at dynamic orbitalRadius ──
                 Item {
                     id: lobeTipButton
-                    x: lobeItem.orbitalRadius - 24
+                    x: lobeItem.currentRadius - 24
                     y: -24
                     width: 48
                     height: 48
@@ -1504,6 +1554,56 @@ Item {
                             font.pixelSize: 22
                             color: lobeItem.lobeColor
                             rotation: -lobeItem.rotation
+                        }
+
+                        // Alerts Lobe Unread Count Badge (top-right, coral #f2705f, 2px dark border)
+                        Rectangle {
+                            visible: lobeItem.lobeId === "alerts" && NotificationService.unreadCount > 0
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            anchors.topMargin: -4
+                            anchors.rightMargin: -4
+                            width: Math.max(18, badgeText.implicitWidth + 8)
+                            height: 18
+                            radius: 9
+                            color: "#f2705f"
+                            border.color: root.colBgDark
+                            border.width: 2.0
+                            rotation: -lobeItem.rotation
+
+                            Text {
+                                id: badgeText
+                                anchors.centerIn: parent
+                                text: NotificationService.unreadCount > 9 ? "9+" : String(NotificationService.unreadCount)
+                                font.family: "Valley Sans"
+                                font.pixelSize: 10
+                                font.bold: true
+                                color: "#ffffff"
+                            }
+                        }
+
+                        // Alerts Lobe DND Moon Mark (bottom-left, lavender #c9d0ff on dark circle)
+                        Rectangle {
+                            visible: lobeItem.lobeId === "alerts" && NotificationService.dnd
+                            anchors.bottom: parent.bottom
+                            anchors.left: parent.left
+                            anchors.bottomMargin: -3
+                            anchors.leftMargin: -3
+                            width: 16
+                            height: 16
+                            radius: 8
+                            color: root.colBgDark
+                            border.color: "#c9d0ff"
+                            border.width: 1.5
+                            rotation: -lobeItem.rotation
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "nightlight"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: 10
+                                color: "#c9d0ff"
+                            }
                         }
                     }
 
@@ -1537,7 +1637,7 @@ Item {
                    ══════════════════════════════════════════════════════════════ */
                 Item {
                     id: satellitesContainer
-                    x: lobeItem.orbitalRadius
+                    x: lobeItem.currentRadius
                     y: 0
                     visible: opacity > 0.005
                     opacity: lobeItem.isThisFocused ? 1.0 : 0.0
@@ -1577,15 +1677,28 @@ Item {
                             Rectangle {
                                 anchors.fill: parent
                                 radius: width / 2
-                                color: modelData.isActive 
-                                       ? Qt.rgba(lobeItem.lobeColor.r, lobeItem.lobeColor.g, lobeItem.lobeColor.b, 0.36)
-                                       : (satMouse.containsMouse 
-                                          ? Qt.rgba(lobeItem.lobeColor.r, lobeItem.lobeColor.g, lobeItem.lobeColor.b, 0.24)
-                                          : Qt.rgba(root.colBgDark.r, root.colBgDark.g, root.colBgDark.b, 0.95))
-                                border.color: lobeItem.lobeColor
-                                border.width: 1.8
+                                color: {
+                                    if (modelData.customBg !== undefined) return modelData.customBg
+                                    if (modelData.isActive) return Qt.rgba(lobeItem.lobeColor.r, lobeItem.lobeColor.g, lobeItem.lobeColor.b, 0.36)
+                                    if (satMouse.containsMouse) return Qt.rgba(lobeItem.lobeColor.r, lobeItem.lobeColor.g, lobeItem.lobeColor.b, 0.24)
+                                    return Qt.rgba(root.colBgDark.r, root.colBgDark.g, root.colBgDark.b, 0.95)
+                                }
+                                border.color: (modelData.customBorder !== undefined) ? modelData.customBorder : lobeItem.lobeColor
+                                border.width: (modelData.customBorderWidth !== undefined) ? modelData.customBorderWidth : 1.8
                                 scale: satMouse.containsMouse ? 1.14 : 1.0
                                 Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+
+                                // Soft outer glow/ring when satellite has active ring (e.g. open panel)
+                                Rectangle {
+                                    visible: modelData.hasRing === true
+                                    anchors.centerIn: parent
+                                    width: parent.width + 8
+                                    height: parent.height + 8
+                                    radius: width / 2
+                                    color: "transparent"
+                                    border.color: Qt.rgba(1, 1, 1, 0.35)
+                                    border.width: 1.5
+                                }
 
                                 Image {
                                     id: satAppIcon
@@ -1606,7 +1719,7 @@ Item {
                                     font.family: modelData.isFontIcon ? Theme.fontIcon : "JetBrainsMono Nerd Font"
                                     font.pixelSize: modelData.isFontIcon ? 18 : 14
                                     font.bold: true
-                                    color: lobeItem.lobeColor
+                                    color: (modelData.customColor !== undefined) ? modelData.customColor : lobeItem.lobeColor
                                     rotation: -lobeItem.rotation
                                 }
 
@@ -1820,15 +1933,19 @@ Item {
 
                 satelliteModel: [
                     {
-                        icon: "notifications",
+                        // Moon: toggles DND
+                        icon: "nightlight",
                         isFontIcon: true,
-                        isActive: false,
-                        badgeCount: root.unreadNotifCount,
+                        isActive: NotificationService.dnd,
+                        customBg: NotificationService.dnd ? "#c9d0ff" : undefined,
+                        customColor: NotificationService.dnd ? "#0f1416" : undefined,
+                        customBorder: NotificationService.dnd ? "#c9d0ff" : undefined,
                         action: function() {
-                            root.unreadNotifCount = 0
+                            NotificationService.toggleDnd()
                         }
                     },
                     {
+                        // Calendar
                         icon: "calendar_month",
                         isFontIcon: true,
                         isActive: root.activeMode === "calendar",
@@ -1837,19 +1954,26 @@ Item {
                         }
                     },
                     {
-                        icon: "nightlight",
-                        isFontIcon: true,
-                        isActive: root.nightLightOn,
-                        action: function() {
-                            root.toggleNightLight()
-                        }
-                    },
-                    {
+                        // Tasks
                         icon: "content_paste",
                         isFontIcon: true,
                         isActive: false,
                         action: function() {
                             Quickshell.execDetached(["sh", "-c", "cliphist list | fuzzel -d | cliphist decode | wl-copy || true"])
+                        }
+                    },
+                    {
+                        // Small bell: toggles notification panel
+                        icon: "notifications",
+                        isFontIcon: true,
+                        isActive: root.notifPanelOpen,
+                        customBg: root.notifPanelOpen ? "#ffffff" : undefined,
+                        customColor: root.notifPanelOpen ? "#0f1416" : undefined,
+                        customBorder: root.notifPanelOpen ? "#ffffff" : undefined,
+                        hasRing: root.notifPanelOpen,
+                        badgeCount: root.notifPanelOpen ? 0 : root.unreadNotifCount,
+                        action: function() {
+                            root.toggleNotifPanel()
                         }
                     }
                 ]
@@ -2790,8 +2914,10 @@ Item {
             visible: root.hubOpen && root.activeMode === "appsearch"
             opacity: (root.hubOpen && root.activeMode === "appsearch") ? 1.0 : 0.0
             Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-            width: 380
-            height: 460
+            width: 440
+            readonly property bool isSearchEmpty: !appSearchInput.text || appSearchInput.text.trim().length === 0
+            height: isSearchEmpty ? 344 : 460
+            Behavior on height { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
             // Consume clicks inside the search container so clicking on empty areas doesn't close the hub
             MouseArea {
@@ -2945,11 +3071,291 @@ Item {
                         }
                     }
 
+                    /* ── Idle State Container: Top Black Tile + Bottom Music Card ── */
+                    ColumnLayout {
+                        id: idleContainer
+                        Layout.fillWidth: true
+                        spacing: 8
+                        visible: appSearchContainer.isSearchEmpty
+
+                        /* 1. Top Black Tile (Empty container for user personalization) */
+                        Rectangle {
+                            id: blackTile
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 86
+                            radius: 14
+                            color: "#111116"
+                            border.color: Qt.rgba(1, 1, 1, 0.08)
+                            border.width: 1
+                            clip: true
+
+                            Image {
+                                id: blackTileImg
+                                anchors.fill: parent
+                                fillMode: Image.PreserveAspectCrop
+                                source: (root.blankTileConfig && root.blankTileConfig.enabled && root.blankTileConfig.cropPath)
+                                        ? ("file://" + root.blankTileConfig.cropPath + "?t=" + (root.blankTileConfig.timestamp || 0))
+                                        : ""
+                                visible: status === Image.Ready && source != ""
+                                opacity: (root.blankTileConfig && root.blankTileConfig.opacity !== undefined) ? root.blankTileConfig.opacity : 1.0
+                            }
+                        }
+
+                        /* 2. Bottom Music Overlay Card (Exact Middle Bar Notch Mode Layout) */
+                        Rectangle {
+                            id: musicCard
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 166
+                            radius: 14
+                            color: Qt.rgba(0.08, 0.09, 0.12, 0.95)
+                            border.color: Qt.rgba(root.colPurple.r, root.colPurple.g, root.colPurple.b, 0.35)
+                            border.width: 1
+                            clip: true
+
+                            // Subtle blurred/dimmed album art ambient background
+                            Image {
+                                anchors.fill: parent
+                                source: LyricsService.artUrl
+                                fillMode: Image.PreserveAspectCrop
+                                opacity: 0.14
+                                visible: status === Image.Ready && source != ""
+                            }
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                spacing: 6
+
+                                /* Header: Device / App Badge */
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    Text {
+                                        text: "music_note"
+                                        font.family: Theme.fontIcon
+                                        font.pixelSize: 13
+                                        color: root.colTeal
+                                    }
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: {
+                                            if (Pipewire.defaultAudioSink && Pipewire.defaultAudioSink.description && Pipewire.defaultAudioSink.description.length > 0)
+                                                return Pipewire.defaultAudioSink.description
+                                            if (LyricsService.activePlayer && LyricsService.activePlayer.identity && LyricsService.activePlayer.identity.length > 0)
+                                                return LyricsService.activePlayer.identity
+                                            return "Audio Output"
+                                        }
+                                        font.family: "Valley Sans"
+                                        font.pixelSize: 10
+                                        font.weight: Font.DemiBold
+                                        color: Qt.rgba(1, 1, 1, 0.78)
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                /* Track Title & Artist + Album Art Thumbnail */
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 10
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: LyricsService.hasTrack ? LyricsService.trackTitle : "No Media Playing"
+                                            font.family: "Valley Sans"
+                                            font.pixelSize: 13
+                                            font.bold: true
+                                            color: "#ffffff"
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: LyricsService.hasTrack ? (LyricsService.trackArtist || "Unknown Artist") : "Waiting for playback..."
+                                            font.family: "Valley Sans"
+                                            font.pixelSize: 10
+                                            color: root.colTeal
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+
+                                    // Album Art Thumbnail
+                                    Rectangle {
+                                        Layout.preferredWidth: 42
+                                        Layout.preferredHeight: 42
+                                        radius: 8
+                                        color: Qt.rgba(0.12, 0.14, 0.18, 0.9)
+                                        border.color: Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.35)
+                                        border.width: 1
+                                        clip: true
+
+                                        Image {
+                                            anchors.fill: parent
+                                            source: LyricsService.artUrl
+                                            fillMode: Image.PreserveAspectCrop
+                                            visible: status === Image.Ready && source != ""
+                                        }
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "music_note"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: 18
+                                            color: LyricsService.isPlaying ? root.colTeal : Qt.rgba(1, 1, 1, 0.45)
+                                            visible: !LyricsService.artUrl || LyricsService.artUrl === ""
+                                        }
+                                    }
+                                }
+
+                                /* Animated Wavy Visualizer & Interactive Progress Bar */
+                                WavySeekBar {
+                                    Layout.fillWidth: true
+                                    waveHeight: 14
+                                    barHeight: 6
+                                    timeLabelSize: 8
+                                    accentColor: root.colTeal
+                                    accentLitColor: root.colTeal
+                                }
+
+                                /* Transport Controls Row (No lyrics!) */
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Layout.alignment: Qt.AlignHCenter
+
+                                    Item { Layout.fillWidth: true }
+
+                                    // Shuffle
+                                    Rectangle {
+                                        Layout.preferredWidth: 26
+                                        Layout.preferredHeight: 26
+                                        radius: 13
+                                        color: shufHov.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "shuffle"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: 14
+                                            color: shufHov.hovered ? root.colTeal : Qt.rgba(1, 1, 1, 0.65)
+                                        }
+                                        HoverHandler { id: shufHov }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: Quickshell.execDetached(["playerctl", "shuffle", "Toggle"])
+                                        }
+                                    }
+
+                                    Item { Layout.preferredWidth: 10 }
+
+                                    // Previous
+                                    Rectangle {
+                                        Layout.preferredWidth: 28
+                                        Layout.preferredHeight: 28
+                                        radius: 14
+                                        color: prevHov.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "skip_previous"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: 18
+                                            color: prevHov.hovered ? root.colTeal : "#ffffff"
+                                        }
+                                        HoverHandler { id: prevHov }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: LyricsService.skipPrevious()
+                                        }
+                                    }
+
+                                    Item { Layout.preferredWidth: 8 }
+
+                                    // Play / Pause (Distinct Pill)
+                                    Rectangle {
+                                        Layout.preferredWidth: 36
+                                        Layout.preferredHeight: 36
+                                        radius: 18
+                                        color: root.colTeal
+                                        scale: playHov.hovered ? 1.06 : 1.0
+                                        Behavior on scale { NumberAnimation { duration: 120 } }
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: LyricsService.isPlaying ? "pause" : "play_arrow"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: 20
+                                            color: "#0b0e14"
+                                        }
+                                        HoverHandler { id: playHov }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: LyricsService.togglePlaying()
+                                        }
+                                    }
+
+                                    Item { Layout.preferredWidth: 8 }
+
+                                    // Next
+                                    Rectangle {
+                                        Layout.preferredWidth: 28
+                                        Layout.preferredHeight: 28
+                                        radius: 14
+                                        color: nextHov.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "skip_next"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: 18
+                                            color: nextHov.hovered ? root.colTeal : "#ffffff"
+                                        }
+                                        HoverHandler { id: nextHov }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: LyricsService.skipNext()
+                                        }
+                                    }
+
+                                    Item { Layout.preferredWidth: 10 }
+
+                                    // Loop
+                                    Rectangle {
+                                        Layout.preferredWidth: 26
+                                        Layout.preferredHeight: 26
+                                        radius: 13
+                                        color: loopHov.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "repeat"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: 14
+                                            color: loopHov.hovered ? root.colTeal : Qt.rgba(1, 1, 1, 0.65)
+                                        }
+                                        HoverHandler { id: loopHov }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: Quickshell.execDetached(["playerctl", "loop", "Track"])
+                                        }
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+                                }
+                            }
+                        }
+                    }
+
                     // 2. Category Filter Tabs (Apps | Clipboard | Commands)
                     RowLayout {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 24
                         spacing: 6
+                        visible: !appSearchContainer.isSearchEmpty
 
                         Repeater {
                             model: [
@@ -3081,6 +3487,7 @@ Item {
                     Item {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
+                        visible: !appSearchContainer.isSearchEmpty
 
                         ListView {
                             id: appListView
@@ -3235,6 +3642,7 @@ Item {
                         Layout.fillWidth: true
                         Layout.alignment: Qt.AlignHCenter
                         spacing: 12
+                        visible: !appSearchContainer.isSearchEmpty
 
                         RowLayout {
                             spacing: 3
@@ -3610,6 +4018,71 @@ Item {
         open: root.hubOpen && root.activeMode === "calendar"
         onCloseRequested: {
             root.activeMode = "hub"
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       PHASE 5.6: Modular Notification Panel (Stage 3 Mount)
+       Positioned ~60px to the left of the small bell sub-lobe,
+       constrained with >= 24px screen margin.
+       ══════════════════════════════════════════════════════════════════════ */
+    readonly property point bellSatelliteScreenPos: {
+        if (!lobeAlerts) return Qt.point(root.width / 2, root.height / 2)
+        // Hub center coordinates on root screen
+        const hubX = root.width / 2
+        const hubY = (root.height / 2) + hubCenter.anchors.verticalCenterOffset
+        // Lobe rotation
+        const lobeDeg = lobeAlerts.rotation
+        const lobeRad = lobeDeg * (Math.PI / 180.0)
+        // Small bell satellite is index 3 (angle: 72°)
+        const satRad = 72.0 * (Math.PI / 180.0)
+        const satR = 66.0
+        // Satellite coordinates in lobe's local frame
+        const localX = lobeAlerts.orbitalRadius + (satR * Math.cos(satRad))
+        const localY = satR * Math.sin(satRad)
+        // Rotate by lobe angle
+        const worldX = hubX + (localX * Math.cos(lobeRad) - localY * Math.sin(lobeRad))
+        const worldY = hubY + (localX * Math.sin(lobeRad) + localY * Math.cos(lobeRad))
+        return Qt.point(worldX, worldY)
+    }
+
+    NotificationPanel {
+        id: notifPanel
+        z: 90
+        open: root.notifPanelOpen && root.hubOpen && !root.isClosingHub
+        visible: opacity > 0.005
+
+        property real panelProgress: open ? 1.0 : 0.0
+        Behavior on panelProgress {
+            NumberAnimation {
+                duration: 260
+                easing.type: Easing.OutBack
+                easing.overshoot: 1.15
+            }
+        }
+
+        opacity: Math.min(1.0, panelProgress * 1.4)
+        scale: 0.88 + (0.12 * panelProgress)
+
+        // Placement: panel's right edge is ~60px left of small bell sub-lobe.
+        // Clamped to at least 24px screen margin. If not enough space on left, flip to right.
+        readonly property real targetRightX: root.bellSatelliteScreenPos.x - 60
+        readonly property real computedX: {
+            if (targetRightX - width < 24) {
+                // If overflow on left, check right side of bell
+                const altX = root.bellSatelliteScreenPos.x + 60
+                return Math.min(root.width - width - 24, Math.max(24, altX))
+            }
+            return Math.max(24, targetRightX - width)
+        }
+        readonly property real computedY: Math.max(24, Math.min(root.height - height - 24, root.bellSatelliteScreenPos.y - (height / 2)))
+
+        // Gentle 14px slide towards small bell origin on open
+        x: computedX + ((1.0 - panelProgress) * 14.0)
+        y: computedY
+
+        onCloseRequested: {
+            root.notifPanelOpen = false
         }
     }
 }

@@ -973,9 +973,20 @@ ShellRoot {
      * disabled in Hyprland) and feeds the top-right bar. Exactly one. */
     NotificationServer {
         id: notificationServer
+        actionsSupported: true
+        bodySupported: true
+        bodyHyperlinksSupported: true
+        bodyImagesSupported: true
+        bodyMarkupSupported: true
         onNotification: notification => {
             notification.tracked = true
         }
+    }
+
+    Binding {
+        target: NotificationService
+        property: "server"
+        value: notificationServer
     }
 
     /* External trigger (keybinds): Super+W brokered to the launcher in
@@ -2439,6 +2450,13 @@ ShellRoot {
             }
             brightnessActionRequested(action, wasClosed)
         }
+        signal notifPanelRequested()
+        function openNotificationPanel() {
+            isClosing = false
+            hubOpen = true
+            openRequested()
+            notifPanelRequested()
+        }
     }
 
     Variants {
@@ -2697,6 +2715,10 @@ ShellRoot {
                         else if (action === "down") nucleusHubItemInstance.stepBrightness(-0.05)
                         else if (action === "open") nucleusHubItemInstance.openBrightnessMode()
                     }
+                    function onNotifPanelRequested() {
+                        nucleusHubItemInstance.notifPanelOpen = true
+                        nucleusHubItemInstance.focusedLobe = "alerts"
+                    }
                 }
             }
         }
@@ -2860,8 +2882,9 @@ ShellRoot {
             SpotlightModal {
                 id: spotlightItem
                 anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: 0
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.verticalCenterOffset: -40
+                barMode: root.barMode
                 open: root.spotlightOpen
                 shellOpacity: root.shellOpacity
                 onCloseRequested: root.closeSpotlight()
@@ -3696,9 +3719,52 @@ ShellRoot {
 
             WorkspaceOsd {
                 id: wsOsdItem
-                anchors.centerIn: parent
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top
+                anchors.topMargin: 20
                 barMode: root.barMode
                 onActiveChanged: root.workspaceOsdActive = wsOsdItem.active
+            }
+        }
+    }
+
+    /* ── Notification Toast Overlay Window (Top-Right) ───────────────── */
+    Variants {
+        model: Quickshell.screens
+
+        PanelWindow {
+            id: toastWindow
+            required property var modelData
+
+            screen: modelData
+            color: "transparent"
+            WlrLayershell.namespace: "carbon-notification-toast"
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+            exclusionMode: ExclusionMode.Ignore
+            aboveWindows: true
+
+            anchors {
+                top: true
+                right: true
+            }
+
+            margins {
+                top: 24
+                right: 24
+            }
+
+            implicitWidth: toastItemComp.implicitWidth
+            implicitHeight: toastItemComp.implicitHeight
+            visible: toastItemComp.active || toastItemComp.opacity > 0.005
+
+            NotificationToast {
+                id: toastItemComp
+                onOpenPanelRequested: {
+                    if (root.nucleusHubItem) {
+                        root.nucleusHubItem.openNotificationPanel()
+                    }
+                }
             }
         }
     }

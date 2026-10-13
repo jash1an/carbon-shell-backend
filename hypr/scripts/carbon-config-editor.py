@@ -21,6 +21,25 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, Gio, GLib, Gdk
+import time
+
+try:
+    from carbon_tile_cropper import (
+        ImageCropDialog,
+        BLANK_TILE_CONFIG_PATH,
+        BLANK_TILE_CROP_PATH,
+        BLANK_TILE_HYPR_PATH,
+        BLANK_TILE_HYPR_CROP_PATH
+    )
+except ImportError:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from carbon_tile_cropper import (
+        ImageCropDialog,
+        BLANK_TILE_CONFIG_PATH,
+        BLANK_TILE_CROP_PATH,
+        BLANK_TILE_HYPR_PATH,
+        BLANK_TILE_HYPR_CROP_PATH
+    )
 
 # ── Configuration Paths (Isolated Carbon Runtime with Hypr fallback) ────
 CONFIG_DIR = os.environ.get("CARBON_CONFIG_DIR", os.path.expanduser("~/.config/carbon"))
@@ -720,7 +739,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title="Settings")
         self.set_default_size(880, 580)
-        self.set_size_request(760, 480)
+        self.set_size_request(600, 440)
 
         # Theme & Accent
         theme = read_json(THEME_PATH, {})
@@ -776,6 +795,14 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         })
         if "provider" not in self.wallpaper_source_cfg:
             self.wallpaper_source_cfg["provider"] = "unsplash"
+        self.tile_cfg = read_json(BLANK_TILE_CONFIG_PATH, {
+            "enabled": False,
+            "imagePath": "",
+            "cropPath": "",
+            "cropRect": {"x": 0, "y": 0, "width": 0, "height": 0},
+            "opacity": 1.0,
+            "timestamp": 0
+        })
         self.var_data = read_variables()
         self.looknfeel_cfg = read_looknfeel_config()
         self.blur_exceptions = read_json(BLUR_EXCEPTIONS_JSON, [])
@@ -961,6 +988,19 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         switch:checked {{
             background-color: {self.accent_hex};
         }}
+        .blank-tile-preview {{
+            background-color: #111116;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 14px;
+            overflow: hidden;
+        }}
+        .blank-tile-preview picture, .blank-tile-preview image {{
+            border-radius: 14px;
+        }}
+        .accent-label {{
+            color: #5eead4;
+            font-weight: 600;
+        }}
         """
         provider = Gtk.CssProvider()
         provider.load_from_data(css.encode("utf-8"))
@@ -1039,7 +1079,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
 
         # Scrolled Stack for Category Pages
         scrolled_content = Gtk.ScrolledWindow()
-        scrolled_content.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scrolled_content.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         scrolled_content.set_vexpand(True)
         content_frame.append(scrolled_content)
 
@@ -1070,6 +1110,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         self.categories = [
             ("bar", "Bar & Island", "user-desktop-symbolic", "Bar & Island", "Configure bar style, island shape, position, and dimensions.", self.build_bar_page),
             ("vanish", "Vanish Mode", "view-reveal-symbolic", "Vanish Mode", "Barless atomic desktop with animated clock orb, radial satellites, and gestures.", self.build_vanish_page),
+            ("blank_tile", "Blank Tile", "image-x-generic-symbolic", "Blank Tile Customization", "Personalize the top hero tile in Spotlight & Vanish launcher with custom image regions.", self.build_blank_tile_page),
             ("media", "Media", "folder-music-symbolic", "Media", "Media player controls, spinning vinyl disc, and audio visualizer.", self.build_media_page),
             ("clock", "Clock & Date", "preferences-system-time-symbolic", "Clock & Date", "Time formatting, clock typography designs, and calendar integration.", self.build_clock_page),
             ("looknfeel", "Look & Feel", "preferences-desktop-appearance-symbolic", "Look & Feel", "Hyprland window borders, gaps, layout, decorations, blur, and shadows.", self.build_looknfeel_page),
@@ -1565,12 +1606,264 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             self.mark_dirty()
         btn_rst.connect("clicked", on_reset_vanish_keys)
         row_rst.append(btn_rst)
-        card3.append(row_rst)
-
         page.append(card3)
+
+        # ── Card 4: Launcher Blank Tile ──
+        card4 = self.create_settings_card()
+        row_bt = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        row_bt.add_css_class("settings-row")
+        lb_bt = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        lb_bt.set_hexpand(True)
+        lbl_btt = Gtk.Label(label="Launcher Blank Tile Customization")
+        lbl_btt.set_halign(Gtk.Align.START)
+        lbl_btt.add_css_class("row-title")
+        lb_bt.append(lbl_btt)
+        lbl_bts = Gtk.Label(label="Customize image background and crop region for the top idle tile")
+        lbl_bts.set_halign(Gtk.Align.START)
+        lbl_bts.add_css_class("row-subtitle")
+        lb_bt.append(lbl_bts)
+        row_bt.append(lb_bt)
+
+        btn_goto_bt = Gtk.Button(label="Customize Tile ->")
+        btn_goto_bt.set_valign(Gtk.Align.CENTER)
+        btn_goto_bt.connect("clicked", lambda b: self.nav_list.select_row(self.nav_rows["blank_tile"]))
+        row_bt.append(btn_goto_bt)
+        card4.append(row_bt)
+        page.append(card4)
+
         return page
 
-    # ── Category 3: Media ──────────────────────────────────────────────────
+    # ── Category: Blank Tile Customization ──────────────────────────────────
+    def build_blank_tile_page(self, icon, title, subtitle):
+        page = self.create_page_container(icon, title, subtitle)
+
+        # ── Card 1: Configuration ──
+        card_config = self.create_settings_card()
+
+        # Switch: Use Image Background
+        is_en = bool(self.tile_cfg.get("enabled", False))
+        def on_enable_toggle(act):
+            self.tile_cfg["enabled"] = bool(act)
+            self.tile_cfg["timestamp"] = int(time.time() * 1000)
+            self.save_tile_config()
+            self.update_tile_preview()
+        self.sw_tile_enable = self.add_switch_row(
+            card_config,
+            "Use Image Background",
+            "Show a selected image region in the blank tile instead of solid black",
+            is_en,
+            on_enable_toggle
+        )
+
+        # Row: Source Image File
+        row_img = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        row_img.add_css_class("settings-row")
+        lbox_i = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        lbox_i.set_hexpand(True)
+        lbl_it = Gtk.Label(label="Source Image")
+        lbl_it.set_halign(Gtk.Align.START)
+        lbl_it.add_css_class("row-title")
+        lbox_i.append(lbl_it)
+
+        cur_img = self.tile_cfg.get("imagePath", "")
+        img_name = os.path.basename(cur_img) if cur_img else "No image chosen"
+        self.lbl_img_path = Gtk.Label(label=img_name)
+        self.lbl_img_path.set_halign(Gtk.Align.START)
+        self.lbl_img_path.add_css_class("row-subtitle")
+        lbox_i.append(self.lbl_img_path)
+        row_img.append(lbox_i)
+
+        btn_choose = Gtk.Button(label="Choose Image...")
+        btn_choose.set_valign(Gtk.Align.CENTER)
+        btn_choose.connect("clicked", self.on_choose_tile_image)
+        row_img.append(btn_choose)
+        card_config.append(row_img)
+
+        # Row: Crop & Region Selection
+        row_crop = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        row_crop.add_css_class("settings-row")
+        lbox_c = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        lbox_c.set_hexpand(True)
+        lbl_ct = Gtk.Label(label="Selected Region")
+        lbl_ct.set_halign(Gtk.Align.START)
+        lbl_ct.add_css_class("row-title")
+        lbox_c.append(lbl_ct)
+
+        cr = self.tile_cfg.get("cropRect", {})
+        crop_str = f"{cr.get('width', 0)}×{cr.get('height', 0)} px at ({cr.get('x', 0)}, {cr.get('y', 0)})" if cr.get("width", 0) > 0 else "Select any region of the image (crop)"
+        self.lbl_crop_desc = Gtk.Label(label=crop_str)
+        self.lbl_crop_desc.set_halign(Gtk.Align.START)
+        self.lbl_crop_desc.add_css_class("row-subtitle")
+        lbox_c.append(self.lbl_crop_desc)
+        row_crop.append(lbox_c)
+
+        self.btn_crop = Gtk.Button(label="Select / Adjust Region...")
+        self.btn_crop.set_valign(Gtk.Align.CENTER)
+        self.btn_crop.connect("clicked", self.on_open_tile_cropper)
+        self.btn_crop.set_sensitive(bool(self.tile_cfg.get("imagePath") and os.path.exists(self.tile_cfg.get("imagePath"))))
+        row_crop.append(self.btn_crop)
+        card_config.append(row_crop)
+
+        # Slider: Image Opacity
+        cur_op = int(float(self.tile_cfg.get("opacity", 1.0)) * 100)
+        def on_op_changed(v):
+            val = round(v / 100.0, 2)
+            self.tile_cfg["opacity"] = val
+            self.tile_cfg["timestamp"] = int(time.time() * 1000)
+            self.save_tile_config()
+            self.update_tile_preview()
+        self.add_slider_row(card_config, "Tile Image Opacity", "Transparency of cropped image in blank tile", 20, 100, 5, cur_op, "%", on_op_changed)
+
+        # Button: Reset to Blank Tile
+        row_rst = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        row_rst.add_css_class("settings-row")
+        lbox_r = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        lbox_r.set_hexpand(True)
+        lbl_rt = Gtk.Label(label="Reset to Default Blank Tile")
+        lbl_rt.set_halign(Gtk.Align.START)
+        lbl_rt.add_css_class("row-title")
+        lbox_r.append(lbl_rt)
+        lbl_rs = Gtk.Label(label="Revert to original clean #111116 dark container")
+        lbl_rs.set_halign(Gtk.Align.START)
+        lbl_rs.add_css_class("row-subtitle")
+        lbox_r.append(lbl_rs)
+        row_rst.append(lbox_r)
+
+        btn_rst = Gtk.Button(label="Reset Tile")
+        btn_rst.set_valign(Gtk.Align.CENTER)
+        def on_reset_tile(b):
+            self.tile_cfg = {
+                "enabled": False,
+                "imagePath": "",
+                "cropPath": "",
+                "cropRect": {"x": 0, "y": 0, "width": 0, "height": 0},
+                "opacity": 1.0,
+                "timestamp": int(time.time() * 1000)
+            }
+            self.save_tile_config()
+            self.lbl_img_path.set_text("No image chosen")
+            self.lbl_crop_desc.set_text("Select any region of the image (crop)")
+            self.btn_crop.set_sensitive(False)
+            if hasattr(self, "sw_tile_enable"):
+                self.sw_tile_enable.set_active(False)
+            self.update_tile_preview()
+        btn_rst.connect("clicked", on_reset_tile)
+        row_rst.append(btn_rst)
+        card_config.append(row_rst)
+
+        page.append(card_config)
+
+        # ── Card 2: Live Tile Preview ──
+        card_prev = self.create_settings_card()
+        lbl_pt = Gtk.Label(label="Live Blank Tile Preview")
+        lbl_pt.set_halign(Gtk.Align.START)
+        lbl_pt.add_css_class("heading")
+        card_prev.append(lbl_pt)
+
+        prev_container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        prev_container.set_halign(Gtk.Align.CENTER)
+        prev_container.set_margin_top(12)
+        prev_container.set_margin_bottom(8)
+
+        # Frame matching exact tile aspect ratio (408 x 86)
+        self.tile_preview_box = Gtk.Overlay()
+        self.tile_preview_box.set_size_request(408, 86)
+        self.tile_preview_box.add_css_class("blank-tile-preview")
+
+        self.preview_picture = Gtk.Picture()
+        self.preview_picture.set_content_fit(Gtk.ContentFit.COVER)
+        self.preview_picture.set_size_request(408, 86)
+        self.tile_preview_box.set_child(self.preview_picture)
+
+        self.preview_placeholder = Gtk.Label(label="Default Blank Tile (#111116)")
+        self.preview_placeholder.set_halign(Gtk.Align.CENTER)
+        self.preview_placeholder.set_valign(Gtk.Align.CENTER)
+        self.preview_placeholder.add_css_class("row-subtitle")
+        self.tile_preview_box.add_overlay(self.preview_placeholder)
+
+        prev_container.append(self.tile_preview_box)
+        card_prev.append(prev_container)
+        page.append(card_prev)
+
+        self.update_tile_preview()
+        return page
+
+    def save_tile_config(self):
+        write_json(BLANK_TILE_CONFIG_PATH, self.tile_cfg)
+        if BLANK_TILE_HYPR_PATH != BLANK_TILE_CONFIG_PATH:
+            write_json(BLANK_TILE_HYPR_PATH, self.tile_cfg)
+
+    def update_tile_preview(self):
+        if not hasattr(self, "preview_picture") or not hasattr(self, "preview_placeholder"):
+            return
+        is_en = self.tile_cfg.get("enabled", False)
+        crop_path = self.tile_cfg.get("cropPath", "")
+        if is_en and crop_path and os.path.exists(crop_path):
+            file = Gio.File.new_for_path(crop_path)
+            self.preview_picture.set_file(file)
+            self.preview_picture.set_visible(True)
+            self.preview_placeholder.set_visible(False)
+            op = float(self.tile_cfg.get("opacity", 1.0))
+            self.preview_picture.set_opacity(op)
+        else:
+            self.preview_picture.set_visible(False)
+            self.preview_placeholder.set_visible(True)
+
+    def on_choose_tile_image(self, btn):
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Choose Image for Blank Tile")
+
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        img_filter = Gtk.FileFilter()
+        img_filter.set_name("Images (*.png, *.jpg, *.jpeg, *.webp)")
+        img_filter.add_mime_type("image/png")
+        img_filter.add_mime_type("image/jpeg")
+        img_filter.add_mime_type("image/webp")
+        filters.append(img_filter)
+        dialog.set_filters(filters)
+
+        def on_open_finish(source, res):
+            try:
+                gfile = source.open_finish(res)
+                if gfile:
+                    path = gfile.get_path()
+                    if path and os.path.exists(path):
+                        self.tile_cfg["imagePath"] = path
+                        self.lbl_img_path.set_text(os.path.basename(path))
+                        self.btn_crop.set_sensitive(True)
+                        self.on_open_tile_cropper(None)
+            except Exception:
+                pass
+
+        dialog.open(self, None, on_open_finish)
+
+    def on_open_tile_cropper(self, btn):
+        img_path = self.tile_cfg.get("imagePath", "")
+        if not img_path or not os.path.exists(img_path):
+            return
+
+        crop_rect = self.tile_cfg.get("cropRect")
+        crop_dialog = ImageCropDialog(
+            parent_window=self,
+            image_path=img_path,
+            initial_rect=crop_rect,
+            accent_hex=self.accent_hex,
+            on_apply=self.on_tile_crop_applied
+        )
+        crop_dialog.present()
+
+    def on_tile_crop_applied(self, new_cfg):
+        self.tile_cfg = new_cfg
+        cr = self.tile_cfg.get("cropRect", {})
+        crop_str = f"{cr.get('width', 0)}×{cr.get('height', 0)} px at ({cr.get('x', 0)}, {cr.get('y', 0)})"
+        self.lbl_crop_desc.set_text(crop_str)
+        self.lbl_img_path.set_text(os.path.basename(self.tile_cfg.get("imagePath", "")))
+        self.btn_crop.set_sensitive(True)
+        if hasattr(self, "sw_tile_enable"):
+            self.sw_tile_enable.set_active(True)
+        self.update_tile_preview()
+
+    # ── Category: Media ──────────────────────────────────────────────────
     def build_media_page(self, icon, title, subtitle):
         page = self.create_page_container(icon, title, subtitle)
         card = self.create_settings_card()
@@ -2433,6 +2726,9 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         hypr_wp_path = os.path.expanduser("~/.config/hypr/carbon-wallpaper-source.json")
         if hypr_wp_path != WALLPAPER_SOURCE_PATH:
             write_json(hypr_wp_path, self.wallpaper_source_cfg)
+
+        if hasattr(self, "save_tile_config"):
+            self.save_tile_config()
 
         # 2. Save variables.lua if needed
         if "rounding" in self.looknfeel_cfg:
