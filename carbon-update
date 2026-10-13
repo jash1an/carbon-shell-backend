@@ -243,8 +243,9 @@ git fetch origin "$REMOTE_TARGET" --quiet 2>/dev/null || {
 
 LOCAL_HASH="$(git rev-parse HEAD 2>/dev/null || echo "")"
 REMOTE_HASH="$(git rev-parse --verify "origin/$REMOTE_TARGET^{commit}" 2>/dev/null || echo "$LOCAL_HASH")"
+NEW_COMMITS_COUNT="$(git rev-list --count HEAD.."origin/$REMOTE_TARGET" 2>/dev/null || echo 0)"
 
-if [[ "$LOCAL_HASH" == "$REMOTE_HASH" ]]; then
+if [[ "$LOCAL_HASH" == "$REMOTE_HASH" || "$NEW_COMMITS_COUNT" -eq 0 ]]; then
     if [[ "$CHECK_ONLY" -eq 1 ]]; then
         ok "Carbon Shell is up to date (${LOCAL_HASH:0:8})."
         exit 0
