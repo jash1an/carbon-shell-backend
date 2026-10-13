@@ -2581,14 +2581,24 @@ ShellRoot {
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    acceptedButtons: Qt.LeftButton
-                    onPressed: {
-                        nucleusRestingCenterDot.justTriggeredPower = false
-                        nucleusRestingCenterDot.restingPressing = true
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    onPressed: mouse => {
+                        if (mouse.button === Qt.LeftButton) {
+                            nucleusRestingCenterDot.justTriggeredPower = false
+                            nucleusRestingCenterDot.restingPressing = true
+                        }
                     }
-                    onReleased: nucleusRestingCenterDot.restingPressing = false
+                    onReleased: mouse => {
+                        if (mouse.button === Qt.LeftButton) {
+                            nucleusRestingCenterDot.restingPressing = false
+                        }
+                    }
                     onCanceled: nucleusRestingCenterDot.restingPressing = false
-                    onClicked: {
+                    onClicked: mouse => {
+                        if (mouse.button === Qt.RightButton) {
+                            root.toggleControls()
+                            return
+                        }
                         nucleusRestingCenterDot.restingPressing = false
                         if (nucleusRestingCenterDot.justTriggeredPower) {
                             nucleusRestingCenterDot.justTriggeredPower = false
@@ -3558,63 +3568,6 @@ ShellRoot {
         }
     }
 
-    /* Hot corner: full-screen transparent window whose input
-     * Region summons the quick-settings panel. Dynamically placed according
-     * to root.controlsCorner ("bottom_right", "top_left", or "bottom_left"). */
-    PanelWindow {
-        id: controlsSensor
-        screen: Quickshell.screens[0]
-        color: "transparent"
-        visible: root.barMode !== "minimal"
-        WlrLayershell.namespace: "carbon-sensor"
-        WlrLayershell.layer: WlrLayer.Overlay
-        exclusionMode: ExclusionMode.Ignore
-        anchors { top: true; left: true; right: true; bottom: true }
-
-        mask: controlsSensorMask
-        Region {
-            id: controlsSensorMask
-            readonly property real edgeThickness: 8
-            readonly property real edgeSpan: 240
-
-            // Horizontal strip:
-            // - top_left: x: 0, y: 0
-            // - bottom_left: x: 0, y: height - edgeThickness
-            // - bottom_right: x: width - edgeSpan, y: height - edgeThickness
-            Region {
-                x: root.controlsCorner === "bottom_right"
-                    ? (controlsSensor.width - controlsSensorMask.edgeSpan)
-                    : 0
-                y: root.controlsCorner === "top_left"
-                    ? 0
-                    : (controlsSensor.height - controlsSensorMask.edgeThickness)
-                width: controlsSensorMask.edgeSpan
-                height: controlsSensorMask.edgeThickness
-            }
-
-            // Vertical strip:
-            // - top_left: x: 0, y: 0
-            // - bottom_left: x: 0, y: height - edgeSpan
-            // - bottom_right: x: width - edgeThickness, y: height - edgeSpan
-            Region {
-                x: root.controlsCorner === "bottom_right"
-                    ? (controlsSensor.width - controlsSensorMask.edgeThickness)
-                    : 0
-                y: root.controlsCorner === "top_left"
-                    ? 0
-                    : (controlsSensor.height - controlsSensorMask.edgeSpan)
-                width: controlsSensorMask.edgeThickness
-                height: controlsSensorMask.edgeSpan
-            }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            hoverEnabled: true
-            onEntered: root.openControlsHover()
-            onExited: controlsLeaveTimer.restart()
-        }
-    }
 
     /* Quick-settings panel: now-playing strip over the quick toggles, positioned
      * dynamically according to root.controlsCorner ("bottom_right", "top_left", or "bottom_left"). */
