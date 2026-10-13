@@ -2581,24 +2581,14 @@ ShellRoot {
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    onPressed: mouse => {
-                        if (mouse.button === Qt.LeftButton) {
-                            nucleusRestingCenterDot.justTriggeredPower = false
-                            nucleusRestingCenterDot.restingPressing = true
-                        }
+                    acceptedButtons: Qt.LeftButton
+                    onPressed: {
+                        nucleusRestingCenterDot.justTriggeredPower = false
+                        nucleusRestingCenterDot.restingPressing = true
                     }
-                    onReleased: mouse => {
-                        if (mouse.button === Qt.LeftButton) {
-                            nucleusRestingCenterDot.restingPressing = false
-                        }
-                    }
+                    onReleased: nucleusRestingCenterDot.restingPressing = false
                     onCanceled: nucleusRestingCenterDot.restingPressing = false
-                    onClicked: mouse => {
-                        if (mouse.button === Qt.RightButton) {
-                            root.toggleControls()
-                            return
-                        }
+                    onClicked: {
                         nucleusRestingCenterDot.restingPressing = false
                         if (nucleusRestingCenterDot.justTriggeredPower) {
                             nucleusRestingCenterDot.justTriggeredPower = false
