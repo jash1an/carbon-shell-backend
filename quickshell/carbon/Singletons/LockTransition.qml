@@ -27,8 +27,9 @@ Item {
     readonly property string cacheDir: root.home + "/.cache/carbon"
     readonly property string configPath: root.home + "/.config/hypr/carbon-lockscreen.json"
 
-    readonly property real lockTotalDuration: 1250.0
-    readonly property real unlockTotalDuration: 1650.0
+    readonly property real lockTotalDuration: 1300.0
+    readonly property real unlockHandoffTime: 1250.0
+    readonly property real unlockTotalDuration: 1800.0
     readonly property string screenshotPath: ""
 
     // Legacy signals for lockSync: false compatibility
@@ -107,7 +108,7 @@ Item {
     // Single FrameAnimation driving the continuous timeline
     FrameAnimation {
         id: timeDriver
-        running: (root.phase === "locking" && root.lockSurfaceReady) || root.phase === "unlocking"
+        running: (root.phase === "locking" && root.lockSurfaceReady) || root.phase === "unlocking" || root.phase === "post_unlock"
         onTriggered: {
             var fMs = frameTime * 1000.0
             root.lastFrameTimeMs = fMs
@@ -128,13 +129,18 @@ Item {
                 }
             } else if (root.phase === "unlocking") {
                 root.u += dt
+                if (root.u >= root.unlockHandoffTime && !root.unlockFinishedSignaled) {
+                    root.unlockFinishedSignaled = true
+                    root.phase = "post_unlock"
+                    console.log("[LockTransition] Unlock handoff reached at " + root.u.toFixed(0) + "ms -> releasing session lock to post_unlock overlay")
+                    root.unlockAnimationFinished()
+                }
+            } else if (root.phase === "post_unlock") {
+                root.u += dt
                 if (root.u >= root.unlockTotalDuration) {
                     root.u = root.unlockTotalDuration
-                    if (!root.unlockFinishedSignaled) {
-                        root.unlockFinishedSignaled = true
-                        console.log("[LockTransition] Unlock timeline complete. Stats: min=" + root.minFrameTimeMs.toFixed(1) + "ms avg=" + root.avgFrameTimeMs.toFixed(1) + "ms max=" + root.maxFrameTimeMs.toFixed(1) + "ms")
-                        root.unlockAnimationFinished()
-                    }
+                    console.log("[LockTransition] Post-unlock desktop reveal complete. Stats: min=" + root.minFrameTimeMs.toFixed(1) + "ms avg=" + root.avgFrameTimeMs.toFixed(1) + "ms max=" + root.maxFrameTimeMs.toFixed(1) + "ms")
+                    root.finishUnlock()
                 }
             }
         }
@@ -165,8 +171,20 @@ Item {
         root.phase = "locking"
     }
 
+    Timer {
+        id: unlockWatchdogTimer
+        interval: 2500
+        repeat: false
+        onTriggered: {
+            if (root.phase === "unlocking" || root.phase === "post_unlock") {
+                console.log("[LockTransition] Watchdog timeout (2.5s) triggered -> releasing lock safely")
+                root.finishUnlock()
+            }
+        }
+    }
+
     function startUnlock() {
-        if (root.phase === "unlocking" || root.phase === "idle") return
+        if (root.phase === "unlocking" || root.phase === "post_unlock" || root.phase === "idle") return
 
         if (!root.lockSync) {
             root.phase = "idle"
@@ -180,9 +198,11 @@ Item {
         root.u = 0.0
         root.unlockFinishedSignaled = false
         root.phase = "unlocking"
+        unlockWatchdogTimer.restart()
     }
 
     function finishUnlock() {
+        unlockWatchdogTimer.stop()
         root.phase = "idle"
         root.t = 0.0
         root.u = 0.0

@@ -19,21 +19,21 @@ Item {
     readonly property string phase: LockTransition.phase
     readonly property real t: LockTransition.t
     readonly property real u: LockTransition.u
-
-    visible: phase === "locking" || phase === "post_unlock" || (phase === "unlocking" && u >= 1100.0)
+    visible: root.phase === "post_unlock" || (root.phase === "unlocking" && root.u >= 800.0) || (!LockTransition.lockSync && root.phase === "locking")
 
     opacity: {
-        if (phase === "locking") {
+        if (root.phase === "locking") {
             return 1.0 // Stays at 1.0 throughout entire lock sequence; handoff occurs seamlessly to WlSessionLock
-        } else if (phase === "post_unlock" || phase === "unlocking") {
-            // Holds screenshot and fades out over 250ms after unlock handoff (1100-1350ms)
-            if (u < 1100.0) return 0.0
-            return Math.max(0.0, 1.0 - (u - 1100.0) / 250.0)
+        } else if (root.phase === "post_unlock" || root.phase === "unlocking") {
+            // Holds wallpaper and fades out smoothly over 550ms after unlock handoff (1250-1800ms)
+            if (root.u < 1250.0) return 1.0
+            var p = Math.max(0.0, Math.min(1.0, (root.u - 1250.0) / 550.0))
+            return Math.max(0.0, 1.0 - root.easeInOutCubic(p))
         }
         return 0.0
     }
 
-    readonly property string homeDir: Quickshell.env("HOME") || "/home/shogun"
+    readonly property string homeDir: Quickshell.env("HOME") || ""
     readonly property real screenDiag: Math.sqrt(root.width * root.width + root.height * root.height)
     readonly property real centerX: root.width / 2
     readonly property real centerY: root.height / 2 - 20
@@ -56,32 +56,29 @@ Item {
     Item {
         anchors.fill: parent
 
-        // Base sharp screenshot: transparent during initial implosion (t < 400ms) so live desktop shows through with zero jump
+        // Solid background base (guarantees opacity before first texture frame)
+        Rectangle {
+            anchors.fill: parent
+            color: "#050508"
+            z: -1
+        }
+
+        // Base sharp wallpaper
         Image {
             id: sharpSnap
             anchors.fill: parent
-            source: (LockTransition.screenshotPath.length > 0) ? ("file://" + LockTransition.screenshotPath) : ("file://" + root.homeDir + "/.cache/carbon/wallpaper_scaled.jpg")
+            source: "file://" + root.homeDir + "/.cache/carbon/wallpaper_scaled.jpg"
             fillMode: Image.PreserveAspectCrop
-            cache: false
-            opacity: {
-                if (root.phase === "locking") {
-                    if (root.t < 400.0) return 0.0
-                    return 1.0
-                }
-                return 1.0
-            }
-            onStatusChanged: {
-                if (status === Image.Error && source.toString().indexOf("lock_screen_snap.jpg") !== -1) {
-                    source = "file://" + root.homeDir + "/.cache/carbon/wallpaper_scaled.jpg"
-                }
-            }
+            cache: true
+            asynchronous: false
+            opacity: 1.0
         }
 
         // Blurred + Dimmed Layer revealed through expanding radial mask (t = 400ms -> 1350ms)
         Item {
             id: blurredLayer
             anchors.fill: parent
-            visible: root.phase === "locking" ? (root.t >= 400.0) : true
+            visible: !LockTransition.lockSync && root.phase === "locking" && root.t >= 400.0
             opacity: {
                 if (root.phase === "locking") {
                     if (root.t < 400.0) return 0.0
@@ -182,6 +179,7 @@ Item {
     /* ── 2. Center Hub & Atomic Transition Assembly ── */
     Item {
         id: centerAssembly
+        visible: !LockTransition.lockSync && root.phase === "locking"
         x: root.centerX
         y: root.centerY
         width: 1
@@ -334,7 +332,7 @@ Item {
 
     // A. Clock widget in flight (t = 700-1300ms)
     Item {
-        visible: root.phase === "locking" && root.t >= 700.0 && root.t <= 1400.0
+        visible: !LockTransition.lockSync && root.phase === "locking" && root.t >= 700.0 && root.t <= 1400.0
         readonly property real p: Math.max(0.0, Math.min(1.0, (root.t - 700.0) / 600.0))
         readonly property real endX: root.width - 220
         readonly property real endY: root.height - 120
@@ -353,7 +351,7 @@ Item {
 
     // B. Media Card widget in flight (t = 850-1400ms)
     Item {
-        visible: root.phase === "locking" && root.t >= 850.0 && root.t <= 1400.0
+        visible: !LockTransition.lockSync && root.phase === "locking" && root.t >= 850.0 && root.t <= 1400.0
         readonly property real p: Math.max(0.0, Math.min(1.0, (root.t - 850.0) / 550.0))
         readonly property real endX: 36
         readonly property real endY: root.height - 122
