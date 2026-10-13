@@ -48,6 +48,29 @@ Item {
         }
     }
 
+    /* ── Blank Tile Customization Configuration ── */
+    readonly property string blankTileConfigFile: {
+        var envDir = Quickshell.env("CARBON_CONFIG_DIR")
+        if (envDir && envDir.length > 0) return envDir + "/carbon-blank-tile.json"
+        return (Quickshell.env("HOME") || "") + "/.config/carbon/carbon-blank-tile.json"
+    }
+
+    property var blankTileConfig: ({ enabled: false, cropPath: "", opacity: 1.0, timestamp: 0 })
+
+    FileView {
+        id: blankTileConfigWatcher
+        path: root.blankTileConfigFile
+        watchChanges: true
+        printErrors: false
+        onFileChanged: blankTileConfigWatcher.reload()
+        onLoaded: {
+            try {
+                const raw = blankTileConfigWatcher.text().trim()
+                if (raw) root.blankTileConfig = JSON.parse(raw)
+            } catch (e) {}
+        }
+    }
+
     Behavior on opacity {
         NumberAnimation {
             id: opacityAnim
@@ -594,6 +617,17 @@ Item {
                     border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08)
                     border.width: 1
                     clip: true
+
+                    Image {
+                        id: blackTileImg
+                        anchors.fill: parent
+                        fillMode: Image.PreserveAspectCrop
+                        source: (root.blankTileConfig && root.blankTileConfig.enabled && root.blankTileConfig.cropPath)
+                                ? ("file://" + root.blankTileConfig.cropPath + "?t=" + (root.blankTileConfig.timestamp || 0))
+                                : ""
+                        visible: status === Image.Ready && source != ""
+                        opacity: (root.blankTileConfig && root.blankTileConfig.opacity !== undefined) ? root.blankTileConfig.opacity : 1.0
+                    }
                 }
 
                 /* ── Bottom Music Overlay Card (Exact Middle Bar Notch Mode Layout) ── */

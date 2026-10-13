@@ -10,6 +10,7 @@ import Quickshell.Services.Pipewire
 import Quickshell.Services.UPower
 import Quickshell.Services.Notifications
 import "../Singletons"
+import "../components"
 import "visualizers"
 
 /**
@@ -383,6 +384,29 @@ Item {
                 if (cfg.power.enableLogout !== undefined) root.powerEnableLogout = Boolean(cfg.power.enableLogout)
             }
         } catch (e) {}
+    }
+
+    /* ── Blank Tile Customization Configuration ── */
+    readonly property string blankTileConfigFile: {
+        var envDir = Quickshell.env("CARBON_CONFIG_DIR")
+        if (envDir && envDir.length > 0) return envDir + "/carbon-blank-tile.json"
+        return (Quickshell.env("HOME") || "") + "/.config/carbon/carbon-blank-tile.json"
+    }
+
+    property var blankTileConfig: ({ enabled: false, cropPath: "", opacity: 1.0, timestamp: 0 })
+
+    FileView {
+        id: blankTileConfigWatcher
+        path: root.blankTileConfigFile
+        watchChanges: true
+        printErrors: false
+        onFileChanged: blankTileConfigWatcher.reload()
+        onLoaded: {
+            try {
+                const raw = blankTileConfigWatcher.text().trim()
+                if (raw) root.blankTileConfig = JSON.parse(raw)
+            } catch (e) {}
+        }
     }
 
     /* ── Power State & Action Variables ── */
@@ -2780,8 +2804,10 @@ Item {
             visible: root.hubOpen && root.activeMode === "appsearch"
             opacity: (root.hubOpen && root.activeMode === "appsearch") ? 1.0 : 0.0
             Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-            width: 380
-            height: 460
+            width: 440
+            readonly property bool isSearchEmpty: !appSearchInput.text || appSearchInput.text.trim().length === 0
+            height: isSearchEmpty ? 344 : 460
+            Behavior on height { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
             // Consume clicks inside the search container so clicking on empty areas doesn't close the hub
             MouseArea {
@@ -2935,11 +2961,291 @@ Item {
                         }
                     }
 
+                    /* ── Idle State Container: Top Black Tile + Bottom Music Card ── */
+                    ColumnLayout {
+                        id: idleContainer
+                        Layout.fillWidth: true
+                        spacing: 8
+                        visible: appSearchContainer.isSearchEmpty
+
+                        /* 1. Top Black Tile (Empty container for user personalization) */
+                        Rectangle {
+                            id: blackTile
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 86
+                            radius: 14
+                            color: "#111116"
+                            border.color: Qt.rgba(1, 1, 1, 0.08)
+                            border.width: 1
+                            clip: true
+
+                            Image {
+                                id: blackTileImg
+                                anchors.fill: parent
+                                fillMode: Image.PreserveAspectCrop
+                                source: (root.blankTileConfig && root.blankTileConfig.enabled && root.blankTileConfig.cropPath)
+                                        ? ("file://" + root.blankTileConfig.cropPath + "?t=" + (root.blankTileConfig.timestamp || 0))
+                                        : ""
+                                visible: status === Image.Ready && source != ""
+                                opacity: (root.blankTileConfig && root.blankTileConfig.opacity !== undefined) ? root.blankTileConfig.opacity : 1.0
+                            }
+                        }
+
+                        /* 2. Bottom Music Overlay Card (Exact Middle Bar Notch Mode Layout) */
+                        Rectangle {
+                            id: musicCard
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 166
+                            radius: 14
+                            color: Qt.rgba(0.08, 0.09, 0.12, 0.95)
+                            border.color: Qt.rgba(root.colPurple.r, root.colPurple.g, root.colPurple.b, 0.35)
+                            border.width: 1
+                            clip: true
+
+                            // Subtle blurred/dimmed album art ambient background
+                            Image {
+                                anchors.fill: parent
+                                source: LyricsService.artUrl
+                                fillMode: Image.PreserveAspectCrop
+                                opacity: 0.14
+                                visible: status === Image.Ready && source != ""
+                            }
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                spacing: 6
+
+                                /* Header: Device / App Badge */
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    Text {
+                                        text: "music_note"
+                                        font.family: Theme.fontIcon
+                                        font.pixelSize: 13
+                                        color: root.colTeal
+                                    }
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: {
+                                            if (Pipewire.defaultAudioSink && Pipewire.defaultAudioSink.description && Pipewire.defaultAudioSink.description.length > 0)
+                                                return Pipewire.defaultAudioSink.description
+                                            if (LyricsService.activePlayer && LyricsService.activePlayer.identity && LyricsService.activePlayer.identity.length > 0)
+                                                return LyricsService.activePlayer.identity
+                                            return "Audio Output"
+                                        }
+                                        font.family: "Valley Sans"
+                                        font.pixelSize: 10
+                                        font.weight: Font.DemiBold
+                                        color: Qt.rgba(1, 1, 1, 0.78)
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                /* Track Title & Artist + Album Art Thumbnail */
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 10
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: LyricsService.hasTrack ? LyricsService.trackTitle : "No Media Playing"
+                                            font.family: "Valley Sans"
+                                            font.pixelSize: 13
+                                            font.bold: true
+                                            color: "#ffffff"
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: LyricsService.hasTrack ? (LyricsService.trackArtist || "Unknown Artist") : "Waiting for playback..."
+                                            font.family: "Valley Sans"
+                                            font.pixelSize: 10
+                                            color: root.colTeal
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+
+                                    // Album Art Thumbnail
+                                    Rectangle {
+                                        Layout.preferredWidth: 42
+                                        Layout.preferredHeight: 42
+                                        radius: 8
+                                        color: Qt.rgba(0.12, 0.14, 0.18, 0.9)
+                                        border.color: Qt.rgba(root.colTeal.r, root.colTeal.g, root.colTeal.b, 0.35)
+                                        border.width: 1
+                                        clip: true
+
+                                        Image {
+                                            anchors.fill: parent
+                                            source: LyricsService.artUrl
+                                            fillMode: Image.PreserveAspectCrop
+                                            visible: status === Image.Ready && source != ""
+                                        }
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "music_note"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: 18
+                                            color: LyricsService.isPlaying ? root.colTeal : Qt.rgba(1, 1, 1, 0.45)
+                                            visible: !LyricsService.artUrl || LyricsService.artUrl === ""
+                                        }
+                                    }
+                                }
+
+                                /* Animated Wavy Visualizer & Interactive Progress Bar */
+                                WavySeekBar {
+                                    Layout.fillWidth: true
+                                    waveHeight: 14
+                                    barHeight: 6
+                                    timeLabelSize: 8
+                                    accentColor: root.colTeal
+                                    accentLitColor: root.colTeal
+                                }
+
+                                /* Transport Controls Row (No lyrics!) */
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Layout.alignment: Qt.AlignHCenter
+
+                                    Item { Layout.fillWidth: true }
+
+                                    // Shuffle
+                                    Rectangle {
+                                        Layout.preferredWidth: 26
+                                        Layout.preferredHeight: 26
+                                        radius: 13
+                                        color: shufHov.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "shuffle"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: 14
+                                            color: shufHov.hovered ? root.colTeal : Qt.rgba(1, 1, 1, 0.65)
+                                        }
+                                        HoverHandler { id: shufHov }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: Quickshell.execDetached(["playerctl", "shuffle", "Toggle"])
+                                        }
+                                    }
+
+                                    Item { Layout.preferredWidth: 10 }
+
+                                    // Previous
+                                    Rectangle {
+                                        Layout.preferredWidth: 28
+                                        Layout.preferredHeight: 28
+                                        radius: 14
+                                        color: prevHov.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "skip_previous"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: 18
+                                            color: prevHov.hovered ? root.colTeal : "#ffffff"
+                                        }
+                                        HoverHandler { id: prevHov }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: LyricsService.skipPrevious()
+                                        }
+                                    }
+
+                                    Item { Layout.preferredWidth: 8 }
+
+                                    // Play / Pause (Distinct Pill)
+                                    Rectangle {
+                                        Layout.preferredWidth: 36
+                                        Layout.preferredHeight: 36
+                                        radius: 18
+                                        color: root.colTeal
+                                        scale: playHov.hovered ? 1.06 : 1.0
+                                        Behavior on scale { NumberAnimation { duration: 120 } }
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: LyricsService.isPlaying ? "pause" : "play_arrow"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: 20
+                                            color: "#0b0e14"
+                                        }
+                                        HoverHandler { id: playHov }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: LyricsService.togglePlaying()
+                                        }
+                                    }
+
+                                    Item { Layout.preferredWidth: 8 }
+
+                                    // Next
+                                    Rectangle {
+                                        Layout.preferredWidth: 28
+                                        Layout.preferredHeight: 28
+                                        radius: 14
+                                        color: nextHov.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "skip_next"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: 18
+                                            color: nextHov.hovered ? root.colTeal : "#ffffff"
+                                        }
+                                        HoverHandler { id: nextHov }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: LyricsService.skipNext()
+                                        }
+                                    }
+
+                                    Item { Layout.preferredWidth: 10 }
+
+                                    // Loop
+                                    Rectangle {
+                                        Layout.preferredWidth: 26
+                                        Layout.preferredHeight: 26
+                                        radius: 13
+                                        color: loopHov.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "repeat"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: 14
+                                            color: loopHov.hovered ? root.colTeal : Qt.rgba(1, 1, 1, 0.65)
+                                        }
+                                        HoverHandler { id: loopHov }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: Quickshell.execDetached(["playerctl", "loop", "Track"])
+                                        }
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+                                }
+                            }
+                        }
+                    }
+
                     // 2. Category Filter Tabs (Apps | Clipboard | Commands)
                     RowLayout {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 24
                         spacing: 6
+                        visible: !appSearchContainer.isSearchEmpty
 
                         Repeater {
                             model: [
@@ -3071,6 +3377,7 @@ Item {
                     Item {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
+                        visible: !appSearchContainer.isSearchEmpty
 
                         ListView {
                             id: appListView
@@ -3225,6 +3532,7 @@ Item {
                         Layout.fillWidth: true
                         Layout.alignment: Qt.AlignHCenter
                         spacing: 12
+                        visible: !appSearchContainer.isSearchEmpty
 
                         RowLayout {
                             spacing: 3
