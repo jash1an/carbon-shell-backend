@@ -401,16 +401,12 @@ for json_state in "$CONFIG_DIR"/carbon-*.json "$CONFIG_DIR/theme.json" "$CONFIG_
     :
 done
 
-# Preserve carbon.conf active keybind source
+# Preserve carbon.conf: never overwrite existing user integration config
 if [[ -f "$REPO_DIR/hypr/carbon.conf" ]]; then
-    if [[ -f "$CONFIG_DIR/carbon.conf" ]]; then
-        ACTIVE_BIND="$(grep -E 'source\s*=\s*~/.config/carbon/keybinds' "$CONFIG_DIR/carbon.conf" | head -n 1 || true)"
+    if [[ ! -f "$CONFIG_DIR/carbon.conf" ]]; then
         cp -f "$REPO_DIR/hypr/carbon.conf" "$CONFIG_DIR/carbon.conf"
-        if [[ -n "$ACTIVE_BIND" ]]; then
-            sed -i -E "s|source\s*=\s*~/.config/carbon/keybinds.*|$ACTIVE_BIND|" "$CONFIG_DIR/carbon.conf"
-        fi
     else
-        cp -f "$REPO_DIR/hypr/carbon.conf" "$CONFIG_DIR/carbon.conf"
+        cp -f "$REPO_DIR/hypr/carbon.conf" "$CONFIG_DIR/carbon.conf.dist" 2>/dev/null || true
     fi
 fi
 
