@@ -46,6 +46,14 @@ Item {
     property string focusedLobe: ""    // "" | "connect" | "launch" | "spaces" | "alerts"
     property bool nightLightOn: false
     property bool justOpenedPower: false
+    property bool notifPanelOpen: false
+
+    function toggleNotifPanel() {
+        root.notifPanelOpen = !root.notifPanelOpen
+        if (root.notifPanelOpen) {
+            root.focusedLobe = "alerts"
+        }
+    }
 
     readonly property string nightScript: {
         const home = Quickshell.env("HOME") || ""
@@ -151,6 +159,7 @@ Item {
 
     function close() {
         if (!root.hubOpen || root.isClosingHub) return
+        root.notifPanelOpen = false
         if (connectivityPicker) connectivityPicker.resetPicker()
         root.isClosingHub = true
         root.focusedLobe = ""
@@ -164,6 +173,12 @@ Item {
         if (!root.hubOpen) root.open()
         root.activeMode = "hub"
         root.focusedLobe = (root.focusedLobe === name) ? "" : name
+    }
+
+    onFocusedLobeChanged: {
+        if (root.focusedLobe !== "alerts") {
+            root.notifPanelOpen = false
+        }
     }
 
     function captureSatellitePositions() {
@@ -875,6 +890,9 @@ Item {
 
     /* ── Dynamic Screen Dimmer Scrim Opacity ── */
     readonly property real effectiveScrimOpacity: {
+        if (root.notifPanelOpen) {
+            return 0.50
+        }
         if (root.activeMode !== "power" || root.powerAction === "none") {
             return root.hubProgress * 0.42
         }
@@ -1217,6 +1235,10 @@ Item {
             anchors.fill: parent
             onClicked: {
                 if (root.isClosingHub) return
+                if (root.notifPanelOpen) {
+                    root.notifPanelOpen = false
+                    return
+                }
                 if (root.activeMode === "power") {
                     // In power mode, do not close on background click — only close on Escape key
                     return
@@ -1232,7 +1254,9 @@ Item {
         id: globalKeyHandler
         focus: root.hubOpen && !root.isClosingHub && root.activeMode !== "appsearch" && root.activeMode !== "wifi" && root.activeMode !== "bluetooth" && root.activeMode !== "calendar"
         Keys.onEscapePressed: {
-            if (controlRing && controlRing.isOpen) {
+            if (root.notifPanelOpen) {
+                root.notifPanelOpen = false
+            } else if (controlRing && controlRing.isOpen) {
                 controlRing.closeRing()
             } else if (root.activeMode === "wifi" || root.activeMode === "bluetooth") {
                 if (connectivityPicker) connectivityPicker.goBack()
@@ -1448,6 +1472,9 @@ Item {
                     interval: 180
                     repeat: false
                     onTriggered: {
+                        if (lobeItem.lobeId === "alerts" && root.notifPanelOpen) {
+                            return
+                        }
                         if (!lobeItem.isClusterHovered && root.focusedLobe === lobeItem.lobeId && (root.activeMode === "hub" || root.activeMode === "")) {
                             root.focusedLobe = ""
                         }
@@ -1528,6 +1555,56 @@ Item {
                             color: lobeItem.lobeColor
                             rotation: -lobeItem.rotation
                         }
+
+                        // Alerts Lobe Unread Count Badge (top-right, coral #f2705f, 2px dark border)
+                        Rectangle {
+                            visible: lobeItem.lobeId === "alerts" && NotificationService.unreadCount > 0
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            anchors.topMargin: -4
+                            anchors.rightMargin: -4
+                            width: Math.max(18, badgeText.implicitWidth + 8)
+                            height: 18
+                            radius: 9
+                            color: "#f2705f"
+                            border.color: root.colBgDark
+                            border.width: 2.0
+                            rotation: -lobeItem.rotation
+
+                            Text {
+                                id: badgeText
+                                anchors.centerIn: parent
+                                text: NotificationService.unreadCount > 9 ? "9+" : String(NotificationService.unreadCount)
+                                font.family: "Valley Sans"
+                                font.pixelSize: 10
+                                font.bold: true
+                                color: "#ffffff"
+                            }
+                        }
+
+                        // Alerts Lobe DND Moon Mark (bottom-left, lavender #c9d0ff on dark circle)
+                        Rectangle {
+                            visible: lobeItem.lobeId === "alerts" && NotificationService.dnd
+                            anchors.bottom: parent.bottom
+                            anchors.left: parent.left
+                            anchors.bottomMargin: -3
+                            anchors.leftMargin: -3
+                            width: 16
+                            height: 16
+                            radius: 8
+                            color: root.colBgDark
+                            border.color: "#c9d0ff"
+                            border.width: 1.5
+                            rotation: -lobeItem.rotation
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "nightlight"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: 10
+                                color: "#c9d0ff"
+                            }
+                        }
                     }
 
                     MouseArea {
@@ -1600,15 +1677,28 @@ Item {
                             Rectangle {
                                 anchors.fill: parent
                                 radius: width / 2
-                                color: modelData.isActive 
-                                       ? Qt.rgba(lobeItem.lobeColor.r, lobeItem.lobeColor.g, lobeItem.lobeColor.b, 0.36)
-                                       : (satMouse.containsMouse 
-                                          ? Qt.rgba(lobeItem.lobeColor.r, lobeItem.lobeColor.g, lobeItem.lobeColor.b, 0.24)
-                                          : Qt.rgba(root.colBgDark.r, root.colBgDark.g, root.colBgDark.b, 0.95))
-                                border.color: lobeItem.lobeColor
-                                border.width: 1.8
+                                color: {
+                                    if (modelData.customBg !== undefined) return modelData.customBg
+                                    if (modelData.isActive) return Qt.rgba(lobeItem.lobeColor.r, lobeItem.lobeColor.g, lobeItem.lobeColor.b, 0.36)
+                                    if (satMouse.containsMouse) return Qt.rgba(lobeItem.lobeColor.r, lobeItem.lobeColor.g, lobeItem.lobeColor.b, 0.24)
+                                    return Qt.rgba(root.colBgDark.r, root.colBgDark.g, root.colBgDark.b, 0.95)
+                                }
+                                border.color: (modelData.customBorder !== undefined) ? modelData.customBorder : lobeItem.lobeColor
+                                border.width: (modelData.customBorderWidth !== undefined) ? modelData.customBorderWidth : 1.8
                                 scale: satMouse.containsMouse ? 1.14 : 1.0
                                 Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+
+                                // Soft outer glow/ring when satellite has active ring (e.g. open panel)
+                                Rectangle {
+                                    visible: modelData.hasRing === true
+                                    anchors.centerIn: parent
+                                    width: parent.width + 8
+                                    height: parent.height + 8
+                                    radius: width / 2
+                                    color: "transparent"
+                                    border.color: Qt.rgba(1, 1, 1, 0.35)
+                                    border.width: 1.5
+                                }
 
                                 Text {
                                     anchors.centerIn: parent
@@ -1616,7 +1706,7 @@ Item {
                                     font.family: modelData.isFontIcon ? Theme.fontIcon : "Valley Sans"
                                     font.pixelSize: modelData.isFontIcon ? 18 : 14
                                     font.bold: true
-                                    color: lobeItem.lobeColor
+                                    color: (modelData.customColor !== undefined) ? modelData.customColor : lobeItem.lobeColor
                                     rotation: -lobeItem.rotation
                                 }
 
@@ -1828,15 +1918,19 @@ Item {
 
                 satelliteModel: [
                     {
-                        icon: "notifications",
+                        // Moon: toggles DND
+                        icon: "nightlight",
                         isFontIcon: true,
-                        isActive: false,
-                        badgeCount: root.unreadNotifCount,
+                        isActive: NotificationService.dnd,
+                        customBg: NotificationService.dnd ? "#c9d0ff" : undefined,
+                        customColor: NotificationService.dnd ? "#0f1416" : undefined,
+                        customBorder: NotificationService.dnd ? "#c9d0ff" : undefined,
                         action: function() {
-                            root.unreadNotifCount = 0
+                            NotificationService.toggleDnd()
                         }
                     },
                     {
+                        // Calendar
                         icon: "calendar_month",
                         isFontIcon: true,
                         isActive: root.activeMode === "calendar",
@@ -1845,19 +1939,26 @@ Item {
                         }
                     },
                     {
-                        icon: "nightlight",
-                        isFontIcon: true,
-                        isActive: root.nightLightOn,
-                        action: function() {
-                            root.toggleNightLight()
-                        }
-                    },
-                    {
+                        // Tasks
                         icon: "content_paste",
                         isFontIcon: true,
                         isActive: false,
                         action: function() {
                             Quickshell.execDetached(["sh", "-c", "cliphist list | fuzzel -d | cliphist decode | wl-copy || true"])
+                        }
+                    },
+                    {
+                        // Small bell: toggles notification panel
+                        icon: "notifications",
+                        isFontIcon: true,
+                        isActive: root.notifPanelOpen,
+                        customBg: root.notifPanelOpen ? "#ffffff" : undefined,
+                        customColor: root.notifPanelOpen ? "#0f1416" : undefined,
+                        customBorder: root.notifPanelOpen ? "#ffffff" : undefined,
+                        hasRing: root.notifPanelOpen,
+                        badgeCount: root.notifPanelOpen ? 0 : root.unreadNotifCount,
+                        action: function() {
+                            root.toggleNotifPanel()
                         }
                     }
                 ]
@@ -3919,6 +4020,58 @@ Item {
         open: root.hubOpen && root.activeMode === "calendar"
         onCloseRequested: {
             root.activeMode = "hub"
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       PHASE 5.6: Modular Notification Panel (Stage 3 Mount)
+       Positioned ~60px to the left of the small bell sub-lobe,
+       constrained with >= 24px screen margin.
+       ══════════════════════════════════════════════════════════════════════ */
+    readonly property point bellSatelliteScreenPos: {
+        if (!lobeAlerts) return Qt.point(root.width / 2, root.height / 2)
+        // Hub center coordinates on root screen
+        const hubX = root.width / 2
+        const hubY = (root.height / 2) + hubCenter.anchors.verticalCenterOffset
+        // Lobe rotation
+        const lobeDeg = lobeAlerts.rotation
+        const lobeRad = lobeDeg * (Math.PI / 180.0)
+        // Small bell satellite is index 3 (angle: 72°)
+        const satRad = 72.0 * (Math.PI / 180.0)
+        const satR = 66.0
+        // Satellite coordinates in lobe's local frame
+        const localX = lobeAlerts.orbitalRadius + (satR * Math.cos(satRad))
+        const localY = satR * Math.sin(satRad)
+        // Rotate by lobe angle
+        const worldX = hubX + (localX * Math.cos(lobeRad) - localY * Math.sin(lobeRad))
+        const worldY = hubY + (localX * Math.sin(lobeRad) + localY * Math.cos(lobeRad))
+        return Qt.point(worldX, worldY)
+    }
+
+    NotificationPanel {
+        id: notifPanel
+        z: 90
+        open: root.notifPanelOpen && root.hubOpen && !root.isClosingHub
+        visible: open
+
+        // Placement: panel's right edge is ~60px left of small bell sub-lobe.
+        // Clamped to at least 24px screen margin. If not enough space on left, flip to right.
+        readonly property real targetRightX: root.bellSatelliteScreenPos.x - 60
+        readonly property real computedX: {
+            if (targetRightX - width < 24) {
+                // If overflow on left, check right side of bell
+                const altX = root.bellSatelliteScreenPos.x + 60
+                return Math.min(root.width - width - 24, Math.max(24, altX))
+            }
+            return Math.max(24, targetRightX - width)
+        }
+        readonly property real computedY: Math.max(24, Math.min(root.height - height - 24, root.bellSatelliteScreenPos.y - (height / 2)))
+
+        x: computedX
+        y: computedY
+
+        onCloseRequested: {
+            root.notifPanelOpen = false
         }
     }
 }
