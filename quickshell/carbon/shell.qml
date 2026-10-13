@@ -2876,8 +2876,9 @@ ShellRoot {
             SpotlightModal {
                 id: spotlightItem
                 anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: 0
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.verticalCenterOffset: -40
+                barMode: root.barMode
                 open: root.spotlightOpen
                 shellOpacity: root.shellOpacity
                 onCloseRequested: root.closeSpotlight()
@@ -3769,7 +3770,9 @@ ShellRoot {
 
             WorkspaceOsd {
                 id: wsOsdItem
-                anchors.centerIn: parent
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top
+                anchors.topMargin: 20
                 barMode: root.barMode
                 onActiveChanged: root.workspaceOsdActive = wsOsdItem.active
             }

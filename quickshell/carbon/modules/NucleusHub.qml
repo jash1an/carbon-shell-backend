@@ -127,7 +127,7 @@ Item {
 
     Timer {
         id: nucleusShrinkTimer
-        interval: 380
+        interval: 400
         repeat: false
         onTriggered: {
             root.nucleusExpanded = false
@@ -1383,6 +1383,11 @@ Item {
                     }
                 }
 
+                // Dynamic distance: on closing, the satellites physically travel straight into the central nucleus
+                readonly property real currentRadius: root.isClosingHub 
+                    ? (lobeItem.orbitalRadius * bloomAnim) 
+                    : lobeItem.orbitalRadius
+
                 SequentialAnimation {
                     id: lobeRetractSeq
                     PauseAnimation { duration: lobeItem.retractDelay }
@@ -1390,7 +1395,7 @@ Item {
                         target: lobeItem
                         property: "bloomAnim"
                         to: 0.0
-                        duration: 240
+                        duration: 250
                         easing.type: Easing.InCubic
                     }
                 }
@@ -1409,10 +1414,10 @@ Item {
                 }
 
                 rotation: targetAngle + (isThisFocused ? 0.0 : idleAngleOffset)
-                scale: focusScale * bloomAnim
+                scale: focusScale * (root.isClosingHub ? (0.68 + 0.32 * bloomAnim) : bloomAnim)
                 opacity: {
                     if (root.isClosingHub) {
-                        return focusAlpha * Math.min(1.0, bloomAnim * 3.5)
+                        return focusAlpha * (bloomAnim > 0.04 ? 1.0 : (bloomAnim * 25.0))
                     }
                     return focusAlpha * bloomAnim
                 }
@@ -1450,7 +1455,7 @@ Item {
                 // ── Hit bridge keeping hover active when traversing between lobe button and satellites ──
                 Item {
                     id: lobeHitBridge
-                    x: lobeItem.orbitalRadius - 30
+                    x: lobeItem.currentRadius - 30
                     y: -95
                     width: 145
                     height: 190
@@ -1479,7 +1484,7 @@ Item {
                 // ── 48px Standalone Round Icon Button at dynamic orbitalRadius ──
                 Item {
                     id: lobeTipButton
-                    x: lobeItem.orbitalRadius - 24
+                    x: lobeItem.currentRadius - 24
                     y: -24
                     width: 48
                     height: 48
@@ -1537,7 +1542,7 @@ Item {
                    ══════════════════════════════════════════════════════════════ */
                 Item {
                     id: satellitesContainer
-                    x: lobeItem.orbitalRadius
+                    x: lobeItem.currentRadius
                     y: 0
                     visible: opacity > 0.005
                     opacity: lobeItem.isThisFocused ? 1.0 : 0.0

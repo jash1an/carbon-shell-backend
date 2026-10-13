@@ -32,8 +32,8 @@ Item {
     readonly property color colWhite: "#FFFFFF"
     readonly property color colTextDark: "#0b0e14"
 
-    implicitWidth: 84
-    implicitHeight: 84
+    implicitWidth: 52
+    implicitHeight: 52
     width: implicitWidth
     height: implicitHeight
 
@@ -138,11 +138,11 @@ Item {
     Rectangle {
         id: halo
         anchors.centerIn: parent
-        width: 76
-        height: 76
-        radius: 38
+        width: 48
+        height: 48
+        radius: 24
         color: Qt.rgba(root.colAccent.r, root.colAccent.g, root.colAccent.b, 0.42)
-        border.width: 1.5
+        border.width: 1.2
         border.color: Qt.rgba(root.colAccent.r, root.colAccent.g, root.colAccent.b, 0.65)
     }
 
@@ -150,19 +150,19 @@ Item {
     Rectangle {
         id: coreDisc
         anchors.centerIn: parent
-        width: 58
-        height: 58
-        radius: 29
+        width: 36
+        height: 36
+        radius: 18
         color: root.colWhite
         border.color: root.colAccent
-        border.width: 2.4
+        border.width: 1.8
 
         // Bold centered workspace number only (no labels, no extra text)
         Text {
             anchors.centerIn: parent
             text: String(root.currentWs)
             font.family: "Valley Sans, Rubik, JetBrains Mono Nerd Font, sans-serif"
-            font.pixelSize: 26
+            font.pixelSize: 16
             font.bold: true
             color: root.colTextDark
             horizontalAlignment: Text.AlignHCenter
