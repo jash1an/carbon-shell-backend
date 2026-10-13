@@ -52,7 +52,22 @@ Rectangle {
     }
 
     border.width: 1
-    border.color: root.isUnread ? Qt.rgba(255/255, 255/255, 255/255, 0.22) : Qt.rgba(255/255, 255/255, 255/255, 0.08)
+    border.color: root.isUnread 
+                  ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) 
+                  : Qt.rgba(255/255, 255/255, 255/255, 0.08)
+
+    // Theme-Sensitive Subtle Radial Accent Glow confined strictly inside the notification card
+    Rectangle {
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.topMargin: -30
+        anchors.rightMargin: -30
+        width: 110
+        height: 110
+        radius: 55
+        visible: root.isUnread
+        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
+    }
 
     // Generate dynamic color tint from appName
     function getAppColor(appName) {
@@ -279,13 +294,13 @@ Rectangle {
                     Layout.maximumWidth: 160
                 }
 
-                // Coral unread dot
+                // Theme-sensitive unread dot
                 Rectangle {
                     visible: root.isUnread
                     Layout.preferredWidth: 6
                     Layout.preferredHeight: 6
                     radius: 3
-                    color: "#f2705f" // Coral
+                    color: Theme.accent || "#f2705f"
                 }
 
                 Item { Layout.fillWidth: true }

@@ -53,25 +53,6 @@ Rectangle {
         shadowVerticalOffset: 34
     }
 
-    // Top-Right Faint Coral Radial Glow
-    Rectangle {
-        anchors.top: parent.top
-        anchors.right: parent.right
-        anchors.topMargin: -60
-        anchors.rightMargin: -60
-        width: 180
-        height: 180
-        radius: 90
-        color: "transparent"
-        border.width: 0
-
-        Rectangle {
-            anchors.fill: parent
-            radius: width / 2
-            color: Qt.rgba(242/255, 112/255, 95/255, 0.14) // Coral #f2705f glow
-        }
-    }
-
     // Inner Top Highlight
     Rectangle {
         anchors.top: parent.top

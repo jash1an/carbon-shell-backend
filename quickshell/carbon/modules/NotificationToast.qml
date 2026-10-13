@@ -39,16 +39,16 @@ Rectangle {
         shadowVerticalOffset: 16
     }
 
-    // Top-Right coral radial glow
+    // Theme-Sensitive Subtle Radial Accent Glow confined strictly inside toast
     Rectangle {
         anchors.top: parent.top
         anchors.right: parent.right
-        anchors.topMargin: -40
-        anchors.rightMargin: -40
-        width: 120
-        height: 120
-        radius: 60
-        color: Qt.rgba(242/255, 112/255, 95/255, 0.14)
+        anchors.topMargin: -30
+        anchors.rightMargin: -30
+        width: 100
+        height: 100
+        radius: 50
+        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
     }
 
     // Top highlight
