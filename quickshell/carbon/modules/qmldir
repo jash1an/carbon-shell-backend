@@ -50,3 +50,4 @@ CarbonCalendar CarbonCalendar.qml
 WorkspaceOsd WorkspaceOsd.qml
 NotificationCard NotificationCard.qml
 NotificationPanel NotificationPanel.qml
+NotificationToast NotificationToast.qml

@@ -2466,6 +2466,13 @@ ShellRoot {
             }
             brightnessActionRequested(action, wasClosed)
         }
+        signal notifPanelRequested()
+        function openNotificationPanel() {
+            isClosing = false
+            hubOpen = true
+            openRequested()
+            notifPanelRequested()
+        }
     }
 
     Variants {
@@ -2723,6 +2730,10 @@ ShellRoot {
                         if (action === "up") nucleusHubItemInstance.stepBrightness(0.05)
                         else if (action === "down") nucleusHubItemInstance.stepBrightness(-0.05)
                         else if (action === "open") nucleusHubItemInstance.openBrightnessMode()
+                    }
+                    function onNotifPanelRequested() {
+                        nucleusHubItemInstance.notifPanelOpen = true
+                        nucleusHubItemInstance.focusedLobe = "alerts"
                     }
                 }
             }
@@ -3786,6 +3797,47 @@ ShellRoot {
                 anchors.topMargin: 20
                 barMode: root.barMode
                 onActiveChanged: root.workspaceOsdActive = wsOsdItem.active
+            }
+        }
+    }
+
+    /* ── Notification Toast Overlay Window (Top-Right) ───────────────── */
+    Variants {
+        model: Quickshell.screens
+
+        PanelWindow {
+            id: toastWindow
+            required property var modelData
+
+            screen: modelData
+            color: "transparent"
+            WlrLayershell.namespace: "carbon-notification-toast"
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+            exclusionMode: ExclusionMode.Ignore
+            aboveWindows: true
+
+            anchors {
+                top: true
+                right: true
+            }
+
+            margins {
+                top: 24
+                right: 24
+            }
+
+            implicitWidth: toastItemComp.implicitWidth
+            implicitHeight: toastItemComp.implicitHeight
+            visible: toastItemComp.active || toastItemComp.opacity > 0.005
+
+            NotificationToast {
+                id: toastItemComp
+                onOpenPanelRequested: {
+                    if (root.nucleusHubItem) {
+                        root.nucleusHubItem.openNotificationPanel()
+                    }
+                }
             }
         }
     }

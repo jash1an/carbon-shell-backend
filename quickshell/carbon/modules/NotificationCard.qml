@@ -67,16 +67,117 @@ Rectangle {
 
     readonly property color appTint: getAppColor(root.notifItem ? root.notifItem.appName : "")
 
+    // Drag swipe offset
+    property real swipeX: 0
+    property bool isDismissing: false
+
+    x: swipeX
+    opacity: isDismissing ? 0.0 : Math.max(0.0, 1.0 - (Math.abs(swipeX) / 180.0))
+
+    Behavior on swipeX {
+        NumberAnimation {
+            duration: 220
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    Behavior on opacity {
+        NumberAnimation {
+            duration: 180
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    Behavior on implicitHeight {
+        NumberAnimation {
+            duration: 240
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    SequentialAnimation {
+        id: dismissAnim
+        ParallelAnimation {
+            NumberAnimation {
+                target: root
+                property: "swipeX"
+                to: root.swipeX < 0 ? -380 : 380
+                duration: 200
+                easing.type: Easing.InCubic
+            }
+            NumberAnimation {
+                target: root
+                property: "opacity"
+                to: 0.0
+                duration: 200
+                easing.type: Easing.InCubic
+            }
+        }
+        ScriptAction {
+            script: {
+                root.dismissRequested(root.notifItem)
+            }
+        }
+    }
+
+    function dismissWithAnimation() {
+        if (root.isDismissing) return
+        root.isDismissing = true
+        dismissAnim.restart()
+    }
+
     MouseArea {
         id: cardMouseArea
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: {
-            if (root.notifItem && root.notifItem.unread) {
-                NotificationService.markRead(root.notifItem.id)
+
+        property real startX: 0
+        property real startY: 0
+        property bool isDragging: false
+
+        onPressed: (mouse) => {
+            startX = mouse.x
+            startY = mouse.y
+            isDragging = false
+        }
+
+        onPositionChanged: (mouse) => {
+            if (pressed) {
+                var dx = mouse.x - startX
+                var dy = mouse.y - startY
+                if (!isDragging && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+                    isDragging = true
+                }
+                if (isDragging) {
+                    root.swipeX = dx
+                }
             }
-            root.expanded = !root.expanded
+        }
+
+        onReleased: (mouse) => {
+            if (isDragging) {
+                if (Math.abs(root.swipeX) > 90) {
+                    root.dismissWithAnimation()
+                } else {
+                    root.swipeX = 0
+                }
+                isDragging = false
+            }
+        }
+
+        onCanceled: {
+            root.swipeX = 0
+            isDragging = false
+        }
+
+        onClicked: (mouse) => {
+            if (!isDragging && Math.abs(root.swipeX) < 6) {
+                if (root.notifItem && root.notifItem.unread) {
+                    NotificationService.markRead(root.notifItem.id)
+                }
+                root.expanded = !root.expanded
+            }
         }
     }
 
@@ -108,7 +209,7 @@ Rectangle {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: {
-                root.dismissRequested(root.notifItem)
+                root.dismissWithAnimation()
             }
         }
     }
@@ -281,7 +382,7 @@ Rectangle {
                             onClicked: {
                                 if (actBtn.isPrimary) {
                                     root.actionInvoked(root.notifItem, actBtn.modelData)
-                                    root.dismissRequested(root.notifItem)
+                                    root.dismissWithAnimation()
                                 } else {
                                     root.actionInvoked(root.notifItem, actBtn.modelData)
                                     root.expanded = false

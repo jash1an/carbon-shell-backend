@@ -243,6 +243,13 @@ Rectangle {
                 height: 30
                 radius: 15
                 color: Qt.rgba(255/255, 255/255, 255/255, 0.18)
+
+                Behavior on x {
+                    NumberAnimation {
+                        duration: 220
+                        easing.type: Easing.OutCubic
+                    }
+                }
             }
 
             RowLayout {
@@ -295,6 +302,7 @@ Rectangle {
 
                 // Breathing round orb with a bell
                 Rectangle {
+                    id: emptyOrb
                     Layout.alignment: Qt.AlignHCenter
                     width: 68
                     height: 68
@@ -302,6 +310,28 @@ Rectangle {
                     color: Qt.rgba(255/255, 255/255, 255/255, 0.06)
                     border.width: 1
                     border.color: Qt.rgba(255/255, 255/255, 255/255, 0.12)
+
+                    property real orbScale: 1.0
+                    scale: orbScale
+
+                    SequentialAnimation {
+                        running: root.totalCount === 0 && root.open
+                        loops: Animation.Infinite
+                        NumberAnimation {
+                            target: emptyOrb
+                            property: "orbScale"
+                            to: 1.08
+                            duration: 2200
+                            easing.type: Easing.InOutSine
+                        }
+                        NumberAnimation {
+                            target: emptyOrb
+                            property: "orbScale"
+                            to: 1.0
+                            duration: 2200
+                            easing.type: Easing.InOutSine
+                        }
+                    }
 
                     Text {
                         anchors.centerIn: parent

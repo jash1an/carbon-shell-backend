@@ -4052,7 +4052,19 @@ Item {
         id: notifPanel
         z: 90
         open: root.notifPanelOpen && root.hubOpen && !root.isClosingHub
-        visible: open
+        visible: opacity > 0.005
+
+        property real panelProgress: open ? 1.0 : 0.0
+        Behavior on panelProgress {
+            NumberAnimation {
+                duration: 260
+                easing.type: Easing.OutBack
+                easing.overshoot: 1.15
+            }
+        }
+
+        opacity: Math.min(1.0, panelProgress * 1.4)
+        scale: 0.88 + (0.12 * panelProgress)
 
         // Placement: panel's right edge is ~60px left of small bell sub-lobe.
         // Clamped to at least 24px screen margin. If not enough space on left, flip to right.
@@ -4067,7 +4079,8 @@ Item {
         }
         readonly property real computedY: Math.max(24, Math.min(root.height - height - 24, root.bellSatelliteScreenPos.y - (height / 2)))
 
-        x: computedX
+        // Gentle 14px slide towards small bell origin on open
+        x: computedX + ((1.0 - panelProgress) * 14.0)
         y: computedY
 
         onCloseRequested: {
