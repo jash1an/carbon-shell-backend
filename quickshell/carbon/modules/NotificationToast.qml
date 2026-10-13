@@ -25,9 +25,9 @@ Rectangle {
     width: 320
     implicitHeight: toastContentCol.implicitHeight + 24
     radius: 20
-    color: Qt.rgba(15/255, 20/255, 22/255, 0.78)
+    color: Theme.m3surfaceContainer
     border.width: 1
-    border.color: Qt.rgba(255/255, 255/255, 255/255, 0.16)
+    border.color: Theme.m3outlineVariant
     clip: true
 
     layer.enabled: true

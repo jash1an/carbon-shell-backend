@@ -38,9 +38,9 @@ Rectangle {
     width: 344
     implicitHeight: 480
     radius: 30
-    color: Qt.rgba(15/255, 20/255, 22/255, 0.60)
+    color: Theme.m3surfaceContainer
     border.width: 1
-    border.color: Qt.rgba(255/255, 255/255, 255/255, 0.11)
+    border.color: Theme.m3outlineVariant
     clip: true
 
     // MultiEffect Shadow & Blur container
@@ -212,9 +212,9 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 36
             radius: 18
-            color: Qt.rgba(0, 0, 0, 0.25)
+            color: Theme.m3surfaceContainerLow
             border.width: 1
-            border.color: Qt.rgba(255/255, 255/255, 255/255, 0.08)
+            border.color: Theme.m3outlineVariant
 
             // Sliding Indicator
             Rectangle {
@@ -223,7 +223,7 @@ Rectangle {
                 width: (parent.width - 6) / 3
                 height: 30
                 radius: 15
-                color: Qt.rgba(255/255, 255/255, 255/255, 0.18)
+                color: Theme.m3surfaceContainerHigh
 
                 Behavior on x {
                     NumberAnimation {

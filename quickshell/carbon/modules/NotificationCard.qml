@@ -34,27 +34,19 @@ Rectangle {
     readonly property var actionsList: (root.notifItem && root.notifItem.actions) ? root.notifItem.actions : []
     readonly property bool hasActions: actionsList.length > 0
 
-    width: parent ? parent.width : 344
+    Layout.fillWidth: true
+    width: parent ? parent.width : 308
+    implicitWidth: 308
     implicitHeight: mainCol.implicitHeight + 28
     radius: 21
+    clip: true
 
-    // Colors & Glass Styling per specs
-    // Unread cards have slightly brighter gradient & border. Read cards are flatter.
-    gradient: Gradient {
-        GradientStop {
-            position: 0.0
-            color: root.isUnread ? Qt.rgba(255/255, 255/255, 255/255, 0.12) : Qt.rgba(255/255, 255/255, 255/255, 0.05)
-        }
-        GradientStop {
-            position: 1.0
-            color: root.isUnread ? Qt.rgba(255/255, 255/255, 255/255, 0.06) : Qt.rgba(255/255, 255/255, 255/255, 0.02)
-        }
-    }
-
+    // Solid opaque styling matching Carbon shell & Matugen
+    color: root.isUnread ? Theme.m3surfaceContainerHigh : Theme.m3surfaceContainer
     border.width: 1
     border.color: root.isUnread 
-                  ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) 
-                  : Qt.rgba(255/255, 255/255, 255/255, 0.08)
+                  ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45) 
+                  : Theme.m3outlineVariant
 
     // Theme-Sensitive Subtle Radial Accent Glow confined strictly inside the notification card
     Rectangle {
