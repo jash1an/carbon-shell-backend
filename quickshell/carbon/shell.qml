@@ -1508,7 +1508,7 @@ ShellRoot {
             aboveWindows: true
             anchors { top: true; bottom: true; left: true; right: true }
 
-            visible: !LockTransition.lockSync && (LockTransition.phase === "locking" || LockTransition.phase === "post_unlock" || (LockTransition.phase === "unlocking" && LockTransition.u >= 900.0))
+            visible: LockTransition.phase === "post_unlock" || (LockTransition.phase === "unlocking" && LockTransition.u >= 800.0) || (!LockTransition.lockSync && LockTransition.phase === "locking")
 
             MouseArea {
                 anchors.fill: parent

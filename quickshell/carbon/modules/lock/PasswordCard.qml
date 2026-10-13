@@ -47,44 +47,96 @@ Item {
         MaterialShape.Ghostish
     ]
 
-    implicitWidth: 310
-    implicitHeight: 52
+    property var logoComponent: null
+
+    function easeOutBack(p) {
+        var c1 = 1.70158
+        var c3 = c1 + 1.0
+        var x = Math.max(0.0, Math.min(1.0, p))
+        return 1.0 + c3 * Math.pow(x - 1.0, 3.0) + c1 * Math.pow(x - 1.0, 2.0)
+    }
+
+    function easeInOutCubic(p) {
+        var x = Math.max(0.0, Math.min(1.0, p))
+        return x < 0.5 ? 4.0 * x * x * x : 1.0 - Math.pow(-2.0 * x + 2.0, 3.0) / 2.0
+    }
+
+    // Opening progression during lock-in (550ms -> 1100ms)
+    readonly property real openProgress: {
+        if (LockTransition.phase === "locking") {
+            if (LockTransition.t < 550.0) return 0.0
+            return Math.max(0.0, Math.min(1.0, (LockTransition.t - 550.0) / 550.0))
+        }
+        if (LockTransition.phase === "locked") return 1.0
+        if (LockTransition.phase === "unlocking") return 1.0
+        return 0.0
+    }
+
+    // Collapse progression during unlock-out (520ms -> 1020ms)
+    readonly property real collapseProgress: {
+        if (LockTransition.phase === "unlocking" || LockTransition.phase === "post_unlock") {
+            if (LockTransition.u < 520.0) return 0.0
+            return Math.max(0.0, Math.min(1.0, (LockTransition.u - 520.0) / 500.0))
+        }
+        return 0.0
+    }
+
+    implicitWidth: 312
+    implicitHeight: 50
+    width: {
+        if (LockTransition.reducedMotion) return 312.0
+        if (LockTransition.phase === "locking") {
+            return 46.0 + 266.0 * cardRoot.easeOutBack(cardRoot.openProgress)
+        }
+        if ((LockTransition.phase === "unlocking" || LockTransition.phase === "post_unlock") && cardRoot.collapseProgress > 0.001) {
+            return Math.max(46.0, 312.0 - 266.0 * cardRoot.easeInOutCubic(cardRoot.collapseProgress))
+        }
+        return 312.0
+    }
+    height: 50
 
     property bool revealed: false
     opacity: {
-        if (LockTransition.phase === "unlocking") {
-            return Math.max(0.0, 1.0 - LockTransition.u / 250.0) * (cardRoot.revealed ? 1.0 : 0.0)
+        if (LockTransition.reducedMotion) return (LockTransition.phase === "locked" ? 1.0 : 0.0)
+        if (LockTransition.phase === "locking") {
+            if (LockTransition.t < 550.0) return 0.0
+            return Math.min(1.0, (LockTransition.t - 550.0) / 250.0)
+        }
+        if (LockTransition.phase === "unlocking" || LockTransition.phase === "post_unlock") {
+            if (LockTransition.u < 520.0) return 1.0
+            return Math.max(0.0, 1.0 - (LockTransition.u - 520.0) / 500.0)
         }
         return cardRoot.revealed ? 1.0 : 0.0
     }
-    scale: revealed ? 1.0 : 0.82
-    transform: Translate {
-        y: cardRoot.revealed ? 0 : 28
-        Behavior on y {
-            enabled: LockTransition.phase === "locked"
-            NumberAnimation {
-                duration: cardRoot.revealed ? 380 : 240
-                easing.type: cardRoot.revealed ? Easing.OutBack : Easing.InCubic
-                easing.overshoot: 1.35
+    scale: 1.0
+
+    transform: [
+        Translate {
+            x: cardRoot.xOffset
+            y: {
+                if (LockTransition.reducedMotion) return 0.0
+                if (LockTransition.phase === "locking") {
+                    return 16.0 * (1.0 - cardRoot.easeOutBack(cardRoot.openProgress))
+                }
+                if ((LockTransition.phase === "unlocking" || LockTransition.phase === "post_unlock") && cardRoot.collapseProgress > 0.001) {
+                    return -6.0 * cardRoot.collapseProgress
+                }
+                return 0.0
             }
         }
-    }
+    ]
 
-    Behavior on opacity {
-        enabled: LockTransition.phase === "locked"
-        NumberAnimation {
-            duration: cardRoot.revealed ? 220 : 180
-            easing.type: Easing.OutQuad
+    readonly property real innerContentOpacity: {
+        if (LockTransition.reducedMotion) return (LockTransition.phase === "locked" ? 1.0 : 0.0)
+        if (LockTransition.phase === "locking") {
+            if (LockTransition.t < 780.0) return 0.0
+            return Math.min(1.0, (LockTransition.t - 780.0) / 220.0)
         }
-    }
-
-    Behavior on scale {
-        enabled: LockTransition.phase === "locked"
-        NumberAnimation {
-            duration: cardRoot.revealed ? 380 : 220
-            easing.type: cardRoot.revealed ? Easing.OutBack : Easing.InCubic
-            easing.overshoot: 1.4
+        if (LockTransition.phase === "unlocking" || LockTransition.phase === "post_unlock") {
+            if (LockTransition.u >= 520.0) return Math.max(0.0, 1.0 - (LockTransition.u - 520.0) / 200.0)
+            return 1.0
         }
+        return 1.0
     }
 
     onRevealedChanged: {
@@ -151,6 +203,9 @@ Item {
             isError = false
             lockTiltAnim.restart()
             keyPressPulse.restart()
+            if (cardRoot.logoComponent && typeof cardRoot.logoComponent.bump === "function") {
+                cardRoot.logoComponent.bump()
+            }
             event.accepted = true
         } else if (event.key === Qt.Key_Escape) {
             idleHideTimer.stop()
@@ -167,6 +222,9 @@ Item {
                 isError = false
                 lockTiltAnim.restart()
                 keyPressPulse.restart()
+                if (cardRoot.logoComponent && typeof cardRoot.logoComponent.bump === "function") {
+                    cardRoot.logoComponent.bump()
+                }
             }
             event.accepted = true
         } else {
@@ -205,21 +263,20 @@ Item {
         NumberAnimation { target: arrowText; property: "x"; to: 0; duration: 140; easing.type: Easing.OutBack }
     }
 
-    /* ── Shake Animation on Authentication Error ─────────────────────────── */
+    /* ── Shake Animation on Authentication Error (520ms) ─────────────────── */
     SequentialAnimation {
         id: shakeAnim
 
-        PropertyAnimation { target: cardRoot; property: "xOffset"; from: 0; to: -16; duration: 45; easing.type: Easing.OutQuad }
-        PropertyAnimation { target: cardRoot; property: "xOffset"; to: 16; duration: 55; easing.type: Easing.InOutQuad }
-        PropertyAnimation { target: cardRoot; property: "xOffset"; to: -12; duration: 55; easing.type: Easing.InOutQuad }
-        PropertyAnimation { target: cardRoot; property: "xOffset"; to: 12; duration: 55; easing.type: Easing.InOutQuad }
-        PropertyAnimation { target: cardRoot; property: "xOffset"; to: -5; duration: 45; easing.type: Easing.InOutQuad }
-        PropertyAnimation { target: cardRoot; property: "xOffset"; to: 0; duration: 45; easing.type: Easing.InOutQuad }
+        PropertyAnimation { target: cardRoot; property: "xOffset"; from: 0; to: -12; duration: 60; easing.type: Easing.OutQuad }
+        PropertyAnimation { target: cardRoot; property: "xOffset"; to: 10; duration: 100; easing.type: Easing.InOutQuad }
+        PropertyAnimation { target: cardRoot; property: "xOffset"; to: -8; duration: 100; easing.type: Easing.InOutQuad }
+        PropertyAnimation { target: cardRoot; property: "xOffset"; to: 5; duration: 100; easing.type: Easing.InOutQuad }
+        PropertyAnimation { target: cardRoot; property: "xOffset"; to: 0; duration: 160; easing.type: Easing.OutCubic }
     }
 
     Timer {
         id: errorTimer
-        interval: 1800
+        interval: 650
         onTriggered: cardRoot.isError = false
     }
 
@@ -240,13 +297,31 @@ Item {
             cardRoot.isAuthenticating = false
             if (res === PamResult.Success) {
                 cardRoot.isSuccess = true
+                if (cardRoot.logoComponent && typeof cardRoot.logoComponent.triggerExit === "function") {
+                    cardRoot.logoComponent.triggerExit()
+                }
                 cardRoot.unlocked()
             } else {
                 cardRoot.isError = true
                 cardRoot.buffer = ""
-                // Per spec: dots flash rose (#f38ba8) and clear (no shake), no handoff
+                if (cardRoot.logoComponent && typeof cardRoot.logoComponent.wrong === "function") {
+                    cardRoot.logoComponent.wrong()
+                }
+                shakeAnim.restart()
                 errorTimer.restart()
                 cardRoot.restartIdleTimer(1400)
+            }
+        }
+    }
+
+    Connections {
+        target: LockTransition
+        function onPhaseChanged() {
+            if (LockTransition.phase === "idle") {
+                cardRoot.buffer = ""
+                cardRoot.isSuccess = false
+                cardRoot.isError = false
+                cardRoot.isAuthenticating = false
             }
         }
     }
@@ -257,13 +332,14 @@ Item {
         anchors.fill: parent
         anchors.horizontalCenterOffset: cardRoot.xOffset
         radius: 26
+        clip: true
 
         color: Qt.rgba(0.08, 0.08, 0.12, 0.88)
 
         border.width: 1.5
         border.color: {
             if (cardRoot.isSuccess) return Theme.ok ? Theme.ok : "#a6e3a1"
-            if (cardRoot.isError) return Theme.err ? Theme.err : "#f38ba8"
+            if (cardRoot.isError) return "#f2705f"
             if (cardRoot.buffer.length > 0) return Theme.accent ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.75) : Qt.rgba(0, 0.94, 1, 0.75)
             return Qt.rgba(1, 1, 1, 0.15)
         }
@@ -286,11 +362,11 @@ Item {
         // Inner row layout: Lock Icon + Animated Shapes + Submit Arrow
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 10
+            anchors.leftMargin: cardRoot.width < 100 ? (cardRoot.width - 20) / 2 : 16
+            anchors.rightMargin: cardRoot.width < 100 ? 0 : 10
             spacing: 12
 
-            // Lock Icon with reactive rotation
+            // Lock Icon with reactive rotation & success scale
             Item {
                 width: 20
                 height: 20
@@ -302,10 +378,15 @@ Item {
                     text: cardRoot.isSuccess ? "check" : (cardRoot.isError ? "error" : "lock")
                     font.family: Theme.fontIcon
                     font.pixelSize: 18
+                    scale: cardRoot.isSuccess ? 1.15 : 1.0
                     color: {
-                        if (cardRoot.isSuccess) return Theme.ok ? Theme.ok : "#a6e3a1"
-                        if (cardRoot.isError) return Theme.err ? Theme.err : "#f38ba8"
+                        if (cardRoot.isSuccess) return "#f4f6f5"
+                        if (cardRoot.isError) return "#f2705f"
                         return Theme.accent ? Theme.accent : "#00F0FF"
+                    }
+
+                    Behavior on scale {
+                        NumberAnimation { duration: 450; easing.type: Easing.OutBack; easing.overshoot: 1.56 }
                     }
                 }
             }
@@ -314,6 +395,8 @@ Item {
             Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                opacity: cardRoot.innerContentOpacity
+                visible: cardRoot.innerContentOpacity > 0.001
 
                 // Placeholder / Status Text
                 Text {
@@ -331,7 +414,7 @@ Item {
                     font.italic: !cardRoot.isError && !cardRoot.isSuccess
                     color: {
                         if (cardRoot.isSuccess) return Theme.ok ? Theme.ok : "#a6e3a1"
-                        if (cardRoot.isError) return Theme.err ? Theme.err : "#f38ba8"
+                        if (cardRoot.isError) return "#f2705f"
                         return Qt.rgba(1, 1, 1, 0.40)
                     }
                 }
@@ -396,19 +479,30 @@ Item {
                 }
             }
 
-            // Right Submit Arrow Button with interactive glow pulse
+            // Right Submit Arrow Button with interactive glow pulse & check mark morph
             Rectangle {
                 id: submitBtn
                 width: 34
                 height: 34
                 radius: 17
-                color: (cardRoot.buffer.length > 0 && !cardRoot.isAuthenticating) ? (Theme.accent ? Theme.accent : "#00F0FF") : Qt.rgba(1, 1, 1, 0.08)
+                opacity: cardRoot.innerContentOpacity
+                visible: cardRoot.innerContentOpacity > 0.001 || cardRoot.isSuccess
                 Layout.alignment: Qt.AlignVCenter
 
-                scale: (cardRoot.buffer.length > 0 && !cardRoot.isAuthenticating) ? (submitMouse.containsMouse ? 1.12 : 1.04) : 1.0
+                color: {
+                    if (cardRoot.isSuccess) return "#f4f6f5"
+                    if (cardRoot.buffer.length > 0 && !cardRoot.isAuthenticating) return Theme.accent ? Theme.accent : "#00F0FF"
+                    return Qt.rgba(1, 1, 1, 0.08)
+                }
+
+                scale: {
+                    if (cardRoot.isSuccess) return 1.15
+                    if (cardRoot.buffer.length > 0 && !cardRoot.isAuthenticating) return submitMouse.containsMouse ? 1.12 : 1.04
+                    return 1.0
+                }
 
                 Behavior on scale {
-                    NumberAnimation { duration: 150; easing.type: Easing.OutBack }
+                    NumberAnimation { duration: 450; easing.type: Easing.OutBack; easing.overshoot: 1.56 }
                 }
 
                 Behavior on color {
@@ -422,7 +516,7 @@ Item {
                     height: parent.height + 6
                     radius: width / 2
                     color: Theme.accent ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : Qt.rgba(0, 0.94, 1, 0.35)
-                    visible: cardRoot.buffer.length > 0 && !cardRoot.isAuthenticating
+                    visible: !cardRoot.isSuccess && cardRoot.buffer.length > 0 && !cardRoot.isAuthenticating
                 }
 
                 Item {
@@ -434,11 +528,15 @@ Item {
                     Text {
                         id: arrowText
                         anchors.centerIn: parent
-                        text: cardRoot.isAuthenticating ? "progress_activity" : "arrow_forward"
+                        text: cardRoot.isSuccess ? "check" : (cardRoot.isAuthenticating ? "progress_activity" : "arrow_forward")
                         font.family: Theme.fontIcon
                         font.pixelSize: 16
                         font.bold: true
-                        color: (cardRoot.buffer.length > 0 && !cardRoot.isAuthenticating) ? "#121216" : Qt.rgba(1, 1, 1, 0.4)
+                        color: cardRoot.isSuccess ? "#0d1013" : ((cardRoot.buffer.length > 0 && !cardRoot.isAuthenticating) ? "#121216" : Qt.rgba(1, 1, 1, 0.4))
+                        scale: cardRoot.isSuccess ? 1.1 : 1.0
+                        Behavior on scale {
+                            NumberAnimation { duration: 300; easing.type: Easing.OutBack }
+                        }
                     }
                 }
 
@@ -447,6 +545,7 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
+                    enabled: !cardRoot.isSuccess && !cardRoot.isAuthenticating
                     onClicked: {
                         cardRoot.submitPassword()
                         cardRoot.forceActiveFocus()
