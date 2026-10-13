@@ -226,26 +226,32 @@ if [[ -n "$BRANCH" ]]; then
 fi
 
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")"
-REMOTE_TARGET="$CURRENT_BRANCH"
-if ! git rev-parse --verify "origin/$REMOTE_TARGET" >/dev/null 2>&1; then
-    UPSTREAM="$(git rev-parse --abbrev-ref '@{u}' 2>/dev/null || true)"
-    if [[ -n "$UPSTREAM" && "$UPSTREAM" != "@{u}" ]]; then
-        REMOTE_TARGET="${UPSTREAM#origin/}"
-    else
-        REMOTE_TARGET="main"
-    fi
-fi
-info "Checking for remote updates ($CURRENT_BRANCH -> origin/$REMOTE_TARGET)..."
 
-git fetch origin "$REMOTE_TARGET" --quiet 2>/dev/null || {
+# Locate upstream remote (prefer origin, else fall back to first remote)
+UPSTREAM_REMOTE="origin"
+if ! git remote get-url "$UPSTREAM_REMOTE" >/dev/null 2>&1; then
+    UPSTREAM_REMOTE="$(git remote 2>/dev/null | head -n 1 || echo "origin")"
+fi
+
+if [[ -n "$BRANCH" ]]; then
+    REMOTE_TARGET="$BRANCH"
+elif git rev-parse --verify "$UPSTREAM_REMOTE/$CURRENT_BRANCH" >/dev/null 2>&1; then
+    REMOTE_TARGET="$CURRENT_BRANCH"
+else
+    # Custom or diverged local branch: pull updates from upstream main
+    REMOTE_TARGET="main"
+fi
+info "Checking for remote updates ($CURRENT_BRANCH -> $UPSTREAM_REMOTE/$REMOTE_TARGET)..."
+
+git fetch "$UPSTREAM_REMOTE" "$REMOTE_TARGET" --quiet 2>/dev/null || {
     warn "Could not reach remote repository (offline or remote unreachable)."
 }
 
 LOCAL_HASH="$(git rev-parse HEAD 2>/dev/null || echo "")"
-REMOTE_HASH="$(git rev-parse --verify "origin/$REMOTE_TARGET^{commit}" 2>/dev/null || echo "$LOCAL_HASH")"
-NEW_COMMITS_COUNT="$(git rev-list --count HEAD.."origin/$REMOTE_TARGET" 2>/dev/null || echo 0)"
+REMOTE_HASH="$(git rev-parse --verify "$UPSTREAM_REMOTE/$REMOTE_TARGET^{commit}" 2>/dev/null || echo "$LOCAL_HASH")"
+NEW_COMMITS_COUNT="$(git rev-list --count HEAD.."$UPSTREAM_REMOTE/$REMOTE_TARGET" 2>/dev/null || echo 0)"
 
-if [[ "$LOCAL_HASH" == "$REMOTE_HASH" || "$NEW_COMMITS_COUNT" -eq 0 ]]; then
+if [[ "$NEW_COMMITS_COUNT" -eq 0 ]]; then
     if [[ "$CHECK_ONLY" -eq 1 ]]; then
         ok "Carbon Shell is up to date (${LOCAL_HASH:0:8})."
         exit 0
@@ -259,12 +265,12 @@ if [[ "$LOCAL_HASH" == "$REMOTE_HASH" || "$NEW_COMMITS_COUNT" -eq 0 ]]; then
     fi
 else
     # Update available!
-    msg "Updates available:"
+    msg "Updates available ($NEW_COMMITS_COUNT new upstream commits):"
     printf "   Current commit : %s\n" "${LOCAL_HASH:0:8}"
     printf "   Latest commit  : %s\n\n" "${REMOTE_HASH:0:8}"
 
     printf "  Recent changes:\n"
-    git log --oneline --no-merges -n 5 "$LOCAL_HASH..$REMOTE_HASH" 2>/dev/null | sed 's/^/    * /' || true
+    git log --oneline --no-merges -n 5 "HEAD..$UPSTREAM_REMOTE/$REMOTE_TARGET" 2>/dev/null | sed 's/^/    * /' || true
     printf "\n"
 
     if [[ "$CHECK_ONLY" -eq 1 ]]; then
@@ -280,7 +286,7 @@ fi
 # ------------------------------------------------------------------------------
 # 3. Pull Repository Updates
 # ------------------------------------------------------------------------------
-if [[ "$LOCAL_HASH" != "$REMOTE_HASH" || "$FORCE" -eq 1 ]]; then
+if [[ "$NEW_COMMITS_COUNT" -gt 0 ]]; then
     msg "Updating repository working tree..."
 
     # 3a. Save any uncommitted modifications into a safe git snapshot commit
@@ -295,9 +301,9 @@ if [[ "$LOCAL_HASH" != "$REMOTE_HASH" || "$FORCE" -eq 1 ]]; then
     create_safety_backup
 
     # 3c. Safe merge based on branch (never overwrite user commits)
-    if [[ "$CURRENT_BRANCH" != "main" && "$CURRENT_BRANCH" != "$REMOTE_TARGET" ]]; then
-        info "Custom branch detected ($CURRENT_BRANCH). Merging upstream origin/$REMOTE_TARGET..."
-        if git merge --no-edit "origin/$REMOTE_TARGET" --quiet 2>/dev/null; then
+    if [[ "$CURRENT_BRANCH" != "$REMOTE_TARGET" ]]; then
+        info "Custom branch detected ($CURRENT_BRANCH). Merging upstream $UPSTREAM_REMOTE/$REMOTE_TARGET..."
+        if git merge --no-edit "$UPSTREAM_REMOTE/$REMOTE_TARGET" --quiet 2>/dev/null; then
             ok "Upstream updates cleanly merged into $CURRENT_BRANCH (all local commits preserved)"
         else
             warn "Merge conflict detected with upstream updates!"
@@ -308,7 +314,7 @@ if [[ "$LOCAL_HASH" != "$REMOTE_HASH" || "$FORCE" -eq 1 ]]; then
         if git merge-base --is-ancestor HEAD "$REMOTE_HASH" 2>/dev/null; then
             git merge --ff-only "$REMOTE_HASH" --quiet
         else
-            git merge --no-edit "$REMOTE_HASH" --quiet 2>/dev/null || git pull origin "$REMOTE_TARGET" --quiet || {
+            git merge --no-edit "$REMOTE_HASH" --quiet 2>/dev/null || git pull "$UPSTREAM_REMOTE" "$REMOTE_TARGET" --quiet || {
                 die "Could not fast-forward repository. Resolve git conflicts manually in $REPO_DIR."
             }
         fi
