@@ -622,6 +622,8 @@ ShellRoot {
     property string barMode: "pill"
     property bool workspaceOsdActive: false
     property var nucleusRestingSpin: "hover"
+    property bool screenshotFreezeActive: false
+    property string screenshotFreezePath: ""
     onBarModeChanged: console.log("[BAR-MODE CHANGED] New root.barMode is now: " + root.barMode)
 
     FileView {
@@ -1025,6 +1027,15 @@ ShellRoot {
                     }
                     else if (cmd === "close-wallpaper") {
                         root.closeWallpaperPicker()
+                    }
+                    else if (cmd.startsWith("freeze-start ")) {
+                        var fpath = cmd.replace(/^freeze-start\s+/, "").trim()
+                        root.screenshotFreezePath = fpath
+                        root.screenshotFreezeActive = true
+                    }
+                    else if (cmd === "freeze-stop") {
+                        root.screenshotFreezeActive = false
+                        root.screenshotFreezePath = ""
                     }
                     else if (cmd.startsWith("apply-wallpaper ") || cmd.startsWith("set-wallpaper ") || (cmd.startsWith("wallpaper ") && cmd !== "wallpaper live" && cmd !== "wallpaper local" && cmd !== "wallpaper online")) {
                         var wpPath = cmd.replace(/^(apply-wallpaper|set-wallpaper|wallpaper)\s+/, "").trim()
@@ -3765,6 +3776,33 @@ ShellRoot {
                         root.nucleusHubItem.openNotificationPanel()
                     }
                 }
+            }
+        }
+    }
+
+    /* ── Full-screen Screen Freeze Overlay for Screenshot capture ── */
+    Variants {
+        model: Quickshell.screens
+
+        PanelWindow {
+            id: screenshotFreezeWindow
+            required property var modelData
+            screen: modelData
+            color: "#000000"
+            visible: root.screenshotFreezeActive && root.screenshotFreezePath.length > 0
+            WlrLayershell.namespace: "carbon-screenshot-freeze"
+            WlrLayershell.layer: WlrLayer.Top
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+            exclusionMode: ExclusionMode.Ignore
+            aboveWindows: true
+            anchors { top: true; bottom: true; left: true; right: true }
+
+            Image {
+                anchors.fill: parent
+                source: (root.screenshotFreezeActive && root.screenshotFreezePath.length > 0) ? ("file://" + root.screenshotFreezePath) : ""
+                fillMode: Image.PreserveAspectFit
+                cache: false
+                asynchronous: false
             }
         }
     }
