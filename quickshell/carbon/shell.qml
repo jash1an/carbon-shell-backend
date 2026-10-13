@@ -973,9 +973,20 @@ ShellRoot {
      * disabled in Hyprland) and feeds the top-right bar. Exactly one. */
     NotificationServer {
         id: notificationServer
+        actionsSupported: true
+        bodySupported: true
+        bodyHyperlinksSupported: true
+        bodyImagesSupported: true
+        bodyMarkupSupported: true
         onNotification: notification => {
             notification.tracked = true
         }
+    }
+
+    Binding {
+        target: NotificationService
+        property: "server"
+        value: notificationServer
     }
 
     /* External trigger (keybinds): Super+W brokered to the launcher in

@@ -4,3 +4,4 @@ singleton LyricsService LyricsService.qml
 singleton WeatherService WeatherService.qml
 singleton HudService HudService.qml
 singleton LockTransition LockTransition.qml
+singleton NotificationService NotificationService.qml

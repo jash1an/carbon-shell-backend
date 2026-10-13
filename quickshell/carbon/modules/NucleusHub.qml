@@ -1192,13 +1192,7 @@ Item {
     }
 
     // 4. Notifications
-    property int unreadNotifCount: 0
-    Connections {
-        target: NotificationServer
-        function onNotification(notif) {
-            root.unreadNotifCount += 1
-        }
-    }
+    readonly property int unreadNotifCount: NotificationService.unreadCount
 
     /* ── Animation Progress Constants ── */
     property real hubProgress: root.nucleusExpanded ? 1.0 : 0.0
