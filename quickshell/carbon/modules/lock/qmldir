@@ -2,6 +2,7 @@ LockScreen LockScreen.qml
 LockSurface LockSurface.qml
 CarbonLewisLogo CarbonLewisLogo.qml
 UnifiedCarbonAtom UnifiedCarbonAtom.qml
+CarbonLogoMark CarbonLogoMark.qml
 LockCavaVisualizer LockCavaVisualizer.qml
 LockClock LockClock.qml
 LockMediaOverlay LockMediaOverlay.qml

@@ -125,16 +125,57 @@ Item {
 
     Component.onCompleted: root.reloadConfig()
 
+    function easeOutCubic(p) {
+        var x = Math.max(0.0, Math.min(1.0, p))
+        return 1.0 - Math.pow(1.0 - x, 3.0)
+    }
+
+    // Enter motion: at t = 680ms, slides up 26px and fades in over 480ms
+    readonly property real mediaEnterProgress: {
+        if (LockTransition.reducedMotion) return 1.0
+        if (LockTransition.phase === "locked") return 1.0
+        if (LockTransition.phase === "locking") {
+            if (LockTransition.t < 680.0) return 0.0
+            return Math.min(1.0, (LockTransition.t - 680.0) / 480.0)
+        }
+        if (LockTransition.phase === "unlocking") return 1.0
+        return 0.0
+    }
+    readonly property real mediaEnterEased: root.easeOutCubic(mediaEnterProgress)
+
+    // Exit motion: at u >= 520ms, fades out over 450ms
+    readonly property real mediaExitProgress: {
+        if (LockTransition.phase === "unlocking") {
+            if (LockTransition.u < 520.0) return 1.0
+            return Math.max(0.0, 1.0 - (LockTransition.u - 520.0) / 450.0)
+        }
+        if (LockTransition.phase === "post_unlock") return 0.0
+        return 1.0
+    }
+
+    // Progress bar fills in over 550ms starting at t = 720ms
+    readonly property real progressBarFillFactor: {
+        if (LockTransition.reducedMotion) return 1.0
+        if (LockTransition.phase === "locked") return 1.0
+        if (LockTransition.phase === "locking") {
+            if (LockTransition.t < 720.0) return 0.0
+            return Math.min(1.0, (LockTransition.t - 720.0) / 550.0)
+        }
+        if (LockTransition.phase === "unlocking") return 1.0
+        return 0.0
+    }
+    readonly property real progressBarFillEased: root.easeOutCubic(progressBarFillFactor)
+
     /* ── Smooth Animated Visibility ──────────────────────────────────────── */
     property bool stageDriven: false
     property bool entered: stageDriven
     property bool showing: entered && enabledSetting
 
     visible: opacity > 0.01
-    opacity: showing ? 1.0 : 0.0
+    opacity: (root.showing ? 1.0 : 0.0) * root.mediaEnterEased * root.mediaExitProgress
     transform: Translate {
         id: transOffset
-        y: root.stageDriven ? 0 : (root.showing ? 0 : 36)
+        y: root.stageDriven ? (26.0 * (1.0 - root.mediaEnterEased)) : (root.showing ? 0 : 36)
         x: root.stageDriven ? 0 : (root.showing ? 0 : -16)
 
         Behavior on y {
@@ -313,7 +354,7 @@ Item {
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
                     radius: 2.5
-                    width: root.hasTrack ? Math.max(0, Math.min(parent.width, parent.width * root.progress)) : 0
+                    width: root.hasTrack ? Math.max(0, Math.min(parent.width, parent.width * root.progress * root.progressBarFillEased)) : 0
                     color: Theme.accent
 
                     Behavior on width {

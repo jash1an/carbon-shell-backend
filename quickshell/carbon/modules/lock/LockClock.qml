@@ -120,11 +120,26 @@ Item {
 
     Component.onCompleted: root.reloadConfig()
 
+    function easeOutCubic(p) {
+        var x = Math.max(0.0, Math.min(1.0, p))
+        return 1.0 - Math.pow(1.0 - x, 3.0)
+    }
+
     /* ── Smooth Animated Visibility & Entrance ───────────────────────────── */
     property bool stageDriven: false
     property bool entered: stageDriven
+
+    readonly property real exitOpacity: {
+        if (LockTransition.phase === "unlocking") {
+            if (LockTransition.u < 520.0) return 1.0
+            return Math.max(0.0, 1.0 - (LockTransition.u - 520.0) / 450.0)
+        }
+        if (LockTransition.phase === "post_unlock") return 0.0
+        return 1.0
+    }
+
     visible: opacity > 0.01
-    opacity: (entered && enabledSetting) ? 1.0 : 0.0
+    opacity: ((entered && enabledSetting) ? 1.0 : 0.0) * root.exitOpacity
     transform: Translate {
         id: transOffset
         y: root.stageDriven ? 0 : (root.entered ? 0 : 36)
@@ -182,21 +197,69 @@ Item {
         anchors.bottom: parent.bottom
         spacing: 2
 
-        // Time Readout
-        Text {
-            id: timeText
+        // Time Readout with staggered digit roll-in (1000ms, 900ms duration, 70ms stagger)
+        Row {
+            id: timeRow
             anchors.right: parent.right
-            text: root.timeStr
-            font.family: "Google Sans Flex"
-            font.pixelSize: 68
-            font.weight: Font.Bold
-            color: "#FFFFFF"
+            spacing: 0
 
-            layer.enabled: true
-            layer.effect: shadowFx
+            Repeater {
+                model: root.timeStr.length
+
+                Item {
+                    id: charWrapper
+                    required property int index
+                    readonly property string charText: root.timeStr.charAt(index)
+
+                    width: charTextLabel.implicitWidth
+                    height: charTextLabel.implicitHeight
+
+                    readonly property real charStartTime: 580.0 + index * 40.0
+                    readonly property real charProgress: {
+                        if (LockTransition.reducedMotion) return 1.0
+                        if (LockTransition.phase === "locked") return 1.0
+                        if (LockTransition.phase === "locking") {
+                            if (LockTransition.t < charStartTime) return 0.0
+                            return Math.min(1.0, (LockTransition.t - charStartTime) / 450.0)
+                        }
+                        if (LockTransition.phase === "unlocking") return 1.0
+                        return 0.0
+                    }
+
+                    readonly property real charEased: root.easeOutCubic(charProgress)
+
+                    Text {
+                        id: charTextLabel
+                        text: charWrapper.charText
+                        font.family: "Google Sans Flex"
+                        font.pixelSize: 68
+                        font.weight: Font.Bold
+                        color: "#FFFFFF"
+                        opacity: charWrapper.charEased
+                        transform: Translate {
+                            y: (1.0 - charWrapper.charEased) * (charTextLabel.font.pixelSize * 0.45)
+                        }
+
+                        layer.enabled: true
+                        layer.effect: shadowFx
+                    }
+                }
+            }
         }
 
-        // Ambient Hyprland Splash Quote
+        // Ambient Hyprland Splash Quote (enters at 750ms, 400ms duration, 14px rise)
+        readonly property real greetProgress: {
+            if (LockTransition.reducedMotion) return 1.0
+            if (LockTransition.phase === "locked") return 1.0
+            if (LockTransition.phase === "locking") {
+                if (LockTransition.t < 750.0) return 0.0
+                return Math.min(1.0, (LockTransition.t - 750.0) / 400.0)
+            }
+            if (LockTransition.phase === "unlocking") return 1.0
+            return 0.0
+        }
+        readonly property real greetEased: root.easeOutCubic(clockCol.greetProgress)
+
         Text {
             id: greetingText
             anchors.right: parent.right
@@ -208,6 +271,10 @@ Item {
             horizontalAlignment: Text.AlignRight
             wrapMode: Text.WordWrap
             width: Math.min(460, root.parent ? root.parent.width * 0.45 : 460)
+            opacity: clockCol.greetEased
+            transform: Translate {
+                y: 14.0 * (1.0 - clockCol.greetEased)
+            }
 
             layer.enabled: true
             layer.effect: shadowFx
@@ -217,10 +284,26 @@ Item {
             }
         }
 
-        // Day and Date Row
+        // Day and Date Row (enters at 820ms, 400ms duration, 14px rise)
+        readonly property real dateProgress: {
+            if (LockTransition.reducedMotion) return 1.0
+            if (LockTransition.phase === "locked") return 1.0
+            if (LockTransition.phase === "locking") {
+                if (LockTransition.t < 820.0) return 0.0
+                return Math.min(1.0, (LockTransition.t - 820.0) / 400.0)
+            }
+            if (LockTransition.phase === "unlocking") return 1.0
+            return 0.0
+        }
+        readonly property real dateEased: root.easeOutCubic(clockCol.dateProgress)
+
         Row {
             anchors.right: parent.right
             spacing: 12
+            opacity: clockCol.dateEased
+            transform: Translate {
+                y: 14.0 * (1.0 - clockCol.dateEased)
+            }
 
             // Day of the week in cursive Caveat
             Text {

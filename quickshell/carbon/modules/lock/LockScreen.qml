@@ -83,8 +83,7 @@ Scope {
             }
 
             onRequestUnlockFinish: {
-                console.log("[LockScreen] Received onRequestUnlockFinish -> unlock transition completed, dropping session lock")
-                LockTransition.finishUnlock()
+                console.log("[LockScreen] Received onRequestUnlockFinish -> dropping session lock for smooth desktop reveal")
                 unlockReleaseTimer.restart()
             }
 
