@@ -48,3 +48,5 @@ ControlRing ControlRing.qml
 LockTransitionOverlay LockTransitionOverlay.qml
 CarbonCalendar CarbonCalendar.qml
 WorkspaceOsd WorkspaceOsd.qml
+NotificationCard NotificationCard.qml
+NotificationPanel NotificationPanel.qml
