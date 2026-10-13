@@ -378,6 +378,9 @@ def write_looknfeel_config(data):
 # Managed automatically by Carbon Settings App
 # ==============================================================================
 
+# Dynamic Material You Theme Colors
+source = ~/.config/carbon/colors.conf
+
 general {{
     gaps_in = {gaps_in}
     gaps_out = {gaps_out}
