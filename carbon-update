@@ -181,14 +181,23 @@ if [[ -n "$BRANCH" ]]; then
 fi
 
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")"
-info "Checking for remote updates ($CURRENT_BRANCH)..."
+REMOTE_TARGET="$CURRENT_BRANCH"
+if ! git rev-parse --verify "origin/$REMOTE_TARGET" >/dev/null 2>&1; then
+    UPSTREAM="$(git rev-parse --abbrev-ref '@{u}' 2>/dev/null || true)"
+    if [[ -n "$UPSTREAM" && "$UPSTREAM" != "@{u}" ]]; then
+        REMOTE_TARGET="${UPSTREAM#origin/}"
+    else
+        REMOTE_TARGET="main"
+    fi
+fi
+info "Checking for remote updates ($CURRENT_BRANCH -> origin/$REMOTE_TARGET)..."
 
-git fetch origin "$CURRENT_BRANCH" --quiet 2>/dev/null || {
+git fetch origin "$REMOTE_TARGET" --quiet 2>/dev/null || {
     warn "Could not reach remote repository (offline or remote unreachable)."
 }
 
 LOCAL_HASH="$(git rev-parse HEAD 2>/dev/null || echo "")"
-REMOTE_HASH="$(git rev-parse "origin/$CURRENT_BRANCH" 2>/dev/null || echo "$LOCAL_HASH")"
+REMOTE_HASH="$(git rev-parse --verify "origin/$REMOTE_TARGET^{commit}" 2>/dev/null || echo "$LOCAL_HASH")"
 
 if [[ "$LOCAL_HASH" == "$REMOTE_HASH" ]]; then
     if [[ "$CHECK_ONLY" -eq 1 ]]; then
@@ -241,10 +250,10 @@ if [[ "$LOCAL_HASH" != "$REMOTE_HASH" || "$FORCE" -eq 1 ]]; then
         fi
     fi
 
-    if git merge-base --is-ancestor HEAD "origin/$CURRENT_BRANCH" 2>/dev/null; then
-        git merge --ff-only "origin/$CURRENT_BRANCH" --quiet
+    if git merge-base --is-ancestor HEAD "$REMOTE_HASH" 2>/dev/null; then
+        git merge --ff-only "$REMOTE_HASH" --quiet
     else
-        git pull --ff-only origin "$CURRENT_BRANCH" --quiet || {
+        git merge --no-edit "$REMOTE_HASH" --quiet 2>/dev/null || git pull origin "$REMOTE_TARGET" --quiet || {
             die "Could not fast-forward repository. Resolve git conflicts manually in $REPO_DIR."
         }
     fi
@@ -279,12 +288,20 @@ msg "Preserving user configurations..."
 mkdir -p "$CONFIG_DIR"
 echo "$REPO_DIR" > "$REPO_PATH_FILE"
 
-# Window rules and looknfeel
+# Window rules and looknfeel: do NOT overwrite existing user customizations
 if [[ -f "$REPO_DIR/hypr/windowrules.conf" ]]; then
-    cp -f "$REPO_DIR/hypr/windowrules.conf" "$CONFIG_DIR/windowrules.conf"
+    if [[ ! -f "$CONFIG_DIR/windowrules.conf" ]]; then
+        cp -f "$REPO_DIR/hypr/windowrules.conf" "$CONFIG_DIR/windowrules.conf"
+    else
+        cp -f "$REPO_DIR/hypr/windowrules.conf" "$CONFIG_DIR/windowrules.conf.dist" 2>/dev/null || true
+    fi
 fi
 if [[ -f "$REPO_DIR/hypr/looknfeel.conf" ]]; then
-    cp -f "$REPO_DIR/hypr/looknfeel.conf" "$CONFIG_DIR/looknfeel.conf"
+    if [[ ! -f "$CONFIG_DIR/looknfeel.conf" ]]; then
+        cp -f "$REPO_DIR/hypr/looknfeel.conf" "$CONFIG_DIR/looknfeel.conf"
+    else
+        cp -f "$REPO_DIR/hypr/looknfeel.conf" "$CONFIG_DIR/looknfeel.conf.dist" 2>/dev/null || true
+    fi
 fi
 
 # Keybinding configs: do NOT overwrite existing user customizations

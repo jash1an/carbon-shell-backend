@@ -196,10 +196,7 @@ Item {
     }
 
     function openWallpaperMode() {
-        if (!root.hubOpen) root.open()
-        root.activeMode = "wallpapers"
-        root.focusedLobe = ""
-        root.loadWallpapersForCurrentSource()
+        Quickshell.execDetached(["sh", (Quickshell.env("HOME") || "/home/zily") + "/.config/carbon/scripts/carbon-ipc.sh", "wallpaper"])
     }
 
     function openPowerMode() {
@@ -1729,9 +1726,9 @@ Item {
                     {
                         icon: "wallpaper",
                         isFontIcon: true,
-                        isActive: root.activeMode === "wallpapers",
+                        isActive: false,
                         action: function() {
-                            root.openWallpaperMode()
+                            Quickshell.execDetached(["sh", (Quickshell.env("HOME") || "/home/zily") + "/.config/carbon/scripts/carbon-ipc.sh", "wallpaper"])
                         }
                     }
                 ]
@@ -3289,8 +3286,8 @@ Item {
         Item {
             id: wallpaperRingSystem
             anchors.centerIn: parent
-            visible: root.activeMode === "wallpapers"
-            opacity: root.activeMode === "wallpapers" ? 1.0 : 0.0
+            visible: false
+            opacity: 0.0
             Behavior on opacity { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
 
             // ── Faint Concentric Ring Guides ──

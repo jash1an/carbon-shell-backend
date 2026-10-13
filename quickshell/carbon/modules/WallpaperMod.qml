@@ -179,6 +179,10 @@ Item {
         if (newPath === root.pendingNewPath) return
         console.log("[WallpaperMod] applyNewWallpaper:", newPath, "from current:", root.currentWpPath)
 
+        const home = Quickshell.env("HOME") || ""
+        const themeScript = home + "/.config/carbon/scripts/theme-mk.py"
+        Quickshell.execDetached(["python3", themeScript, newPath])
+
         const newType = getWallpaperType(newPath)
         const oldType = getWallpaperType(root.currentWpPath)
 

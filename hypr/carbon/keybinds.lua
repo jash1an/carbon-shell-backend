@@ -37,7 +37,6 @@ hl.bind(mainMod .. " + " .. "SHIFT" .. " + Q", hl.dsp.exec_cmd("~/.config/hypr/s
 -- ==============================================================================
 -- Carbon Config Editor GUI (Settings)
 hl.bind(mainMod .. " + C", hl.dsp.exec_cmd("~/.config/hypr/scripts/carbon-config-editor"))
-hl.bind(mainMod .. " + comma", hl.dsp.exec_cmd("~/.config/hypr/scripts/carbon-config-editor"))
 
 -- Carbon Controls / Quick Settings Menu
 hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh controls"))

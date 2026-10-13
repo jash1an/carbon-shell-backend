@@ -30,6 +30,8 @@ Item {
     width: 260
     height: 286
     clip: true
+    visible: root.open || root.animatingOut
+    enabled: root.open
 
     /* ----------------------------- state ----------------------------- */
     property bool scanning: false

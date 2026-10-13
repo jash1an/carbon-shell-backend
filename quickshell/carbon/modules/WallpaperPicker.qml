@@ -25,6 +25,8 @@ Item {
 
     // Mode: "local" (system wallpapers), "live" (video/gif wallpapers), or "wallhaven" (online search)
     property string activeSource: "local"
+    // Online provider: "wallhaven" or "unsplash"
+    property string onlineProvider: "wallhaven"
     property bool searchOpen: false
     property string currentSort: "toplist"
     property string searchQuery: ""
@@ -41,10 +43,57 @@ Item {
     readonly property string wallpaperDir: (Quickshell.env("HOME") || "") + "/Pictures/Wallpapers"
     readonly property string stateFile: (Quickshell.env("CARBON_CONFIG_DIR") || ((Quickshell.env("HOME") || "") + "/.config/carbon")) + "/current_wallpaper_path"
     readonly property string hyprStateFile: (Quickshell.env("HOME") || "") + "/.config/hypr/current_wallpaper_path"
+    readonly property string wallpaperSourceFile: (Quickshell.env("CARBON_CONFIG_DIR") || ((Quickshell.env("HOME") || "") + "/.config/carbon")) + "/carbon-wallpaper-source.json"
     readonly property string wallhavenScript: {
         const home = Quickshell.env("HOME") || ""
         const carbonDir = Quickshell.env("CARBON_CONFIG_DIR") || (home + "/.config/carbon")
         return carbonDir + "/scripts/wallhaven.py"
+    }
+
+    FileView {
+        id: wpSourceFile
+        path: root.wallpaperSourceFile
+        blockLoading: true
+        watchChanges: true
+        printErrors: false
+        onLoaded: root.loadWallpaperSource()
+        onFileChanged: {
+            reload()
+            root.loadWallpaperSource()
+        }
+    }
+
+    function loadWallpaperSource() {
+        try {
+            var t = wpSourceFile.text().trim()
+            if (t) {
+                var d = JSON.parse(t)
+                if (d && d.provider) {
+                    var p = String(d.provider).toLowerCase()
+                    if (p === "unsplash" || p === "wallhaven") {
+                        root.onlineProvider = p
+                    }
+                }
+            }
+        } catch (e) {}
+    }
+
+    function setOnlineProvider(prov) {
+        var p = prov.toLowerCase()
+        if (p !== "unsplash" && p !== "wallhaven") return
+        if (root.onlineProvider === p) return
+        root.onlineProvider = p
+
+        var cfg = {
+            "provider": root.onlineProvider,
+            "unsplash_access_key": "5fda81bc223a576f33934dd4dee20cf2217f2777f798c4c0f1e00e377cba5bcc"
+        }
+        var jsonStr = JSON.stringify(cfg, null, 2)
+        Quickshell.execDetached(["sh", "-c", "echo '" + jsonStr + "' > " + root.wallpaperSourceFile + "; [ -d ~/.config/hypr ] && echo '" + jsonStr + "' > ~/.config/hypr/carbon-wallpaper-source.json"])
+
+        if (root.activeSource === "wallhaven") {
+            root.fetchWallpapers()
+        }
     }
 
     FileView {
@@ -107,6 +156,10 @@ Item {
         if (root.open && root.activeSource === "wallhaven") root.fetchWallpapers()
     }
 
+    onOnlineProviderChanged: {
+        if (root.open && root.activeSource === "wallhaven") root.fetchWallpapers()
+    }
+
     onOpenChanged: {
         if (root.open) {
             if (root.activeSource !== "wallhaven" || root.searchOpen) {
@@ -151,7 +204,7 @@ Item {
                 args.push("--query", root.searchQuery.trim())
             }
         } else {
-            args = ["python3", root.wallhavenScript, "search", "--client", "picker", "--sort", root.currentSort, "--page", "1"]
+            args = ["python3", root.wallhavenScript, "search", "--client", "picker", "--provider", root.onlineProvider, "--sort", root.currentSort, "--page", "1"]
             if (root.searchQuery && root.searchQuery.trim().length > 0) {
                 args.push("--query", root.searchQuery.trim())
             }
@@ -166,7 +219,7 @@ Item {
         root.isLoadingMore = true
         var nextPage = root.currentPage + 1
 
-        var args = ["python3", root.wallhavenScript, "search", "--client", "picker", "--sort", root.currentSort, "--page", String(nextPage)]
+        var args = ["python3", root.wallhavenScript, "search", "--client", "picker", "--provider", root.onlineProvider, "--sort", root.currentSort, "--page", String(nextPage)]
         if (root.searchQuery && root.searchQuery.trim().length > 0) {
             args.push("--query", root.searchQuery.trim())
         }
@@ -479,6 +532,94 @@ Item {
                     }
                 }
 
+                /* Online Provider Switcher (Wallhaven | Unsplash) */
+                RowLayout {
+                    spacing: 4
+                    visible: root.activeSource === "wallhaven" && !root.searchOpen
+
+                    Rectangle {
+                        id: whProviderBtn
+                        height: 38
+                        width: whRow.implicitWidth + 16
+                        radius: 10
+                        readonly property bool isActive: root.onlineProvider === "wallhaven"
+                        color: isActive ? Theme.accent : (whHov.containsMouse ? Theme.bgHover : Qt.alpha(Theme.fg, 0.06))
+                        border.color: isActive ? Theme.accentLit : Qt.alpha(Theme.fg, 0.12)
+                        border.width: 1
+                        scale: whHov.pressed ? 0.94 : (whHov.containsMouse ? 1.04 : 1.0)
+                        Behavior on scale { NumberAnimation { duration: Theme.motionDurationShort2; easing.type: Theme.easingEmphasized } }
+                        Behavior on color { ColorAnimation { duration: Theme.motionDurationShort3; easing.type: Theme.easingStandard } }
+
+                        RowLayout {
+                            id: whRow
+                            anchors.centerIn: parent
+                            spacing: 5
+                            Text {
+                                text: "image"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: 14
+                                color: whProviderBtn.isActive ? "#111111" : Theme.fg
+                            }
+                            Text {
+                                text: "Wallhaven"
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(11)
+                                font.weight: Font.Bold
+                                color: whProviderBtn.isActive ? "#111111" : Theme.fg
+                            }
+                        }
+
+                        MouseArea {
+                            id: whHov
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.setOnlineProvider("wallhaven")
+                        }
+                    }
+
+                    Rectangle {
+                        id: unsplashProviderBtn
+                        height: 38
+                        width: unsplashRow.implicitWidth + 16
+                        radius: 10
+                        readonly property bool isActive: root.onlineProvider === "unsplash"
+                        color: isActive ? Theme.accent : (unHov.containsMouse ? Theme.bgHover : Qt.alpha(Theme.fg, 0.06))
+                        border.color: isActive ? Theme.accentLit : Qt.alpha(Theme.fg, 0.12)
+                        border.width: 1
+                        scale: unHov.pressed ? 0.94 : (unHov.containsMouse ? 1.04 : 1.0)
+                        Behavior on scale { NumberAnimation { duration: Theme.motionDurationShort2; easing.type: Theme.easingEmphasized } }
+                        Behavior on color { ColorAnimation { duration: Theme.motionDurationShort3; easing.type: Theme.easingStandard } }
+
+                        RowLayout {
+                            id: unsplashRow
+                            anchors.centerIn: parent
+                            spacing: 5
+                            Text {
+                                text: "photo_camera"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: 14
+                                color: unsplashProviderBtn.isActive ? "#111111" : Theme.fg
+                            }
+                            Text {
+                                text: "Unsplash"
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(11)
+                                font.weight: Font.Bold
+                                color: unsplashProviderBtn.isActive ? "#111111" : Theme.fg
+                            }
+                        }
+
+                        MouseArea {
+                            id: unHov
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.setOnlineProvider("unsplash")
+                        }
+                    }
+                }
+
                 /* Spacer when in Wallhaven Best/Latest mode without search bar */
                 Item {
                     Layout.fillWidth: true
@@ -629,10 +770,48 @@ Item {
 
                         /* Target Icon */
                         Text {
-                            text: root.activeSource === "wallhaven" ? "public" : (root.activeSource === "live" ? "movie" : "folder")
+                            text: root.activeSource === "wallhaven" ? (root.onlineProvider === "unsplash" ? "photo_camera" : "image") : (root.activeSource === "live" ? "movie" : "folder")
                             font.family: Theme.fontIcon
                             font.pixelSize: 16
                             color: searchInput.activeFocus ? Theme.accent : Theme.fgDim
+                        }
+
+                        /* Quick Provider toggle chip inside search bar */
+                        Rectangle {
+                            visible: root.activeSource === "wallhaven"
+                            height: 24
+                            width: provChipRow.implicitWidth + 12
+                            radius: 6
+                            color: provChipHov.containsMouse ? Theme.bgHover : Qt.alpha(Theme.accent, 0.20)
+                            border.width: 1
+                            border.color: Theme.accentLit
+
+                            RowLayout {
+                                id: provChipRow
+                                anchors.centerIn: parent
+                                spacing: 4
+                                Text {
+                                    text: root.onlineProvider === "unsplash" ? "photo_camera" : "image"
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: 12
+                                    color: Theme.accentLit
+                                }
+                                Text {
+                                    text: root.onlineProvider === "unsplash" ? "Unsplash" : "Wallhaven"
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(8)
+                                    font.weight: Font.Bold
+                                    color: Theme.accentLit
+                                }
+                            }
+
+                            MouseArea {
+                                id: provChipHov
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.setOnlineProvider(root.onlineProvider === "unsplash" ? "wallhaven" : "unsplash")
+                            }
                         }
 
                         TextInput {
@@ -857,7 +1036,7 @@ Item {
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: root.activeSource === "wallhaven" ? "Searching Wallhaven..." : (root.activeSource === "live" ? "Loading Live Wallpapers..." : "Loading Wallpapers...")
+                        text: root.activeSource === "wallhaven" ? (root.onlineProvider === "unsplash" ? "Searching Unsplash..." : "Searching Wallhaven...") : (root.activeSource === "live" ? "Loading Live Wallpapers..." : "Loading Wallpapers...")
                         font.family: "JetBrainsMono Nerd Font"
                         font.pixelSize: Theme.fontPx(13)
                         color: Theme.fgDim

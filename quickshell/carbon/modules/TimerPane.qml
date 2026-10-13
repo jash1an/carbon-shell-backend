@@ -308,76 +308,81 @@ Item {
 
         Item { Layout.fillHeight: true }
 
-        /* Controls: Start/Pause is bottom-centered, Reset is a clean circular glyph button */
+        /* Controls: Perfectly centered Start/Pause and Reset button cluster */
         Item {
             Layout.fillWidth: true
-            Layout.preferredHeight: 32
-            Layout.alignment: Qt.AlignBottom | Qt.AlignHCenter
+            Layout.preferredHeight: 44
+            Layout.bottomMargin: 14
 
-            Rectangle {
-                id: startBtn
+            RowLayout {
                 anchors.centerIn: parent
-                width: 104
-                height: 28
-                radius: 14
-                color: root.running ? Theme.bgHover : Theme.accent
-                scale: startMH.pressed ? 0.94 : (startMH.containsMouse ? 1.03 : 1.0)
-                Behavior on scale { NumberAnimation { duration: Theme.motionDurationShort2; easing.type: Theme.easingEmphasized } }
-                Behavior on color { ColorAnimation { duration: Theme.motionDurationShort3; easing.type: Theme.easingStandard } }
+                spacing: 12
 
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: 5
+                Rectangle {
+                    id: startBtn
+                    width: 114
+                    height: 32
+                    radius: 16
+                    color: root.running ? Theme.bgHover : Theme.accent
+                    border.width: root.running ? 1 : 0
+                    border.color: Theme.accentLit
+                    scale: startMH.pressed ? 0.94 : (startMH.containsMouse ? 1.03 : 1.0)
+                    Behavior on scale { NumberAnimation { duration: Theme.motionDurationShort2; easing.type: Theme.easingEmphasized } }
+                    Behavior on color { ColorAnimation { duration: Theme.motionDurationShort3; easing.type: Theme.easingStandard } }
+
+                    RowLayout {
+                        anchors.centerIn: parent
+                        spacing: 6
+                        Text {
+                            text: root.running ? "pause" : "play_arrow"
+                            font.family: Theme.fontIcon
+                            font.pixelSize: 15
+                            color: root.running ? Theme.fg : Theme.accentContrast
+                        }
+                        Text {
+                            text: root.running ? "PAUSE" : "START"
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(11)
+                            font.weight: Font.Bold
+                            color: root.running ? Theme.fg : Theme.accentContrast
+                        }
+                    }
+                    MouseArea {
+                        id: startMH
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.startPause()
+                    }
+                }
+
+                Rectangle {
+                    id: resetBtn
+                    width: 32
+                    height: 32
+                    radius: 16
+                    color: resetMH.containsMouse ? Theme.bgHover : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08)
+                    border.width: 1
+                    border.color: resetMH.containsMouse ? Theme.accentLit : Theme.outline
+
+                    scale: resetMH.pressed ? 0.88 : (resetMH.containsMouse ? 1.08 : 1.0)
+                    Behavior on scale { NumberAnimation { duration: Theme.motionDurationShort2; easing.type: Theme.easingEmphasized } }
+                    Behavior on color { ColorAnimation { duration: Theme.motionDurationShort3; easing.type: Theme.easingStandard } }
+
                     Text {
-                        text: root.running ? "pause" : "play_arrow"
+                        anchors.centerIn: parent
+                        text: "refresh"
                         font.family: Theme.fontIcon
-                        font.pixelSize: 15
-                        color: root.running ? Theme.fg : "#0e0e12"
+                        font.pixelSize: 16
+                        color: resetMH.containsMouse ? Theme.accentLit : Theme.fgDim
                     }
-                    Text {
-                        text: root.running ? "PAUSE" : "START"
-                        font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: Theme.fontPx(11)
-                        font.weight: Font.Bold
-                        color: root.running ? Theme.fg : "#0e0e12"
+                    MouseArea {
+                        id: resetMH
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.reset()
                     }
-                }
-                MouseArea {
-                    id: startMH
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.startPause()
-                }
-            }
-
-            Rectangle {
-                id: resetBtn
-                anchors.left: startBtn.right
-                anchors.leftMargin: 12
-                anchors.verticalCenter: parent.verticalCenter
-                width: 28
-                height: 28
-                radius: 14
-                color: "transparent"
-                border.width: 0
-
-                scale: resetMH.pressed ? 0.88 : (resetMH.containsMouse ? 1.1 : 1.0)
-                Behavior on scale { NumberAnimation { duration: Theme.motionDurationShort2; easing.type: Theme.easingEmphasized } }
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "refresh"
-                    font.family: Theme.fontIcon
-                    font.pixelSize: 16
-                    color: resetMH.containsMouse ? Theme.accentLit : Theme.fgDim
-                }
-                MouseArea {
-                    id: resetMH
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.reset()
                 }
             }
         }

@@ -32,9 +32,15 @@ RATE_LIMIT_FILE = os.path.join(os.path.expanduser("~/.cache/carbon"), "wallhaven
 WALLPAPER_SOURCE_FILE = os.path.join(CARBON_CONFIG_DIR, "carbon-wallpaper-source.json")
 
 
+DEFAULT_UNSPLASH_KEYS = [
+    "5fda81bc223a576f33934dd4dee20cf2217f2777f798c4c0f1e00e377cba5bcc",
+    "hl_hWM-KgpMrszqEC8I44CbpTjveujxaWlA7dTNOw3o"
+]
+
+
 def get_wallpaper_config():
     """Retrieve online wallpaper provider settings."""
-    cfg = {"provider": "unsplash", "unsplash_access_key": ""}
+    cfg = {"provider": "unsplash", "unsplash_access_key": DEFAULT_UNSPLASH_KEYS[0]}
     paths = [
         WALLPAPER_SOURCE_FILE,
         os.path.expanduser("~/.config/hypr/carbon-wallpaper-source.json")
@@ -47,7 +53,7 @@ def get_wallpaper_config():
                     if isinstance(data, dict):
                         if "provider" in data:
                             cfg["provider"] = str(data["provider"]).lower()
-                        if "unsplash_access_key" in data:
+                        if "unsplash_access_key" in data and str(data["unsplash_access_key"]).strip():
                             cfg["unsplash_access_key"] = str(data["unsplash_access_key"]).strip()
                         return cfg
             except Exception:
@@ -218,40 +224,43 @@ def search_unsplash(sort="toplist", query="", page=1, access_key=""):
 
     order_by = "latest" if sort == "date_added" else ("relevant" if query else "popular")
 
-    headers_list = []
-    if access_key:
-        headers_list.extend(["-H", f"Authorization: Client-ID {access_key}"])
-        if query and query.strip():
-            url = f"https://api.unsplash.com/search/photos?query={urllib.parse.quote(query.strip())}&page={page}&per_page=20&orientation=landscape&order_by={order_by}"
-        else:
-            url = f"https://api.unsplash.com/topics/wallpapers/photos?page={page}&per_page=20&orientation=landscape&order_by={order_by}"
-    else:
-        if query and query.strip():
-            url = f"https://unsplash.com/napi/search/photos?query={urllib.parse.quote(query.strip())}&page={page}&per_page=20&orientation=landscape&order_by={order_by}"
-        else:
-            url = f"https://unsplash.com/napi/topics/wallpapers/photos?page={page}&per_page=20&orientation=landscape&order_by={order_by}"
+    candidate_keys = []
+    if access_key and access_key.strip():
+        candidate_keys.append(access_key.strip())
+    for k in DEFAULT_UNSPLASH_KEYS:
+        if k not in candidate_keys:
+            candidate_keys.append(k)
 
-    def fetch_url(target_url, hdrs):
-        cmd = ["curl", "-s", "--max-time", "12"] + hdrs + [target_url]
+    if query and query.strip():
+        url = f"https://api.unsplash.com/search/photos?query={urllib.parse.quote(query.strip())}&page={page}&per_page=20&orientation=landscape&order_by={order_by}"
+    else:
+        url = f"https://api.unsplash.com/topics/wallpapers/photos?page={page}&per_page=20&orientation=landscape&order_by={order_by}"
+
+    def fetch_url(target_url, key):
+        cmd = ["curl", "-s", "--max-time", "12", "-H", f"Authorization: Client-ID {key}", "-H", "Accept-Version: v1", target_url]
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=14)
         if res.returncode == 0 and res.stdout:
-            return json.loads(res.stdout.decode("utf-8", errors="ignore"))
+            try:
+                parsed = json.loads(res.stdout.decode("utf-8", errors="ignore"))
+                if isinstance(parsed, (dict, list)) and not (isinstance(parsed, dict) and "errors" in parsed):
+                    return parsed
+            except Exception:
+                pass
         return None
 
     data = None
-    try:
-        data = fetch_url(url, headers_list)
-    except Exception:
-        pass
-
-    # If official API failed (e.g. invalid key or 401), fallback to napi
-    if (not data or (isinstance(data, dict) and "errors" in data)) and access_key:
+    for k in candidate_keys:
         try:
-            if query and query.strip():
-                fallback_url = f"https://unsplash.com/napi/search/photos?query={urllib.parse.quote(query.strip())}&page={page}&per_page=20&orientation=landscape&order_by={order_by}"
-            else:
-                fallback_url = f"https://unsplash.com/napi/topics/wallpapers/photos?page={page}&per_page=20&orientation=landscape&order_by={order_by}"
-            data = fetch_url(fallback_url, [])
+            data = fetch_url(url, k)
+            if data:
+                break
+        except Exception:
+            continue
+
+    if not data or (isinstance(data, dict) and "errors" in data):
+        # Graceful fallback: If Unsplash quota is exhausted or unreachable, provide Wallhaven wallpapers
+        try:
+            return search_wallhaven(sort=sort, query=query, page=page)
         except Exception:
             pass
 

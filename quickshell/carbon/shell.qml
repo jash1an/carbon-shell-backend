@@ -988,35 +988,19 @@ ShellRoot {
                     var cmd = message.trim()
                     console.log("[IPC RECEIVED] " + cmd)
                     if (cmd === "wallpaper" || cmd === "wallpaper-local") {
-                        if (root.barMode === "nucleus") {
-                            if (root.nucleusHubItem) root.nucleusHubItem.openWallpaperMode()
-                        } else {
-                            root.wallpaperSource = "local"
-                            root.toggleWallpaperPicker()
-                        }
+                        root.wallpaperSource = "local"
+                        root.toggleWallpaperPicker()
                     }
                     else if (cmd === "wallpaper-live") {
-                        if (root.barMode === "nucleus") {
-                            if (root.nucleusHubItem) root.nucleusHubItem.openWallpaperMode()
-                        } else {
-                            root.wallpaperSource = "live"
-                            root.openWallpaperPicker()
-                        }
+                        root.wallpaperSource = "live"
+                        root.openWallpaperPicker()
                     }
                     else if (cmd === "wallpaper-online") {
-                        if (root.barMode === "nucleus") {
-                            if (root.nucleusHubItem) root.nucleusHubItem.openWallpaperMode()
-                        } else {
-                            root.wallpaperSource = "wallhaven"
-                            root.openWallpaperPicker()
-                        }
+                        root.wallpaperSource = "wallhaven"
+                        root.openWallpaperPicker()
                     }
                     else if (cmd === "close-wallpaper") {
-                        if (root.barMode === "nucleus") {
-                            if (root.nucleusHubItem) root.nucleusHubItem.close()
-                        } else {
-                            root.closeWallpaperPicker()
-                        }
+                        root.closeWallpaperPicker()
                     }
                     else if (cmd.startsWith("apply-wallpaper ") || cmd.startsWith("set-wallpaper ") || (cmd.startsWith("wallpaper ") && cmd !== "wallpaper live" && cmd !== "wallpaper local" && cmd !== "wallpaper online")) {
                         var wpPath = cmd.replace(/^(apply-wallpaper|set-wallpaper|wallpaper)\s+/, "").trim()
@@ -1044,9 +1028,7 @@ ShellRoot {
                         }
                     }
                     else if (cmd === "spotlight" || cmd === "toggle-spotlight") {
-                        if (root.barMode === "nucleus") {
-                            if (root.nucleusHubItem) root.nucleusHubItem.toggle()
-                        } else {
+                        if (root.barMode !== "nucleus") {
                             root.toggleSpotlight()
                         }
                     }
@@ -1196,10 +1178,6 @@ ShellRoot {
                         controlsItem.selectPrevNotif()
                     } else if (cmd === "controls-notif-enter") {
                         controlsItem.activateSelectedNotif()
-                    } else if (cmd === "controls-mode-weather" || cmd === "weather") {
-                        root.controlsPinned = true
-                        root.controlsVisible = true
-                        controlsItem.mode = 3
                     } else if (cmd === "controls-mode-timer" || cmd === "timer") {
                         root.controlsPinned = true
                         root.controlsVisible = true
@@ -1331,11 +1309,8 @@ ShellRoot {
                         if (root.nucleusHubItem) root.nucleusHubItem.focusLobe(lobeTarget)
                     }
                     else if (cmd === "nucleus wallpapers") {
-                        if (root.barMode !== "nucleus") root.switchBarMode("nucleus")
-                        if (root.nucleusHubItem) {
-                            if (root.nucleusHubItem.hubOpen) root.nucleusHubItem.close()
-                            else root.nucleusHubItem.openWallpaperMode()
-                        }
+                        root.wallpaperSource = "local"
+                        root.toggleWallpaperPicker()
                     }
                     else if (cmd === "nucleus launcher") {
                         if (root.barMode !== "nucleus") root.switchBarMode("nucleus")

@@ -1297,7 +1297,7 @@ Item {
                 Layout.preferredWidth: 235
                 Layout.fillHeight: true
 
-                property string viewMode: "weather" // "weather" or "lyrics"
+                property string viewMode: "lyrics" // "lyrics"
 
                 function cycleView(delta) {
                     if (delta < 0 && rightCol.viewMode !== "lyrics") {
