@@ -231,8 +231,8 @@ Item {
                     Text {
                         id: charTextLabel
                         text: charWrapper.charText
-                        font.family: "Google Sans Flex"
-                        font.pixelSize: 68
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(68)
                         font.weight: Font.Bold
                         color: "#FFFFFF"
                         opacity: charWrapper.charEased
@@ -265,7 +265,7 @@ Item {
             anchors.right: parent.right
             text: root.splashStr
             font.family: "Caveat"
-            font.pixelSize: 22
+            font.pixelSize: Theme.fontPx(22)
             font.weight: Font.Bold
             color: Theme.accentLit ? Theme.accentLit : (Theme.accent ? Theme.accent : "#00F0FF")
             horizontalAlignment: Text.AlignRight
@@ -311,7 +311,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.dayStr
                 font.family: "Caveat"
-                font.pixelSize: 34
+                font.pixelSize: Theme.fontPx(34)
                 font.weight: Font.Bold
                 color: Theme.accentLit
 
@@ -332,8 +332,8 @@ Item {
                 id: dateText
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.dateStr
-                font.family: "Google Sans Flex"
-                font.pixelSize: 16
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(16)
                 font.weight: Font.Medium
                 color: "#CBD5E1"
 

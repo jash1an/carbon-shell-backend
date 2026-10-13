@@ -515,7 +515,7 @@ Item {
                                 y: (parent.height - height) / 2 - 12 * root.lyricChangeProgress
                                 opacity: (1.0 - root.lyricChangeProgress) * 0.65
                                 text: root.previousLyricText
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontPx(11)
                                 font.weight: Font.DemiBold
                                 color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55)
                                 elide: Text.ElideRight
@@ -531,7 +531,7 @@ Item {
                                 y: (parent.height - height) / 2 + (root.previousLyricText !== "" ? 12 * (1.0 - root.lyricChangeProgress) : 0)
                                 opacity: root.previousLyricText !== "" ? root.lyricChangeProgress : 1.0
                                 text: root.activeLyricText
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontPx(11)
                                 font.weight: Font.Bold
                                 color: Theme.accent
                                 elide: Text.ElideRight
@@ -549,7 +549,7 @@ Item {
                             Text {
                                 width: parent.width
                                 text: root.trackTitle || "Playing"
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontPx(11)
                                 font.weight: Font.DemiBold
                                 color: Theme.fg
                                 elide: Text.ElideRight
@@ -558,7 +558,7 @@ Item {
                             Text {
                                 width: parent.width
                                 text: root.trackArtist || "Unknown Artist"
-                                font.pixelSize: 9
+                                font.pixelSize: Theme.fontPx(9)
                                 color: Theme.fgDim
                                 elide: Text.ElideRight
                             }
@@ -608,7 +608,7 @@ Item {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: root.hourStr + ":" + root.minStr
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.fontPx(13)
                         font.weight: Font.DemiBold
                         font.letterSpacing: -0.2
                         color: Theme.fg

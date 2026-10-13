@@ -38,7 +38,7 @@ Rectangle {
         text: root.text
         color: Theme.fg
         font.family: Theme.font
-        font.pixelSize: 11
+        font.pixelSize: Theme.fontPx(11)
         wrapMode: Text.Wrap
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter

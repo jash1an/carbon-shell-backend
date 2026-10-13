@@ -625,8 +625,8 @@ Item {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: root.captionLine1
-                font.family: "Valley Sans"
-                font.pixelSize: 11
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(11)
                 font.bold: true
                 color: "#FFFFFF"
             }
@@ -634,8 +634,8 @@ Item {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: root.captionLine2
-                font.family: "Valley Sans"
-                font.pixelSize: 9
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(9)
                 color: Qt.rgba(1.0, 1.0, 1.0, 0.60)
                 elide: Text.ElideMiddle
                 width: 150

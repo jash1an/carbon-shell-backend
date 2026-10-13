@@ -622,6 +622,8 @@ ShellRoot {
     property string barMode: "pill"
     property bool workspaceOsdActive: false
     property var nucleusRestingSpin: "hover"
+    property bool screenshotFreezeActive: false
+    property string screenshotFreezePath: ""
     onBarModeChanged: console.log("[BAR-MODE CHANGED] New root.barMode is now: " + root.barMode)
 
     FileView {
@@ -1004,34 +1006,36 @@ ShellRoot {
                     console.log("[IPC RECEIVED] " + cmd)
                     if (cmd === "wallpaper" || cmd === "wallpaper-local") {
                         root.wallpaperSource = "local"
-                        if (root.barMode === "nucleus") {
-                            if (root.nucleusHubItem) root.nucleusHubItem.openWallpaperMode()
-                        } else {
-                            root.toggleWallpaperPicker()
+                        if (root.barMode === "nucleus" && root.nucleusHubItem && root.nucleusHubItem.hubOpen) {
+                            root.nucleusHubItem.close()
                         }
+                        root.toggleWallpaperPicker()
                     }
                     else if (cmd === "wallpaper-live") {
                         root.wallpaperSource = "live"
-                        if (root.barMode === "nucleus") {
-                            if (root.nucleusHubItem) root.nucleusHubItem.openWallpaperMode()
-                        } else {
-                            root.openWallpaperPicker()
+                        if (root.barMode === "nucleus" && root.nucleusHubItem && root.nucleusHubItem.hubOpen) {
+                            root.nucleusHubItem.close()
                         }
+                        root.openWallpaperPicker()
                     }
                     else if (cmd === "wallpaper-online") {
                         root.wallpaperSource = "wallhaven"
-                        if (root.barMode === "nucleus") {
-                            if (root.nucleusHubItem) root.nucleusHubItem.openWallpaperMode()
-                        } else {
-                            root.openWallpaperPicker()
+                        if (root.barMode === "nucleus" && root.nucleusHubItem && root.nucleusHubItem.hubOpen) {
+                            root.nucleusHubItem.close()
                         }
+                        root.openWallpaperPicker()
                     }
                     else if (cmd === "close-wallpaper") {
-                        if (root.barMode === "nucleus") {
-                            if (root.nucleusHubItem) root.nucleusHubItem.close()
-                        } else {
-                            root.closeWallpaperPicker()
-                        }
+                        root.closeWallpaperPicker()
+                    }
+                    else if (cmd.startsWith("freeze-start ")) {
+                        var fpath = cmd.replace(/^freeze-start\s+/, "").trim()
+                        root.screenshotFreezePath = fpath
+                        root.screenshotFreezeActive = true
+                    }
+                    else if (cmd === "freeze-stop") {
+                        root.screenshotFreezeActive = false
+                        root.screenshotFreezePath = ""
                     }
                     else if (cmd.startsWith("apply-wallpaper ") || cmd.startsWith("set-wallpaper ") || (cmd.startsWith("wallpaper ") && cmd !== "wallpaper live" && cmd !== "wallpaper local" && cmd !== "wallpaper online")) {
                         var wpPath = cmd.replace(/^(apply-wallpaper|set-wallpaper|wallpaper)\s+/, "").trim()
@@ -1059,9 +1063,7 @@ ShellRoot {
                         }
                     }
                     else if (cmd === "spotlight" || cmd === "toggle-spotlight") {
-                        if (root.barMode === "nucleus") {
-                            if (root.nucleusHubItem) root.nucleusHubItem.toggle()
-                        } else {
+                        if (root.barMode !== "nucleus") {
                             root.toggleSpotlight()
                         }
                     }
@@ -1211,10 +1213,6 @@ ShellRoot {
                         controlsItem.selectPrevNotif()
                     } else if (cmd === "controls-notif-enter") {
                         controlsItem.activateSelectedNotif()
-                    } else if (cmd === "controls-mode-weather" || cmd === "weather") {
-                        root.controlsPinned = true
-                        root.controlsVisible = true
-                        controlsItem.mode = 3
                     } else if (cmd === "controls-mode-timer" || cmd === "timer") {
                         root.controlsPinned = true
                         root.controlsVisible = true
@@ -1346,11 +1344,8 @@ ShellRoot {
                         if (root.nucleusHubItem) root.nucleusHubItem.focusLobe(lobeTarget)
                     }
                     else if (cmd === "nucleus wallpapers") {
-                        if (root.barMode !== "nucleus") root.switchBarMode("nucleus")
-                        if (root.nucleusHubItem) {
-                            if (root.nucleusHubItem.hubOpen) root.nucleusHubItem.close()
-                            else root.nucleusHubItem.openWallpaperMode()
-                        }
+                        root.wallpaperSource = "local"
+                        root.toggleWallpaperPicker()
                     }
                     else if (cmd === "nucleus launcher") {
                         if (root.barMode !== "nucleus") root.switchBarMode("nucleus")
@@ -1860,8 +1855,8 @@ ShellRoot {
                                     let m = d.getMinutes()
                                     return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m
                                 }
-                                font.family: "Valley Sans"
-                                font.pixelSize: 9
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(9)
                                 font.weight: Font.Bold
                                 color: Theme.fg
                                 anchors.horizontalCenter: parent.horizontalCenter
@@ -3615,63 +3610,6 @@ ShellRoot {
         }
     }
 
-    /* Hot corner: full-screen transparent window whose input
-     * Region summons the quick-settings panel. Dynamically placed according
-     * to root.controlsCorner ("bottom_right", "top_left", or "bottom_left"). */
-    PanelWindow {
-        id: controlsSensor
-        screen: Quickshell.screens[0]
-        color: "transparent"
-        visible: root.barMode !== "minimal"
-        WlrLayershell.namespace: "carbon-sensor"
-        WlrLayershell.layer: WlrLayer.Overlay
-        exclusionMode: ExclusionMode.Ignore
-        anchors { top: true; left: true; right: true; bottom: true }
-
-        mask: controlsSensorMask
-        Region {
-            id: controlsSensorMask
-            readonly property real edgeThickness: 8
-            readonly property real edgeSpan: 240
-
-            // Horizontal strip:
-            // - top_left: x: 0, y: 0
-            // - bottom_left: x: 0, y: height - edgeThickness
-            // - bottom_right: x: width - edgeSpan, y: height - edgeThickness
-            Region {
-                x: root.controlsCorner === "bottom_right"
-                    ? (controlsSensor.width - controlsSensorMask.edgeSpan)
-                    : 0
-                y: root.controlsCorner === "top_left"
-                    ? 0
-                    : (controlsSensor.height - controlsSensorMask.edgeThickness)
-                width: controlsSensorMask.edgeSpan
-                height: controlsSensorMask.edgeThickness
-            }
-
-            // Vertical strip:
-            // - top_left: x: 0, y: 0
-            // - bottom_left: x: 0, y: height - edgeSpan
-            // - bottom_right: x: width - edgeThickness, y: height - edgeSpan
-            Region {
-                x: root.controlsCorner === "bottom_right"
-                    ? (controlsSensor.width - controlsSensorMask.edgeThickness)
-                    : 0
-                y: root.controlsCorner === "top_left"
-                    ? 0
-                    : (controlsSensor.height - controlsSensorMask.edgeSpan)
-                width: controlsSensorMask.edgeThickness
-                height: controlsSensorMask.edgeSpan
-            }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            hoverEnabled: true
-            onEntered: root.openControlsHover()
-            onExited: controlsLeaveTimer.restart()
-        }
-    }
 
     /* Quick-settings panel: now-playing strip over the quick toggles, positioned
      * dynamically according to root.controlsCorner ("bottom_right", "top_left", or "bottom_left"). */
@@ -3838,6 +3776,33 @@ ShellRoot {
                         root.nucleusHubItem.openNotificationPanel()
                     }
                 }
+            }
+        }
+    }
+
+    /* ── Full-screen Screen Freeze Overlay for Screenshot capture ── */
+    Variants {
+        model: Quickshell.screens
+
+        PanelWindow {
+            id: screenshotFreezeWindow
+            required property var modelData
+            screen: modelData
+            color: "#000000"
+            visible: root.screenshotFreezeActive && root.screenshotFreezePath.length > 0
+            WlrLayershell.namespace: "carbon-screenshot-freeze"
+            WlrLayershell.layer: WlrLayer.Top
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+            exclusionMode: ExclusionMode.Ignore
+            aboveWindows: true
+            anchors { top: true; bottom: true; left: true; right: true }
+
+            Image {
+                anchors.fill: parent
+                source: (root.screenshotFreezeActive && root.screenshotFreezePath.length > 0) ? ("file://" + root.screenshotFreezePath) : ""
+                fillMode: Image.PreserveAspectFit
+                cache: false
+                asynchronous: false
             }
         }
     }

@@ -344,8 +344,14 @@ Singleton {
     readonly property real moduleMargin: 5
 
     /* Typography */
-    readonly property string font: "Rubik, JetBrains Mono Nerd Font, sans-serif"
-    readonly property string fontMono: "JetBrains Mono Nerd Font, monospace"
+    readonly property string font: "JetBrainsMono Nerd Font"
+    readonly property string fontMono: "JetBrainsMono Nerd Font"
+
+    /* ── Global Font Scale — the single knob ────────────────────────── */
+    // Edit this ONE number to resize every text element in the shell.
+    // 1.0 = original design size.  All text sizes are wrapped in fontPx().
+    readonly property real fontScale: 1
+    function fontPx(base) { return Math.round(base * fontScale) }
     readonly property string fontIcon: "Material Symbols Rounded"
 
     /* ── Material Design 3 Motion System ───────────────────────────── */

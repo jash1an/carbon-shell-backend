@@ -7,7 +7,8 @@
 -- Layer Rules for Carbon Shell (Dynamic Universal Blur)
 -- ------------------------------------------------------------------------------
 local blur_enabled = true
-local bp_file = io.open("/home/reduct/.config/hypr/carbon-bar-position.json", "r")
+local home = os.getenv("HOME") or ""
+local bp_file = io.open(home .. "/.config/hypr/carbon-bar-position.json", "r")
 if bp_file then
     local content = bp_file:read("*a")
     bp_file:close()

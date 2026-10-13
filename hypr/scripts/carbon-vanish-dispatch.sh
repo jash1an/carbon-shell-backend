@@ -23,6 +23,47 @@ fi
 IPC_SCRIPT="$CONFIG_DIR/scripts/carbon-ipc.sh"
 [ -f "$IPC_SCRIPT" ] || IPC_SCRIPT="$HOME/.config/hypr/scripts/carbon-ipc.sh"
 
+# ── Anti-Clash & Debounce State Management ───────────────────────────────────
+# Prevents Super key release (toggle-hub) from firing immediately after a combo
+# (e.g. SUPER+M, SUPER+W, SUPER+C, SUPER+S, SUPER+A, SUPER+Alt), and prevents
+# rapid duplicate triggers.
+STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/.carbon-vanish-last-action"
+NOW_MS=$(date +%s%3N 2>/dev/null)
+if [ -z "$NOW_MS" ] || [ ${#NOW_MS} -lt 10 ]; then
+    NOW_MS=$(python3 -c 'import time; print(int(time.time() * 1000))' 2>/dev/null || echo 0)
+fi
+
+LAST_ACTION=""
+LAST_TIME=0
+if [ -f "$STATE_FILE" ]; then
+    read -r LAST_ACTION LAST_TIME < "$STATE_FILE" 2>/dev/null
+    LAST_TIME="${LAST_TIME:-0}"
+fi
+
+DIFF_MS=$(( NOW_MS - LAST_TIME ))
+
+# 1. If another vanish shortcut was triggered within the last 450ms,
+#    suppress toggle-hub (as it is just the residual Super release of that combo).
+if [ "$ACTION" = "toggle-hub" ]; then
+    if [ -n "$LAST_ACTION" ] && [ "$LAST_ACTION" != "toggle-hub" ] && [ "$DIFF_MS" -ge 0 ] && [ "$DIFF_MS" -lt 450 ]; then
+        exit 0
+    fi
+    # Debounce toggle-hub if fired in rapid succession (< 250ms)
+    if [ "$LAST_ACTION" = "toggle-hub" ] && [ "$DIFF_MS" -ge 0 ] && [ "$DIFF_MS" -lt 250 ]; then
+        exit 0
+    fi
+fi
+
+# 2. Debounce launcher if fired in rapid succession (< 250ms)
+if [ "$ACTION" = "launcher" ]; then
+    if [ "$LAST_ACTION" = "launcher" ] && [ "$DIFF_MS" -ge 0 ] && [ "$DIFF_MS" -lt 250 ]; then
+        exit 0
+    fi
+fi
+
+# Save current action and timestamp
+printf "%s %s\n" "$ACTION" "$NOW_MS" > "$STATE_FILE" 2>/dev/null
+
 case "$ACTION" in
     toggle-hub)
         sh "$IPC_SCRIPT" "nucleus toggle"
@@ -34,7 +75,7 @@ case "$ACTION" in
         sh "$IPC_SCRIPT" "nucleus lyrics"
         ;;
     wallpaper)
-        sh "$IPC_SCRIPT" "nucleus wallpapers"
+        sh "$IPC_SCRIPT" "wallpaper"
         ;;
     focus-connect)
         sh "$IPC_SCRIPT" "nucleus focus connect"

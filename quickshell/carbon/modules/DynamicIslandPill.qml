@@ -70,8 +70,8 @@ Item {
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                font.family: "Valley Sans"
-                font.pixelSize: 11
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(11)
                 font.weight: Font.Bold
                 color: HudService.muted ? Theme.error : Theme.fg
                 text: HudService.text
@@ -119,16 +119,16 @@ Item {
 
                 Text {
                     text: "NOW PLAYING"
-                    font.family: "Valley Sans"
-                    font.pixelSize: 7
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(7)
                     font.weight: Font.Bold
                     color: Theme.accent
                 }
 
                 Text {
                     text: HudService.title
-                    font.family: "Valley Sans"
-                    font.pixelSize: 10
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(10)
                     font.weight: Font.Bold
                     color: Theme.fg
                     elide: Text.ElideRight
@@ -158,16 +158,16 @@ Item {
 
                 Text {
                     text: HudService.title
-                    font.family: "Valley Sans"
-                    font.pixelSize: 9
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(9)
                     font.weight: Font.Bold
                     color: Theme.fg
                 }
 
                 Text {
                     text: HudService.subText
-                    font.family: "Valley Sans"
-                    font.pixelSize: 8
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(8)
                     color: Theme.fgDim
                     visible: text.length > 0
                 }

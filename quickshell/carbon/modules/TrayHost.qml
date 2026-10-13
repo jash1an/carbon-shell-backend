@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
-import Qt5Compat.GraphicalEffects
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Services.SystemTray
 import Quickshell.Wayland
@@ -64,10 +64,11 @@ Item {
                     fillMode: Image.PreserveAspectFit
                 }
 
-                ColorOverlay {
+                MultiEffect {
                     anchors.fill: ticon
                     source: ticon
-                    color: Theme.fg
+                    colorization: 1.0
+                    colorizationColor: Theme.fg
                 }
 
                 MouseArea {

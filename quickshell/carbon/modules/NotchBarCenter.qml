@@ -308,8 +308,8 @@ NotchContainer {
 
                     Text {
                         text: root.hasTrack ? root.trackTitle : "Nothing Playing"
-                        font.family: "Valley Sans"
-                        font.pixelSize: 10
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(10)
                         font.weight: Font.Bold
                         color: root.hasTrack ? Theme.fg : Theme.fgDim
                         elide: Text.ElideRight
@@ -318,8 +318,8 @@ NotchContainer {
 
                     Text {
                         text: root.hasTrack ? root.trackArtist : ""
-                        font.family: "Valley Sans"
-                        font.pixelSize: 8
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(8)
                         font.weight: Font.Medium
                         color: Theme.fgDim
                         elide: Text.ElideRight

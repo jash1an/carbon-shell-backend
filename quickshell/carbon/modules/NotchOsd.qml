@@ -198,8 +198,8 @@ Item {
                 // Percentage Text
                 Text {
                     Layout.alignment: Qt.AlignVCenter
-                    font.family: "Valley Sans"
-                    font.pixelSize: 11
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(11)
                     font.weight: Font.Bold
                     color: root.muted ? (Theme.err ? Theme.err : "#f38ba8") : Theme.fg
                     text: root.muted ? "MUTED" : Math.round(root.value * 100) + "%"

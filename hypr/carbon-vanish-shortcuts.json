@@ -3,7 +3,7 @@
     "title": "Toggle Vanish Hub",
     "desc": "Open or close central clock orb and radial satellites",
     "category": "Primary Triggers",
-    "mods": "",
+    "mods": "$mainMod",
     "key": "Super_L",
     "display_str": "SUPER",
     "action": "toggle-hub",
@@ -14,8 +14,8 @@
     "desc": "Directly open App Launcher satellite with keyboard search focus",
     "category": "Primary Triggers",
     "mods": "$mainMod",
-    "key": "Alt_L",
-    "display_str": "SUPER + Alt",
+    "key": "S",
+    "display_str": "SUPER + S",
     "action": "launcher",
     "icon": "applications-system-symbolic"
   },
@@ -30,8 +30,8 @@
     "icon": "media-playback-start-symbolic"
   },
   "wallpaper_ring": {
-    "title": "Wallpaper Ring",
-    "desc": "Open circular wallpaper gallery lobe",
+    "title": "Wallpaper Picker",
+    "desc": "Open Carbon Wallpaper Picker",
     "category": "Primary Triggers",
     "mods": "$mainMod",
     "key": "W",
@@ -39,13 +39,23 @@
     "action": "wallpaper",
     "icon": "preferences-desktop-wallpaper-symbolic"
   },
+  "focus_alerts": {
+    "title": "Focus Alerts Lobe",
+    "desc": "Directly bloom System Alerts & Notifications satellite",
+    "category": "Orbital Satellites",
+    "mods": "$mainMod",
+    "key": "A",
+    "display_str": "SUPER + A",
+    "action": "focus-alerts",
+    "icon": "preferences-system-notifications-symbolic"
+  },
   "focus_connect": {
     "title": "Focus Connect Lobe",
     "desc": "Directly bloom Audio, Network, and Battery satellite",
     "category": "Orbital Satellites",
-    "mods": "$mainMod",
-    "key": "C",
-    "display_str": "SUPER + C",
+    "mods": "",
+    "key": "",
+    "display_str": "Unset",
     "action": "focus-connect",
     "icon": "network-wireless-symbolic"
   },
@@ -53,20 +63,10 @@
     "title": "Focus Spaces Lobe",
     "desc": "Directly bloom Hyprland Workspaces satellite",
     "category": "Orbital Satellites",
-    "mods": "$mainMod",
-    "key": "S",
-    "display_str": "SUPER + S",
+    "mods": "",
+    "key": "",
+    "display_str": "Unset",
     "action": "focus-spaces",
     "icon": "view-grid-symbolic"
-  },
-  "focus_alerts": {
-    "title": "Focus Alerts Lobe",
-    "desc": "Directly bloom Notification Center satellite",
-    "category": "Orbital Satellites",
-    "mods": "$mainMod",
-    "key": "N",
-    "display_str": "SUPER + N",
-    "action": "focus-alerts",
-    "icon": "preferences-system-notifications-symbolic"
   }
 }

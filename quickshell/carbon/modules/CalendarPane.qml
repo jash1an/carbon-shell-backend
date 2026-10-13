@@ -88,8 +88,8 @@ Item {
                 Text {
                     anchors.centerIn: parent
                     text: "\u2039"
-                    font.family: "Valley Sans"
-                    font.pixelSize: 20
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(20)
                     color: Theme.fgDim
                 }
                 MouseArea {
@@ -106,8 +106,8 @@ Item {
                 Layout.preferredWidth: 1
                 horizontalAlignment: Text.AlignHCenter
                 text: root.monthNames[root.month] + "  " + root.year
-                font.family: "Valley Sans"
-                font.pixelSize: 18
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(18)
                 font.weight: Font.Bold
                 color: Theme.fg
             }
@@ -120,8 +120,8 @@ Item {
                 Text {
                     anchors.centerIn: parent
                     text: "\u203A"
-                    font.family: "Valley Sans"
-                    font.pixelSize: 20
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(20)
                     color: Theme.fgDim
                 }
                 MouseArea {
@@ -144,8 +144,8 @@ Item {
                     width: 45
                     horizontalAlignment: Text.AlignHCenter
                     text: modelData
-                    font.family: "Valley Sans"
-                    font.pixelSize: 11
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(11)
                     font.weight: Font.Bold
                     color: Theme.fgFaint
                 }
@@ -168,8 +168,8 @@ Item {
                     Text {
                         anchors.centerIn: parent
                         text: modelData.day
-                        font.family: "Valley Sans"
-                        font.pixelSize: 14
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(14)
                         color: modelData.today ? "#0e0e12" : Theme.fgDim
                         opacity: modelData.same ? (modelData.today ? 1 : 0.9) : 0.4
                     }

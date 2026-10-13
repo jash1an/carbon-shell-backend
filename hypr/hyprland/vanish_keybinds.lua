@@ -4,16 +4,12 @@
 
 local fn = require("hyprland.functions")
 
--- Vanish App Launcher (SUPER + ALT)
-hl.bind("SUPER + Alt_L", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh launcher"))
-hl.bind("SUPER + Alt_R", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh launcher"))
-hl.bind("ALT + Super_L", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh launcher"))
-hl.bind("ALT + Super_R", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh launcher"))
+-- Vanish Hub Toggle (SUPER alone)
+hl.bind("SUPER + Super_L", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh toggle-hub"), { release = true })
+hl.bind("SUPER + Super_R", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh toggle-hub"), { release = true })
 
-hl.bind("SUPER + Alt_L", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh launcher"), { release = true })
-hl.bind("SUPER + Alt_R", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh launcher"), { release = true })
-hl.bind("ALT + Super_L", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh launcher"), { release = true })
-hl.bind("ALT + Super_R", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh launcher"), { release = true })
+-- Vanish App Launcher / Spotlight (SUPER + S)
+hl.bind("SUPER + S", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh launcher"))
 
 -- Vanish Synced Lyrics (SUPER + M)
 hl.bind("SUPER + M", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh lyrics"))
@@ -22,6 +18,4 @@ hl.bind("SUPER + M", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-di
 hl.bind("SUPER + W", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh wallpaper"))
 
 -- Vanish Direct Lobe Blooms
-hl.bind("SUPER + C", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh focus-connect"))
-hl.bind("SUPER + S", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh focus-spaces"))
-hl.bind("SUPER + N", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh focus-alerts"))
+hl.bind("SUPER + A", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh focus-alerts"))

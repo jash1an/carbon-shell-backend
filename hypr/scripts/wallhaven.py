@@ -19,6 +19,7 @@ import hashlib
 import urllib.request
 import urllib.parse
 import subprocess
+import shutil
 from concurrent.futures import ThreadPoolExecutor
 
 CARBON_CONFIG_DIR = os.environ.get("CARBON_CONFIG_DIR", os.path.expanduser("~/.config/carbon"))
@@ -31,9 +32,15 @@ RATE_LIMIT_FILE = os.path.join(os.path.expanduser("~/.cache/carbon"), "wallhaven
 WALLPAPER_SOURCE_FILE = os.path.join(CARBON_CONFIG_DIR, "carbon-wallpaper-source.json")
 
 
+DEFAULT_UNSPLASH_KEYS = [
+    "5fda81bc223a576f33934dd4dee20cf2217f2777f798c4c0f1e00e377cba5bcc",
+    "hl_hWM-KgpMrszqEC8I44CbpTjveujxaWlA7dTNOw3o"
+]
+
+
 def get_wallpaper_config():
     """Retrieve online wallpaper provider settings."""
-    cfg = {"provider": "unsplash", "unsplash_access_key": ""}
+    cfg = {"provider": "unsplash", "unsplash_access_key": DEFAULT_UNSPLASH_KEYS[0]}
     paths = [
         WALLPAPER_SOURCE_FILE,
         os.path.expanduser("~/.config/hypr/carbon-wallpaper-source.json")
@@ -46,7 +53,7 @@ def get_wallpaper_config():
                     if isinstance(data, dict):
                         if "provider" in data:
                             cfg["provider"] = str(data["provider"]).lower()
-                        if "unsplash_access_key" in data:
+                        if "unsplash_access_key" in data and str(data["unsplash_access_key"]).strip():
                             cfg["unsplash_access_key"] = str(data["unsplash_access_key"]).strip()
                         return cfg
             except Exception:
@@ -132,6 +139,20 @@ def get_thumb_path(file_path, mtime):
     return os.path.join(THUMB_CACHE_DIR, f"{hash_key}.jpg")
 
 
+def _pil_thumbnail(src, dest, size=256):
+    """Fallback thumbnail generator using Pillow (no ImageMagick needed)."""
+    try:
+        from PIL import Image, ImageOps
+        with Image.open(src) as im:
+            im = ImageOps.exif_transpose(im)
+            im = im.convert("RGB")
+            im = ImageOps.fit(im, (size, size), Image.LANCZOS)
+            im.save(dest, "JPEG", quality=85)
+        return True
+    except Exception:
+        return False
+
+
 def ensure_thumbnail(file_path, mtime, is_video=False):
     """Generate 256px thumbnail if not already present in cache."""
     os.makedirs(THUMB_CACHE_DIR, exist_ok=True)
@@ -142,20 +163,24 @@ def ensure_thumbnail(file_path, mtime, is_video=False):
     temp_thumb = f"{thumb_path}.tmp.{os.getpid()}.jpg"
     try:
         if is_video:
-            cmd = [
-                "ffmpeg", "-y", "-ss", "00:00:00.500", "-i", file_path,
-                "-vframes", "1", "-vf", "scale=256:256:force_original_aspect_ratio=increase,crop=256:256",
-                temp_thumb
-            ]
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+            if shutil.which("ffmpeg"):
+                cmd = [
+                    "ffmpeg", "-y", "-ss", "00:00:00.500", "-i", file_path,
+                    "-vframes", "1", "-vf", "scale=256:256:force_original_aspect_ratio=increase,crop=256:256",
+                    temp_thumb
+                ]
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
         else:
-            cmd = [
-                "magick", f"{file_path}[0]",
-                "-strip", "-auto-orient",
-                "-resize", "256x256^", "-gravity", "center", "-extent", "256x256",
-                "-quality", "85", temp_thumb
-            ]
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+            if shutil.which("magick"):
+                cmd = [
+                    "magick", f"{file_path}[0]",
+                    "-strip", "-auto-orient",
+                    "-resize", "256x256^", "-gravity", "center", "-extent", "256x256",
+                    "-quality", "85", temp_thumb
+                ]
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+            if not (os.path.isfile(temp_thumb) and os.path.getsize(temp_thumb) > 0):
+                _pil_thumbnail(file_path, temp_thumb)
 
         if os.path.isfile(temp_thumb) and os.path.getsize(temp_thumb) > 0:
             os.replace(temp_thumb, thumb_path)
@@ -199,40 +224,43 @@ def search_unsplash(sort="toplist", query="", page=1, access_key=""):
 
     order_by = "latest" if sort == "date_added" else ("relevant" if query else "popular")
 
-    headers_list = []
-    if access_key:
-        headers_list.extend(["-H", f"Authorization: Client-ID {access_key}"])
-        if query and query.strip():
-            url = f"https://api.unsplash.com/search/photos?query={urllib.parse.quote(query.strip())}&page={page}&per_page=20&orientation=landscape&order_by={order_by}"
-        else:
-            url = f"https://api.unsplash.com/topics/wallpapers/photos?page={page}&per_page=20&orientation=landscape&order_by={order_by}"
-    else:
-        if query and query.strip():
-            url = f"https://unsplash.com/napi/search/photos?query={urllib.parse.quote(query.strip())}&page={page}&per_page=20&orientation=landscape&order_by={order_by}"
-        else:
-            url = f"https://unsplash.com/napi/topics/wallpapers/photos?page={page}&per_page=20&orientation=landscape&order_by={order_by}"
+    candidate_keys = []
+    if access_key and access_key.strip():
+        candidate_keys.append(access_key.strip())
+    for k in DEFAULT_UNSPLASH_KEYS:
+        if k not in candidate_keys:
+            candidate_keys.append(k)
 
-    def fetch_url(target_url, hdrs):
-        cmd = ["curl", "-s", "--max-time", "12"] + hdrs + [target_url]
+    if query and query.strip():
+        url = f"https://api.unsplash.com/search/photos?query={urllib.parse.quote(query.strip())}&page={page}&per_page=20&orientation=landscape&order_by={order_by}"
+    else:
+        url = f"https://api.unsplash.com/topics/wallpapers/photos?page={page}&per_page=20&orientation=landscape&order_by={order_by}"
+
+    def fetch_url(target_url, key):
+        cmd = ["curl", "-s", "--max-time", "12", "-H", f"Authorization: Client-ID {key}", "-H", "Accept-Version: v1", target_url]
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=14)
         if res.returncode == 0 and res.stdout:
-            return json.loads(res.stdout.decode("utf-8", errors="ignore"))
+            try:
+                parsed = json.loads(res.stdout.decode("utf-8", errors="ignore"))
+                if isinstance(parsed, (dict, list)) and not (isinstance(parsed, dict) and "errors" in parsed):
+                    return parsed
+            except Exception:
+                pass
         return None
 
     data = None
-    try:
-        data = fetch_url(url, headers_list)
-    except Exception:
-        pass
-
-    # If official API failed (e.g. invalid key or 401), fallback to napi
-    if (not data or (isinstance(data, dict) and "errors" in data)) and access_key:
+    for k in candidate_keys:
         try:
-            if query and query.strip():
-                fallback_url = f"https://unsplash.com/napi/search/photos?query={urllib.parse.quote(query.strip())}&page={page}&per_page=20&orientation=landscape&order_by={order_by}"
-            else:
-                fallback_url = f"https://unsplash.com/napi/topics/wallpapers/photos?page={page}&per_page=20&orientation=landscape&order_by={order_by}"
-            data = fetch_url(fallback_url, [])
+            data = fetch_url(url, k)
+            if data:
+                break
+        except Exception:
+            continue
+
+    if not data or (isinstance(data, dict) and "errors" in data):
+        # Graceful fallback: If Unsplash quota is exhausted or unreachable, provide Wallhaven wallpapers
+        try:
+            return search_wallhaven(sort=sort, query=query, page=page)
         except Exception:
             pass
 
@@ -520,7 +548,7 @@ def search(sort="toplist", query="", page=1, seed=None, client=None, provider=No
         search_wallhaven(sort=sort, query=query, page=page, seed=seed)
 
 
-def list_local(query=""):
+def list_local(query="", live_only=False):
     valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif", ".mp4", ".mkv", ".webm"}
     video_exts = {".mp4", ".mkv", ".webm"}
     dirs = get_configured_dirs()
@@ -537,6 +565,8 @@ def list_local(query=""):
             for fname in files:
                 ext = os.path.splitext(fname)[1].lower()
                 if ext in valid_exts:
+                    if live_only and ext not in video_exts:
+                        continue
                     full_path = os.path.join(root_dir, fname)
                     if os.path.isfile(full_path):
                         if query and query.strip().lower() not in fname.lower():
@@ -684,7 +714,7 @@ def apply_local(path):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: wallhaven.py <search|list-local|list-favorites|toggle-favorite|download|apply> [args...]")
+        print("Usage: wallhaven.py <search|list-local|list-live|list-favorites|toggle-favorite|download|apply> [args...]")
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -730,6 +760,14 @@ def main():
         elif len(sys.argv) > 2:
             query = sys.argv[2]
         list_local(query=query)
+
+    elif cmd in ("list-live", "live"):
+        query = ""
+        if len(sys.argv) > 2 and sys.argv[2] == "--query" and len(sys.argv) > 3:
+            query = sys.argv[3]
+        elif len(sys.argv) > 2:
+            query = sys.argv[2]
+        list_local(query=query, live_only=True)
 
     elif cmd in ("list-favorites", "favorites"):
         list_favorites()

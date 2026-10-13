@@ -343,7 +343,7 @@ Item {
         Text {
             text: Qt.formatTime(new Date(), "hh:mm")
             font.family: Theme.font
-            font.pixelSize: 38
+            font.pixelSize: Theme.fontPx(38)
             font.bold: true
             color: "#FFFFFF"
         }

@@ -264,7 +264,7 @@ Item {
                 anchors.verticalCenterOffset: -6
                 text: "C"
                 font.family: Theme.font
-                font.pixelSize: 104
+                font.pixelSize: Theme.fontPx(104)
                 font.bold: true
                 color: root.glyphColor
             }
@@ -275,7 +275,7 @@ Item {
                 anchors.verticalCenterOffset: -6
                 text: "C"
                 font.family: Theme.font
-                font.pixelSize: 104
+                font.pixelSize: Theme.fontPx(104)
                 font.bold: true
                 color: root.specularColor
                 opacity: 0.40

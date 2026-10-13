@@ -18,7 +18,7 @@ hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
 
 -- Programs
 local terminal    = "kitty"
-local fileManager = "nautilus"
+local fileManager = "/home/zily/.local/opt/kitty/bin/kitty -e /home/zily/.local/bin/yazi"
 
 -- Autostart
 hl.on("hyprland.start", function()
@@ -91,8 +91,9 @@ hl.gesture({
 })
 
 -- Load Modular Carbon Shell Configurations
-dofile("/home/reduct/.config/hypr/carbon/looknfeel.lua")
-dofile("/home/reduct/.config/hypr/carbon/windowrules.lua")
-dofile("/home/reduct/.config/hypr/carbon/keybinds.lua")
+local home = os.getenv("HOME") or ""
+dofile(home .. "/.config/hypr/carbon/looknfeel.lua")
+dofile(home .. "/.config/hypr/carbon/windowrules.lua")
+dofile(home .. "/.config/hypr/carbon/keybinds.lua")
 
 pcall(require, "hyprland-gui")

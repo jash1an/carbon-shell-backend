@@ -17,6 +17,7 @@ FORCE=0
 AUTO_YES=0
 NO_RELOAD=0
 CHECK_ONLY=0
+ROLLBACK=0
 BRANCH=""
 
 # Colors
@@ -78,12 +79,14 @@ Options:
   -y, --yes         Non-interactive mode (accept all prompts)
   -f, --force       Force update even if working tree has local modifications
   -b, --branch <B>  Switch to or pull from specified branch
+  --rollback, -r    Roll back to the previous backup before the last update
   --no-reload       Do not restart Quickshell or reload Hyprland after updating
   -h, --help        Show this help message and exit
 
 Examples:
-  carbon-update               # Interactive update
+  carbon-update               # Interactive update (auto-saves your changes)
   carbon-update --check       # Check if an update is available
+  carbon-update --rollback    # Restore previous backup if needed
   carbon-update -y            # Update immediately without prompts
 EOF
     exit 0
@@ -97,6 +100,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -c|--check)
             CHECK_ONLY=1
+            shift
+            ;;
+        -r|--rollback|--restore)
+            ROLLBACK=1
             shift
             ;;
         -y|--yes)
@@ -121,6 +128,44 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Rollback Handler: Instantly restore previous pre-update backup
+if [[ "$ROLLBACK" -eq 1 ]]; then
+    BACKUP_DIR="$CONFIG_DIR/backups"
+    LATEST_BACKUP="$(ls -1t "$BACKUP_DIR"/carbon-backup-*.tar.gz 2>/dev/null | head -n 1 || true)"
+    if [[ -z "$LATEST_BACKUP" || ! -f "$LATEST_BACKUP" ]]; then
+        die "No previous backup found in $BACKUP_DIR"
+    fi
+    printf "\n"
+    msg "Rolling back Carbon Shell..."
+    info "Restoring archive: $(basename "$LATEST_BACKUP")..."
+    tar -xzf "$LATEST_BACKUP" -C "$HOME"
+    ok "Rollback succeeded!"
+    if [[ "$NO_RELOAD" -eq 0 ]]; then
+        info "Restarting desktop services..."
+        systemctl --user restart carbon-quickshell.service >/dev/null 2>&1 || true
+        command -v hyprctl >/dev/null 2>&1 && hyprctl reload >/dev/null 2>&1 || true
+        ok "Desktop services restarted"
+    fi
+    exit 0
+fi
+
+create_safety_backup() {
+    local backup_dir="$CONFIG_DIR/backups"
+    local backup_file="$backup_dir/carbon-backup-$(date +'%Y%m%d_%H%M%S').tar.gz"
+    mkdir -p "$backup_dir"
+    info "Creating automatic safety backup before updating..."
+    tar -czf "$backup_file" \
+        -C "$HOME" \
+        ".local/share/quickshell/carbon" \
+        ".config/carbon" \
+        ".config/hypr/scripts" 2>/dev/null || true
+    if [[ -f "$backup_file" ]]; then
+        ok "Safety backup created: $(basename "$backup_file")"
+        # Keep only the last 5 backups
+        ls -1t "$backup_dir"/carbon-backup-*.tar.gz 2>/dev/null | tail -n +6 | xargs -r rm -f
+    fi
+}
 
 printf "\n"
 msg "Carbon Shell Updater"
@@ -181,16 +226,32 @@ if [[ -n "$BRANCH" ]]; then
 fi
 
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")"
-info "Checking for remote updates ($CURRENT_BRANCH)..."
 
-git fetch origin "$CURRENT_BRANCH" --quiet 2>/dev/null || {
+# Locate upstream remote (prefer origin, else fall back to first remote)
+UPSTREAM_REMOTE="origin"
+if ! git remote get-url "$UPSTREAM_REMOTE" >/dev/null 2>&1; then
+    UPSTREAM_REMOTE="$(git remote 2>/dev/null | head -n 1 || echo "origin")"
+fi
+
+if [[ -n "$BRANCH" ]]; then
+    REMOTE_TARGET="$BRANCH"
+elif git rev-parse --verify "$UPSTREAM_REMOTE/$CURRENT_BRANCH" >/dev/null 2>&1; then
+    REMOTE_TARGET="$CURRENT_BRANCH"
+else
+    # Custom or diverged local branch: pull updates from upstream main
+    REMOTE_TARGET="main"
+fi
+info "Checking for remote updates ($CURRENT_BRANCH -> $UPSTREAM_REMOTE/$REMOTE_TARGET)..."
+
+git fetch "$UPSTREAM_REMOTE" "$REMOTE_TARGET" --quiet 2>/dev/null || {
     warn "Could not reach remote repository (offline or remote unreachable)."
 }
 
 LOCAL_HASH="$(git rev-parse HEAD 2>/dev/null || echo "")"
-REMOTE_HASH="$(git rev-parse "origin/$CURRENT_BRANCH" 2>/dev/null || echo "$LOCAL_HASH")"
+REMOTE_HASH="$(git rev-parse --verify "$UPSTREAM_REMOTE/$REMOTE_TARGET^{commit}" 2>/dev/null || echo "$LOCAL_HASH")"
+NEW_COMMITS_COUNT="$(git rev-list --count HEAD.."$UPSTREAM_REMOTE/$REMOTE_TARGET" 2>/dev/null || echo 0)"
 
-if [[ "$LOCAL_HASH" == "$REMOTE_HASH" ]]; then
+if [[ "$NEW_COMMITS_COUNT" -eq 0 ]]; then
     if [[ "$CHECK_ONLY" -eq 1 ]]; then
         ok "Carbon Shell is up to date (${LOCAL_HASH:0:8})."
         exit 0
@@ -204,12 +265,12 @@ if [[ "$LOCAL_HASH" == "$REMOTE_HASH" ]]; then
     fi
 else
     # Update available!
-    msg "Updates available:"
+    msg "Updates available ($NEW_COMMITS_COUNT new upstream commits):"
     printf "   Current commit : %s\n" "${LOCAL_HASH:0:8}"
     printf "   Latest commit  : %s\n\n" "${REMOTE_HASH:0:8}"
 
     printf "  Recent changes:\n"
-    git log --oneline --no-merges -n 5 "$LOCAL_HASH..$REMOTE_HASH" 2>/dev/null | sed 's/^/    * /' || true
+    git log --oneline --no-merges -n 5 "HEAD..$UPSTREAM_REMOTE/$REMOTE_TARGET" 2>/dev/null | sed 's/^/    * /' || true
     printf "\n"
 
     if [[ "$CHECK_ONLY" -eq 1 ]]; then
@@ -225,31 +286,44 @@ fi
 # ------------------------------------------------------------------------------
 # 3. Pull Repository Updates
 # ------------------------------------------------------------------------------
-if [[ "$LOCAL_HASH" != "$REMOTE_HASH" || "$FORCE" -eq 1 ]]; then
+if [[ "$NEW_COMMITS_COUNT" -gt 0 ]]; then
     msg "Updating repository working tree..."
+
+    # 3a. Save any uncommitted modifications into a safe git snapshot commit
     if ! git diff-index --quiet HEAD -- 2>/dev/null; then
-        if [[ "$FORCE" -eq 1 ]]; then
-            warn "Stashing local modifications due to --force..."
-            git stash --quiet
-        else
-            warn "Uncommitted changes detected in $REPO_DIR."
-            if prompt_confirm "  Stash local changes and proceed with update? [Y/n]: " "Y"; then
-                git stash --quiet
-            else
-                die "Update aborted to prevent overwriting uncommitted changes."
-            fi
-        fi
+        msg "Uncommitted changes detected — saving automatic snapshot commit..."
+        git add -A
+        git commit -m "chore(local): auto-snapshot before update ($(date +'%Y-%m-%d %H:%M:%S'))" --quiet
+        ok "Local changes safely committed to branch $CURRENT_BRANCH"
     fi
 
-    if git merge-base --is-ancestor HEAD "origin/$CURRENT_BRANCH" 2>/dev/null; then
-        git merge --ff-only "origin/$CURRENT_BRANCH" --quiet
+    # 3b. Create safety archive backup of runtime before updating
+    create_safety_backup
+
+    # 3c. Safe merge based on branch (never overwrite user commits)
+    if [[ "$CURRENT_BRANCH" != "$REMOTE_TARGET" ]]; then
+        info "Custom branch detected ($CURRENT_BRANCH). Merging upstream $UPSTREAM_REMOTE/$REMOTE_TARGET..."
+        if git merge --no-edit "$UPSTREAM_REMOTE/$REMOTE_TARGET" --quiet 2>/dev/null; then
+            ok "Upstream updates cleanly merged into $CURRENT_BRANCH (all local commits preserved)"
+        else
+            warn "Merge conflict detected with upstream updates!"
+            git merge --abort 2>/dev/null || true
+            die "Update safely aborted. Your local changes on $CURRENT_BRANCH were NOT modified."
+        fi
     else
-        git pull --ff-only origin "$CURRENT_BRANCH" --quiet || {
-            die "Could not fast-forward repository. Resolve git conflicts manually in $REPO_DIR."
-        }
+        if git merge-base --is-ancestor HEAD "$REMOTE_HASH" 2>/dev/null; then
+            git merge --ff-only "$REMOTE_HASH" --quiet
+        else
+            git merge --no-edit "$REMOTE_HASH" --quiet 2>/dev/null || git pull "$UPSTREAM_REMOTE" "$REMOTE_TARGET" --quiet || {
+                die "Could not fast-forward repository. Resolve git conflicts manually in $REPO_DIR."
+            }
+        fi
     fi
     NEW_HASH="$(git rev-parse HEAD)"
     ok "Working tree updated to ${NEW_HASH:0:8}"
+else
+    # Even if repo is up to date, back up runtime if re-synchronizing
+    create_safety_backup
 fi
 
 # ------------------------------------------------------------------------------
@@ -279,12 +353,20 @@ msg "Preserving user configurations..."
 mkdir -p "$CONFIG_DIR"
 echo "$REPO_DIR" > "$REPO_PATH_FILE"
 
-# Window rules and looknfeel
+# Window rules and looknfeel: do NOT overwrite existing user customizations
 if [[ -f "$REPO_DIR/hypr/windowrules.conf" ]]; then
-    cp -f "$REPO_DIR/hypr/windowrules.conf" "$CONFIG_DIR/windowrules.conf"
+    if [[ ! -f "$CONFIG_DIR/windowrules.conf" ]]; then
+        cp -f "$REPO_DIR/hypr/windowrules.conf" "$CONFIG_DIR/windowrules.conf"
+    else
+        cp -f "$REPO_DIR/hypr/windowrules.conf" "$CONFIG_DIR/windowrules.conf.dist" 2>/dev/null || true
+    fi
 fi
 if [[ -f "$REPO_DIR/hypr/looknfeel.conf" ]]; then
-    cp -f "$REPO_DIR/hypr/looknfeel.conf" "$CONFIG_DIR/looknfeel.conf"
+    if [[ ! -f "$CONFIG_DIR/looknfeel.conf" ]]; then
+        cp -f "$REPO_DIR/hypr/looknfeel.conf" "$CONFIG_DIR/looknfeel.conf"
+    else
+        cp -f "$REPO_DIR/hypr/looknfeel.conf" "$CONFIG_DIR/looknfeel.conf.dist" 2>/dev/null || true
+    fi
 fi
 
 # Keybinding configs: do NOT overwrite existing user customizations
@@ -304,16 +386,27 @@ if [[ -f "$REPO_DIR/hypr/keybinds-shell-only.conf" ]]; then
     fi
 fi
 
-# Preserve carbon.conf active keybind source
-if [[ -f "$REPO_DIR/hypr/carbon.conf" ]]; then
-    if [[ -f "$CONFIG_DIR/carbon.conf" ]]; then
-        ACTIVE_BIND="$(grep -E 'source\s*=\s*~/.config/carbon/keybinds' "$CONFIG_DIR/carbon.conf" | head -n 1 || true)"
-        cp -f "$REPO_DIR/hypr/carbon.conf" "$CONFIG_DIR/carbon.conf"
-        if [[ -n "$ACTIVE_BIND" ]]; then
-            sed -i -E "s|source\s*=\s*~/.config/carbon/keybinds.*|$ACTIVE_BIND|" "$CONFIG_DIR/carbon.conf"
-        fi
+# Vanish keybinding configs: do NOT overwrite existing user customizations
+if [[ -f "$REPO_DIR/hypr/configs/vanish-keybinds.conf" ]]; then
+    if [[ ! -f "$CONFIG_DIR/vanish-keybinds.conf" ]]; then
+        cp -f "$REPO_DIR/hypr/configs/vanish-keybinds.conf" "$CONFIG_DIR/vanish-keybinds.conf"
     else
+        cp -f "$REPO_DIR/hypr/configs/vanish-keybinds.conf" "$CONFIG_DIR/vanish-keybinds.conf.dist" 2>/dev/null || true
+    fi
+fi
+
+# User state & themes: do NOT overwrite active runtime JSON states
+for json_state in "$CONFIG_DIR"/carbon-*.json "$CONFIG_DIR/theme.json" "$CONFIG_DIR/current_wallpaper"*; do
+    # Intentionally preserved — never clobbered
+    :
+done
+
+# Preserve carbon.conf: never overwrite existing user integration config
+if [[ -f "$REPO_DIR/hypr/carbon.conf" ]]; then
+    if [[ ! -f "$CONFIG_DIR/carbon.conf" ]]; then
         cp -f "$REPO_DIR/hypr/carbon.conf" "$CONFIG_DIR/carbon.conf"
+    else
+        cp -f "$REPO_DIR/hypr/carbon.conf" "$CONFIG_DIR/carbon.conf.dist" 2>/dev/null || true
     fi
 fi
 

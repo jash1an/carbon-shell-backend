@@ -202,7 +202,7 @@ Item {
                     horizontalAlignment: Text.AlignHCenter
                     text: root.monthNames[root.month] + " " + root.year
                     font.family: Theme.font
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontPx(11)
                     font.bold: true
                     color: Theme.fg
                 }
@@ -245,7 +245,7 @@ Item {
                         verticalAlignment: Text.AlignVCenter
                         text: modelData
                         font.family: Theme.font
-                        font.pixelSize: 9
+                        font.pixelSize: Theme.fontPx(9)
                         font.bold: true
                         color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.45)
                     }
@@ -277,7 +277,7 @@ Item {
                                 anchors.centerIn: parent
                                 text: String(model.day)
                                 font.family: Theme.font
-                                font.pixelSize: 10
+                                font.pixelSize: Theme.fontPx(10)
                                 font.bold: model.today || model.same
                                 color: model.today ? "#000000" : (model.same ? Theme.fg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.25))
                             }

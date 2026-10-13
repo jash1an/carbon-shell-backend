@@ -167,6 +167,7 @@ Item {
             title: "Change Wallpaper",
             desc: "Open Carbon dynamic wallpaper picker",
             glyph: "wallpaper",
+            appIcon: "preferences-desktop-wallpaper",
             category: "Personalization",
             run: () => {
                 root.closeRequested()
@@ -178,10 +179,11 @@ Item {
             title: "Carbon Config & Theme Editor",
             desc: "Configure shell layout, notch mode, and keybinds",
             glyph: "settings",
+            appIcon: "carbon-settings",
             category: "Preferences",
             run: () => {
                 root.closeRequested()
-                Quickshell.execDetached(["python3", root.home + "/.config/hypr/scripts/carbon-config-editor.py"])
+                Quickshell.execDetached(["carbon-config-editor"])
             }
         },
         {
@@ -189,6 +191,7 @@ Item {
             title: "Open Terminal",
             desc: "Launch kitty terminal emulator",
             glyph: "terminal",
+            appIcon: "kitty",
             category: "Developer",
             run: () => {
                 root.closeRequested()
@@ -376,7 +379,7 @@ Item {
                         title: act.title,
                         subTitle: act.desc,
                         glyph: act.glyph,
-                        iconSource: "",
+                        iconSource: act.appIcon ? Quickshell.iconPath(act.appIcon, "") : "",
                         rawRef: ""
                     })
                 }
@@ -399,7 +402,7 @@ Item {
                     title: app.name,
                     subTitle: app.genericName || app.comment || "Application",
                     glyph: "apps",
-                    iconSource: app.icon ? ("image://icon/" + app.icon) : "",
+                    iconSource: app.icon ? Quickshell.iconPath(app.icon, "application-x-executable") : "",
                     rawRef: ""
                 })
                 count++
@@ -502,8 +505,8 @@ Item {
                     id: searchInput
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
-                    font.family: "Valley Sans"
-                    font.pixelSize: 14
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(15)
                     font.weight: Font.Medium
                     color: Theme.fg
                     selectionColor: Theme.accent
@@ -512,9 +515,9 @@ Item {
 
                     Text {
                         anchors.fill: parent
-                        text: "Search apps, type / for commands"
-                        font.family: "Valley Sans"
-                        font.pixelSize: 14
+                        text: root.currentTab === "clipboard" ? "Search clipboard history..." : (root.currentTab === "commands" ? "Search commands..." : "Search apps, type / for commands...")
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(15)
                         color: Theme.fgFaint
                         visible: !searchInput.text && !searchInput.inputMethodComposing
                     }
@@ -555,8 +558,8 @@ Item {
                     Text {
                         anchors.centerIn: parent
                         text: "?"
-                        font.family: "Valley Sans"
-                        font.pixelSize: 13
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(13)
                         font.bold: true
                         color: Theme.fgDim
                     }
@@ -963,8 +966,8 @@ Item {
                             id: tabAppsText
                             anchors.centerIn: parent
                             text: "Applications"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: root.currentTab === "apps" ? Font.Bold : Font.Normal
                             color: root.currentTab === "apps" ? Theme.accent : Theme.fgDim
                             Behavior on color { ColorAnimation { duration: 150 } }
@@ -989,8 +992,8 @@ Item {
                             id: tabClipText
                             anchors.centerIn: parent
                             text: "Clipboard"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: root.currentTab === "clipboard" ? Font.Bold : Font.Normal
                             color: root.currentTab === "clipboard" ? Theme.accent : Theme.fgDim
                             Behavior on color { ColorAnimation { duration: 150 } }
@@ -1015,8 +1018,8 @@ Item {
                             id: tabCmdText
                             anchors.centerIn: parent
                             text: "Commands"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: root.currentTab === "commands" ? Font.Bold : Font.Normal
                             color: root.currentTab === "commands" ? Theme.accent : Theme.fgDim
                             Behavior on color { ColorAnimation { duration: 150 } }
@@ -1072,8 +1075,8 @@ Item {
 
                         Text {
                             text: root.calcResult
-                            font.family: "Valley Sans"
-                            font.pixelSize: 16
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(16)
                             font.weight: Font.Bold
                             color: Theme.fg
                             elide: Text.ElideRight
@@ -1082,8 +1085,8 @@ Item {
 
                         Text {
                             text: "Press Enter to copy result to clipboard"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 9
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(9)
                             color: Theme.fgDim
                         }
                     }
@@ -1098,8 +1101,8 @@ Item {
                         Text {
                             anchors.centerIn: parent
                             text: "↵ Copy"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 10
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(10)
                             font.weight: Font.Bold
                             color: Theme.accent
                         }
@@ -1160,12 +1163,14 @@ Item {
                             Layout.alignment: Qt.AlignVCenter
 
                             Image {
+                                id: rowIconImg
                                 anchors.centerIn: parent
                                 width: 20
                                 height: 20
                                 source: rowDelegate.iconSource
                                 sourceSize: Qt.size(40, 40)
-                                visible: rowDelegate.iconSource.length > 0
+                                fillMode: Image.PreserveAspectFit
+                                visible: rowDelegate.iconSource.length > 0 && status === Image.Ready
                             }
 
                             Text {
@@ -1174,7 +1179,7 @@ Item {
                                 font.family: Theme.fontIcon
                                 font.pixelSize: 16
                                 color: resultsList.currentIndex === rowDelegate.index ? Theme.accent : Theme.fgDim
-                                visible: rowDelegate.iconSource.length === 0
+                                visible: !rowIconImg.visible
                             }
                         }
 
@@ -1185,8 +1190,8 @@ Item {
 
                             Text {
                                 text: rowDelegate.title
-                                font.family: "Valley Sans"
-                                font.pixelSize: 12
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(12)
                                 font.weight: resultsList.currentIndex === rowDelegate.index ? Font.Bold : Font.Medium
                                 color: resultsList.currentIndex === rowDelegate.index ? Theme.accent : Theme.fg
                                 elide: Text.ElideRight
@@ -1195,8 +1200,8 @@ Item {
 
                             Text {
                                 text: rowDelegate.subTitle
-                                font.family: "Valley Sans"
-                                font.pixelSize: 9
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(9)
                                 color: Theme.fgDim
                                 elide: Text.ElideRight
                                 Layout.fillWidth: true
@@ -1206,8 +1211,8 @@ Item {
                         /* Enter hint on selected item */
                         Text {
                             text: "↵"
-                            font.family: "Valley Sans"
-                            font.pixelSize: 13
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(13)
                             color: Theme.accent
                             visible: resultsList.currentIndex === rowDelegate.index
                         }
@@ -1237,8 +1242,8 @@ Item {
                 Text {
                     anchors.centerIn: parent
                     text: root.currentTab === "clipboard" ? "Clipboard is empty" : (root.currentTab === "commands" ? "No commands found" : "No applications found")
-                    font.family: "Valley Sans"
-                    font.pixelSize: 12
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(12)
                     color: Theme.fgDim
                 }
             }
@@ -1251,8 +1256,8 @@ Item {
 
                 Text {
                     text: resultsModel.count === 1 ? "1 result" : (resultsModel.count + " results")
-                    font.family: "Valley Sans"
-                    font.pixelSize: 9
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(9)
                     color: Theme.fgFaint
                 }
 
@@ -1263,20 +1268,20 @@ Item {
 
                     Row {
                         spacing: 4
-                        Text { text: "↑↓"; font.pixelSize: 9; color: Theme.fgDim; font.weight: Font.Bold }
-                        Text { text: "Navigate"; font.pixelSize: 9; color: Theme.fgFaint }
+                        Text { text: "↑↓"; font.pixelSize: Theme.fontPx(9); color: Theme.fgDim; font.weight: Font.Bold }
+                        Text { text: "Navigate"; font.pixelSize: Theme.fontPx(9); color: Theme.fgFaint }
                     }
 
                     Row {
                         spacing: 4
-                        Text { text: "Tab"; font.pixelSize: 9; color: Theme.fgDim; font.weight: Font.Bold }
-                        Text { text: "Filter"; font.pixelSize: 9; color: Theme.fgFaint }
+                        Text { text: "Tab"; font.pixelSize: Theme.fontPx(9); color: Theme.fgDim; font.weight: Font.Bold }
+                        Text { text: "Filter"; font.pixelSize: Theme.fontPx(9); color: Theme.fgFaint }
                     }
 
                     Row {
                         spacing: 4
-                        Text { text: "↵"; font.pixelSize: 9; color: Theme.fgDim; font.weight: Font.Bold }
-                        Text { text: "Open"; font.pixelSize: 9; color: Theme.fgFaint }
+                        Text { text: "↵"; font.pixelSize: Theme.fontPx(9); color: Theme.fgDim; font.weight: Font.Bold }
+                        Text { text: "Open"; font.pixelSize: Theme.fontPx(9); color: Theme.fgFaint }
                     }
                 }
             }

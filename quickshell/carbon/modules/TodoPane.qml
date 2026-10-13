@@ -106,8 +106,8 @@ Item {
 
             Text {
                 text: "To-Do List"
-                font.family: "Valley Sans"
-                font.pixelSize: 13
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(13)
                 font.weight: Font.Bold
                 color: Theme.fg
             }
@@ -124,8 +124,8 @@ Item {
                     id: countTxt
                     anchors.centerIn: parent
                     text: root.doneCount + "/" + root.totalCount
-                    font.family: "Valley Sans"
-                    font.pixelSize: 9
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(9)
                     font.weight: Font.Bold
                     color: Theme.accent
                 }
@@ -184,8 +184,8 @@ Item {
                     id: taskInput
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
-                    font.family: "Valley Sans"
-                    font.pixelSize: 11
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(11)
                     color: Theme.fg
                     clip: true
                     selectByMouse: true
@@ -194,8 +194,8 @@ Item {
                     Text {
                         anchors.fill: parent
                         text: "Add a task and hit Enter..."
-                        font.family: "Valley Sans"
-                        font.pixelSize: 11
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(11)
                         color: Theme.fgFaint
                         visible: !taskInput.text && !taskInput.activeFocus
                     }
@@ -287,8 +287,8 @@ Item {
                         Layout.fillWidth: true
                         Layout.alignment: Qt.AlignVCenter
                         text: taskRow.modelData.text
-                        font.family: "Valley Sans"
-                        font.pixelSize: 11
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(11)
                         font.strikeout: taskRow.modelData.done
                         color: taskRow.modelData.done ? Theme.fgFaint : Theme.fg
                         elide: Text.ElideRight
@@ -338,8 +338,8 @@ Item {
             Text {
                 anchors.centerIn: parent
                 text: "No tasks yet!\nType above and press Enter."
-                font.family: "Valley Sans"
-                font.pixelSize: 11
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(11)
                 color: Theme.fgFaint
                 horizontalAlignment: Text.AlignHCenter
                 visible: root.totalCount === 0

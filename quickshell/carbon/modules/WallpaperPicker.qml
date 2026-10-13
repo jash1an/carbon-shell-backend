@@ -43,10 +43,57 @@ Item {
     readonly property string wallpaperDir: (Quickshell.env("HOME") || "") + "/Pictures/Wallpapers"
     readonly property string stateFile: (Quickshell.env("CARBON_CONFIG_DIR") || ((Quickshell.env("HOME") || "") + "/.config/carbon")) + "/current_wallpaper_path"
     readonly property string hyprStateFile: (Quickshell.env("HOME") || "") + "/.config/hypr/current_wallpaper_path"
+    readonly property string wallpaperSourceFile: (Quickshell.env("CARBON_CONFIG_DIR") || ((Quickshell.env("HOME") || "") + "/.config/carbon")) + "/carbon-wallpaper-source.json"
     readonly property string wallhavenScript: {
         const home = Quickshell.env("HOME") || ""
         const carbonDir = Quickshell.env("CARBON_CONFIG_DIR") || (home + "/.config/carbon")
         return carbonDir + "/scripts/wallhaven.py"
+    }
+
+    FileView {
+        id: wpSourceFile
+        path: root.wallpaperSourceFile
+        blockLoading: true
+        watchChanges: true
+        printErrors: false
+        onLoaded: root.loadWallpaperSource()
+        onFileChanged: {
+            reload()
+            root.loadWallpaperSource()
+        }
+    }
+
+    function loadWallpaperSource() {
+        try {
+            var t = wpSourceFile.text().trim()
+            if (t) {
+                var d = JSON.parse(t)
+                if (d && d.provider) {
+                    var p = String(d.provider).toLowerCase()
+                    if (p === "unsplash" || p === "wallhaven") {
+                        root.onlineProvider = p
+                    }
+                }
+            }
+        } catch (e) {}
+    }
+
+    function setOnlineProvider(prov) {
+        var p = prov.toLowerCase()
+        if (p !== "unsplash" && p !== "wallhaven") return
+        if (root.onlineProvider === p) return
+        root.onlineProvider = p
+
+        var cfg = {
+            "provider": root.onlineProvider,
+            "unsplash_access_key": "5fda81bc223a576f33934dd4dee20cf2217f2777f798c4c0f1e00e377cba5bcc"
+        }
+        var jsonStr = JSON.stringify(cfg, null, 2)
+        Quickshell.execDetached(["sh", "-c", "echo '" + jsonStr + "' > " + root.wallpaperSourceFile + "; [ -d ~/.config/hypr ] && echo '" + jsonStr + "' > ~/.config/hypr/carbon-wallpaper-source.json"])
+
+        if (root.activeSource === "wallhaven") {
+            root.fetchWallpapers()
+        }
     }
 
     FileView {
@@ -115,6 +162,7 @@ Item {
     onCurrentSortChanged: {
         if (root.open && root.activeSource === "wallhaven") root.fetchWallpapers()
     }
+
 
     onOpenChanged: {
         if (root.open) {
@@ -501,8 +549,8 @@ Item {
                                 id: unsplashTxt
                                 anchors.centerIn: parent
                                 text: "Unsplash"
-                                font.family: "Valley Sans"
-                                font.pixelSize: 12
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(11)
                                 font.weight: Font.Bold
                                 color: parent.isSelected ? "#111111" : Theme.fgDim
                             }
@@ -512,7 +560,7 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: root.onlineProvider = "unsplash"
+                                onClicked: root.setOnlineProvider("unsplash")
                             }
                         }
 
@@ -531,8 +579,8 @@ Item {
                                 id: whTxt
                                 anchors.centerIn: parent
                                 text: "Wallhaven"
-                                font.family: "Valley Sans"
-                                font.pixelSize: 12
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(11)
                                 font.weight: Font.Bold
                                 color: parent.isSelected ? "#111111" : Theme.fgDim
                             }
@@ -542,10 +590,16 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: root.onlineProvider = "wallhaven"
+                                onClicked: root.setOnlineProvider("wallhaven")
                             }
                         }
                     }
+                }
+
+                /* Spacer when in Wallhaven Best/Latest mode without search bar */
+                Item {
+                    Layout.fillWidth: true
+                    visible: root.activeSource === "wallhaven" && !root.searchOpen
                 }
 
                 /* Online Sort Chips: Best & Latest (Visible in Online mode) */
@@ -578,8 +632,8 @@ Item {
                             }
                             Text {
                                 text: "Best"
-                                font.family: "Valley Sans"
-                                font.pixelSize: 12
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(12)
                                 font.weight: Font.Bold
                                 color: bestBtn.isActive ? "#111111" : Theme.fg
                             }
@@ -621,8 +675,8 @@ Item {
                             }
                             Text {
                                 text: "Latest"
-                                font.family: "Valley Sans"
-                                font.pixelSize: 12
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(12)
                                 font.weight: Font.Bold
                                 color: latestBtn.isActive ? "#111111" : Theme.fg
                             }
@@ -659,17 +713,55 @@ Item {
 
                         /* Target Icon */
                         Text {
-                            text: root.activeSource === "wallhaven" ? "public" : (root.activeSource === "live" ? "movie" : "folder")
+                            text: root.activeSource === "wallhaven" ? (root.onlineProvider === "unsplash" ? "photo_camera" : "image") : (root.activeSource === "live" ? "movie" : "folder")
                             font.family: Theme.fontIcon
                             font.pixelSize: 18
                             color: searchInput.activeFocus ? Theme.accent : Theme.fgDim
                         }
 
+                        /* Quick Provider toggle chip inside search bar */
+                        Rectangle {
+                            visible: root.activeSource === "wallhaven"
+                            height: 24
+                            width: provChipRow.implicitWidth + 12
+                            radius: 6
+                            color: provChipHov.containsMouse ? Theme.bgHover : Qt.alpha(Theme.accent, 0.20)
+                            border.width: 1
+                            border.color: Theme.accentLit
+
+                            RowLayout {
+                                id: provChipRow
+                                anchors.centerIn: parent
+                                spacing: 4
+                                Text {
+                                    text: root.onlineProvider === "unsplash" ? "photo_camera" : "image"
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: 12
+                                    color: Theme.accentLit
+                                }
+                                Text {
+                                    text: root.onlineProvider === "unsplash" ? "Unsplash" : "Wallhaven"
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(8)
+                                    font.weight: Font.Bold
+                                    color: Theme.accentLit
+                                }
+                            }
+
+                            MouseArea {
+                                id: provChipHov
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.setOnlineProvider(root.onlineProvider === "unsplash" ? "wallhaven" : "unsplash")
+                            }
+                        }
+
                         TextInput {
                             id: searchInput
                             Layout.fillWidth: true
-                            font.family: "Valley Sans"
-                            font.pixelSize: 13
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(13)
                             color: Theme.fg
                             selectByMouse: true
                             clip: true
@@ -820,8 +912,8 @@ Item {
                     }
                     Text {
                         text: root.noticeMessage
-                        font.family: "Valley Sans"
-                        font.pixelSize: 11
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(11)
                         color: Theme.fg
                     }
                 }
@@ -855,9 +947,9 @@ Item {
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: root.activeSource === "wallhaven" ? "Searching Online Wallpapers..." : (root.activeSource === "live" ? "Loading Live Wallpapers..." : "Loading Wallpapers...")
-                        font.family: "Valley Sans"
-                        font.pixelSize: 13
+                        text: root.activeSource === "wallhaven" ? (root.onlineProvider === "unsplash" ? "Searching Unsplash..." : "Searching Wallhaven...") : (root.activeSource === "live" ? "Loading Live Wallpapers..." : "Loading Wallpapers...")
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(13)
                         color: Theme.fgDim
                     }
                 }
@@ -879,8 +971,8 @@ Item {
                     Text {
                         Layout.alignment: Qt.AlignHCenter
                         text: root.searchQuery ? ("No wallpapers found for \"" + root.searchQuery + "\"") : (root.activeSource === "live" ? "No live wallpapers found in ~/Pictures/Live_Wallpapers" : "No wallpapers found")
-                        font.family: "Valley Sans"
-                        font.pixelSize: 13
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(13)
                         color: Theme.fgDim
                     }
                 }
@@ -984,8 +1076,8 @@ Item {
                                     id: resTxt
                                     anchors.centerIn: parent
                                     text: (cardItem.modelData.is_live || cardItem.modelData.category === "live") ? "LIVE" : (cardItem.modelData.resolution || "HD")
-                                    font.family: "Valley Sans"
-                                    font.pixelSize: 9
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(9)
                                     font.weight: Font.Bold
                                     color: (cardItem.modelData.is_live || cardItem.modelData.category === "live") ? "#111111" : "#FFFFFF"
                                 }
@@ -1014,8 +1106,8 @@ Item {
                                     }
                                     Text {
                                         text: "Active"
-                                        font.family: "Valley Sans"
-                                        font.pixelSize: 9
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(9)
                                         font.weight: Font.Bold
                                         color: "#111111"
                                     }
@@ -1050,8 +1142,8 @@ Item {
                                     Text {
                                         Layout.alignment: Qt.AlignHCenter
                                         text: "Applying..."
-                                        font.family: "Valley Sans"
-                                        font.pixelSize: 11
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(11)
                                         font.weight: Font.Bold
                                         color: "#FFFFFF"
                                     }
@@ -1095,8 +1187,8 @@ Item {
                                     }
                                     Text {
                                         text: cardItem.modelData.is_local ? "Apply" : "Get"
-                                        font.family: "Valley Sans"
-                                        font.pixelSize: 11
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(11)
                                         font.weight: Font.Bold
                                         color: Theme.fg
                                     }
@@ -1151,8 +1243,8 @@ Item {
                                     }
                                     Text {
                                         text: root.isLoadingMore ? "Loading more..." : (root.hasMore ? "Load more" : "End of results")
-                                        font.family: "Valley Sans"
-                                        font.pixelSize: 11
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(11)
                                         font.weight: Font.Medium
                                         color: Theme.fgDim
                                     }

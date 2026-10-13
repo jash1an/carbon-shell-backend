@@ -1,5 +1,4 @@
 import QtQuick
-import QtMultimedia
 import Quickshell
 import Quickshell.Io
 
@@ -163,10 +162,7 @@ Item {
             imageContainer.opacity = 1.0
             imageContainer.visible = true
         } else if (type === "video") {
-            videoPlayer.source = "file://" + path
-            videoPlayer.play()
-            videoOutput.opacity = 1.0
-            videoOutput.visible = true
+            root.startVideo(path)
         } else if (type === "gif") {
             gifPlayer.source = "file://" + path
             gifPlayer.opacity = 1.0
@@ -182,6 +178,10 @@ Item {
         if (!newPath || newPath === root.currentWpPath) return
         if (newPath === root.pendingNewPath) return
         console.log("[WallpaperMod] applyNewWallpaper:", newPath, "from current:", root.currentWpPath)
+
+        const home = Quickshell.env("HOME") || ""
+        const themeScript = home + "/.config/carbon/scripts/theme-mk.py"
+        Quickshell.execDetached(["python3", themeScript, newPath])
 
         const newType = getWallpaperType(newPath)
         const oldType = getWallpaperType(root.currentWpPath)
@@ -281,9 +281,7 @@ Item {
         root.isAnimating = true
 
         if (newType === "video") {
-            videoPlayer.source = "file://" + newPath
-            videoPlayer.play()
-            videoOutput.visible = true
+            root.startVideo(newPath)
             crossFadeAnim.targetIn = videoOutput
         } else if (newType === "gif") {
             gifPlayer.source = "file://" + newPath
@@ -401,8 +399,7 @@ Item {
             if (crossFadeAnim.targetOut) {
                 crossFadeAnim.targetOut.visible = false
                 if (crossFadeAnim.targetOut === videoOutput) {
-                    videoPlayer.stop()
-                    videoPlayer.source = ""
+                    root.stopVideo()
                 } else if (crossFadeAnim.targetOut === gifPlayer) {
                     gifPlayer.source = ""
                 }
@@ -482,21 +479,45 @@ Item {
         }
     }
 
-    /* ── Video Wallpaper (.mp4, .webm) ────────────────────────────── */
-    MediaPlayer {
-        id: videoPlayer
-        videoOutput: videoOutput
-        loops: MediaPlayer.Infinite
-        audioOutput: null
+    /* ── Video Wallpaper (.mp4, .webm) ────────────────────────────────
+       MediaPlayer/VideoOutput come from the optional QtMultimedia QML
+       module. They are instantiated lazily through a Loader so the shell
+       still starts (static/GIF/Carbon-live wallpapers keep working) on
+       systems without qt6-multimedia installed. */
+    property string pendingVideoPath: ""
+
+    function startVideo(path) {
+        if (!videoLoader.item) {
+            root.pendingVideoPath = path
+            videoLoader.active = true
+            return
+        }
+        root.pendingVideoPath = ""
+        videoLoader.item.player.source = "file://" + path
+        videoLoader.item.player.play()
+        videoLoader.item.output.opacity = 1.0
+        videoLoader.item.output.visible = true
     }
 
-    VideoOutput {
-        id: videoOutput
-        anchors.fill: parent
-        visible: false
-        opacity: 0.0
-        fillMode: VideoOutput.PreserveAspectCrop
+    function stopVideo() {
+        if (videoLoader.item) {
+            videoLoader.item.player.stop()
+            videoLoader.item.player.source = ""
+        }
     }
+
+    Loader {
+        id: videoLoader
+        anchors.fill: parent
+        active: false
+        source: "VideoWallpaper.qml"
+        onLoaded: {
+            if (root.pendingVideoPath) root.startVideo(root.pendingVideoPath)
+        }
+    }
+
+    readonly property var videoPlayer: videoLoader.item ? videoLoader.item.player : null
+    readonly property var videoOutput: videoLoader.item ? videoLoader.item.output : null
 
     /* ── Animated GIF Wallpaper (.gif) ────────────────────────────── */
     AnimatedImage {

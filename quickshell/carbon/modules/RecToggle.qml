@@ -37,7 +37,7 @@ Item {
                 Layout.alignment: Qt.AlignVCenter
                 text: root.glyph
                 font.family: Theme.font
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontPx(12)
                 color: root.checked ? Theme.accentLit : Theme.fgDim
                 horizontalAlignment: Text.AlignHCenter
             }
@@ -46,8 +46,8 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredWidth: 1
                 text: root.label
-                font.family: "Valley Sans"
-                font.pixelSize: 10
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(10)
                 color: root.checked ? Theme.fg : Theme.fgDim
                 elide: Text.ElideRight
             }

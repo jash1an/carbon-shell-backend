@@ -253,7 +253,7 @@ Item {
 
         Text {
             text: root.formatTime(root.isDragging ? (root.dragProgress * root.totalLength) : root.currentPosition)
-            font.family: "Inter"
+            font.family: "JetBrainsMono Nerd Font"
             font.pixelSize: root.timeLabelSize
             font.weight: Font.Medium
             color: root.isDragging ? root.accentLitColor : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.70)
@@ -263,7 +263,7 @@ Item {
 
         Text {
             text: root.formatTime(root.totalLength)
-            font.family: "Inter"
+            font.family: "JetBrainsMono Nerd Font"
             font.pixelSize: root.timeLabelSize
             font.weight: Font.Medium
             color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.50)

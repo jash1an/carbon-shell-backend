@@ -42,7 +42,7 @@ Item {
     readonly property bool shown: root.sensorHovered || root.panelHovered || (root.total > 0 && !Theme.dnd)
 
     /* Font used for lyrics in MusicMod.qml */
-    readonly property string notifFont: "Valley Sans"
+    readonly property string notifFont: "JetBrainsMono Nerd Font"
 
     /* Sizing: compact overall height and cleaner proportions */
     readonly property int rowH: 68
@@ -131,7 +131,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             text: "DND"
                             font.family: root.notifFont
-                            font.pixelSize: 11
+                            font.pixelSize: Theme.fontPx(11)
                             font.weight: Font.DemiBold
                             color: Theme.warn
                         }
@@ -166,7 +166,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             text: "Clear all"
                             font.family: root.notifFont
-                            font.pixelSize: 11
+                            font.pixelSize: Theme.fontPx(11)
                             font.weight: Font.Medium
                             color: clearHov.hovered ? Theme.accent : Theme.fg
                         }
@@ -192,7 +192,7 @@ Item {
                     anchors.centerIn: parent
                     text: "No notifications"
                     font.family: root.notifFont
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontPx(13)
                     font.weight: Font.Medium
                     color: Theme.fgFaint
                     visible: root.total === 0
@@ -316,7 +316,7 @@ Item {
                                             text: cardItem.modelData.summary.length > 0
                                                 ? cardItem.modelData.summary : cardItem.modelData.appName
                                             font.family: root.notifFont
-                                            font.pixelSize: 13
+                                            font.pixelSize: Theme.fontPx(13)
                                             font.weight: Font.DemiBold
                                             color: Theme.fg
                                             elide: Text.ElideRight
@@ -326,7 +326,7 @@ Item {
                                             Layout.fillWidth: true
                                             text: cardItem.modelData.body
                                             font.family: root.notifFont
-                                            font.pixelSize: 12
+                                            font.pixelSize: Theme.fontPx(12)
                                             color: Theme.fgDim
                                             elide: Text.ElideRight
                                             visible: cardItem.modelData.body.length > 0

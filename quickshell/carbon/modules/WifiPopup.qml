@@ -32,6 +32,8 @@ Item {
     width: 260
     height: 286
     clip: true
+    visible: root.open || root.animatingOut
+    enabled: root.open
 
     function shellQuote(s) {
         return "'" + String(s).replace(/'/g, "'\\''") + "'"
@@ -342,16 +344,16 @@ Item {
             }
             Text {
                 text: "Wi-Fi"
-                font.family: "Valley Sans"
-                font.pixelSize: 15
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(15)
                 font.weight: Font.Bold
                 color: Theme.fg
             }
             Text {
                 Layout.fillWidth: true
                 text: root.wifiName.length > 0 ? root.wifiName : (root.powerOn ? "Not connected" : "Off")
-                font.family: "Valley Sans"
-                font.pixelSize: 12
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(12)
                 elide: Text.ElideRight
                 horizontalAlignment: Text.AlignRight
                 color: root.wifiName.length > 0 ? Theme.accentLit : Theme.fgFaint
@@ -455,8 +457,8 @@ Item {
                             Layout.fillWidth: true
                             elide: Text.ElideRight
                             text: model.ssid
-                            font.family: "Valley Sans"
-                            font.pixelSize: 14
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(14)
                             color: model.inUse ? Theme.accentLit : Theme.fg
                         }
                         Text {
@@ -464,8 +466,8 @@ Item {
                             visible: model.inUse || model.isSaved
                             elide: Text.ElideRight
                             text: model.inUse ? "Connected" : (model.isSaved ? "Saved" : "")
-                            font.family: "Valley Sans"
-                            font.pixelSize: 11
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(11)
                             color: Theme.fgDim
                         }
                     }
@@ -473,7 +475,7 @@ Item {
                     Text {
                         text: model.sig >= 75 ? "\u2587" : model.sig >= 45 ? "\u2585" : model.sig >= 20 ? "\u2583" : "\u2581"
                         font.family: Theme.font
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontPx(12)
                         color: model.sig >= 45 ? Theme.fgDim : Theme.fgFaint
                     }
                 }
@@ -527,15 +529,15 @@ Item {
                     Layout.preferredWidth: 1
                     elide: Text.ElideRight
                     text: statusText()
-                    font.family: "Valley Sans"
-                    font.pixelSize: 12
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(12)
                     color: root.status.length > 0 ? Theme.accentLit : Theme.fgFaint
                 }
 
                 Text {
                     text: "SCAN"
                     font.family: Theme.font
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontPx(11)
                     font.bold: true
                     color: (!root.powerOn || root.scanning || root.connecting) ? Theme.fgFaint : Theme.accentLit
                     MouseArea {
@@ -557,8 +559,8 @@ Item {
                 Text {
                     elide: Text.ElideRight
                     text: root.pwSsid
-                    font.family: "Valley Sans"
-                    font.pixelSize: 12
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(12)
                     color: Theme.fgDim
                     Layout.maximumWidth: 80
                 }
@@ -578,8 +580,8 @@ Item {
                         anchors.leftMargin: 8
                         anchors.rightMargin: 8
                         verticalAlignment: Text.AlignVCenter
-                        font.family: "Valley Sans"
-                        font.pixelSize: 12
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(12)
                         color: Theme.fg
                         echoMode: TextInput.Password
                         focus: root.pwVisible
@@ -590,7 +592,7 @@ Item {
                 Text {
                     text: "CONNECT"
                     font.family: Theme.font
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontPx(11)
                     font.bold: true
                     color: Theme.accentLit
                     MouseArea {

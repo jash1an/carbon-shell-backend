@@ -49,7 +49,14 @@ def resolve_icon_path(icon_name):
     if os.path.isabs(icon_name) and os.path.exists(icon_name):
         return f"file://{icon_name}"
     
+    local_icons = os.path.expanduser("~/.local/share/icons")
+    kitty_icons = os.path.expanduser("~/.local/opt/kitty/share/icons")
     candidates = [
+        f"{local_icons}/hicolor/scalable/apps/{icon_name}.svg",
+        f"{local_icons}/hicolor/256x256/apps/{icon_name}.png",
+        f"{local_icons}/hicolor/128x128/apps/{icon_name}.png",
+        f"{kitty_icons}/hicolor/scalable/apps/{icon_name}.svg",
+        f"{kitty_icons}/hicolor/256x256/apps/{icon_name}.png",
         f"/usr/share/icons/Papirus/64x64@2x/apps/{icon_name}.svg",
         f"/usr/share/icons/Papirus/64x64/apps/{icon_name}.svg",
         f"/usr/share/icons/Papirus/64x64@2x/categories/{icon_name}.svg",
@@ -59,6 +66,11 @@ def resolve_icon_path(icon_name):
         f"/usr/share/icons/hicolor/128x128/apps/{icon_name}.png",
         f"/usr/share/icons/hicolor/64x64/apps/{icon_name}.png",
         f"/usr/share/icons/hicolor/48x48/apps/{icon_name}.png",
+        f"/usr/share/icons/breeze/apps/64/{icon_name}.svg",
+        f"/usr/share/icons/breeze/apps/48/{icon_name}.svg",
+        f"/usr/share/icons/breeze/devices/64/{icon_name}.svg",
+        f"/usr/share/icons/breeze/devices/22/{icon_name}.svg",
+        f"/usr/share/icons/breeze/preferences/22/{icon_name}.svg",
         f"/usr/share/pixmaps/{icon_name}.svg",
         f"/usr/share/pixmaps/{icon_name}.png",
     ]
