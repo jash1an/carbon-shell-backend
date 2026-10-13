@@ -163,9 +163,6 @@ Item {
         if (root.open && root.activeSource === "wallhaven") root.fetchWallpapers()
     }
 
-    onOnlineProviderChanged: {
-        if (root.open && root.activeSource === "wallhaven") root.fetchWallpapers()
-    }
 
     onOpenChanged: {
         if (root.open) {
@@ -603,7 +600,6 @@ Item {
                 Item {
                     Layout.fillWidth: true
                     visible: root.activeSource === "wallhaven" && !root.searchOpen
-                }
                 }
 
                 /* Online Sort Chips: Best & Latest (Visible in Online mode) */
