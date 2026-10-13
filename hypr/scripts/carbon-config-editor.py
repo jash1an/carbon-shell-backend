@@ -12,6 +12,7 @@ import subprocess
 import shutil
 import re
 import threading
+import copy
 
 # Ensure fast GTK4 launch without GPU enumeration stalls
 os.environ["GSK_RENDERER"] = "cairo"
@@ -25,6 +26,7 @@ from gi.repository import Gtk, Adw, Gio, GLib, Gdk
 CONFIG_DIR = os.environ.get("CARBON_CONFIG_DIR", os.path.expanduser("~/.config/carbon"))
 HYPR_DIR = os.path.expanduser("~/.config/hypr")
 
+LOOKNFEEL_CONF_PATH = os.path.join(CONFIG_DIR, "looknfeel.conf")
 BAR_MODE_PATH = os.path.join(CONFIG_DIR, "carbon-bar-mode.json")
 BAR_POS_PATH = os.path.join(CONFIG_DIR, "carbon-bar-position.json")
 CLOCK_STYLE_PATH = os.path.join(CONFIG_DIR, "carbon-clock-style.json")
@@ -113,6 +115,31 @@ DEFAULT_VANISH_SHORTCUTS = {
     }
 }
 
+DEFAULT_LOOKNFEEL = {
+    "gaps_in": 6,
+    "gaps_out": 6,
+    "border_size": 1,
+    "layout": "dwindle",
+    "resize_on_border": False,
+    "allow_tearing": False,
+    "rounding": 15,
+    "rounding_power": 2,
+    "active_opacity": 0.80,
+    "inactive_opacity": 0.95,
+    "shadow_enabled": True,
+    "shadow_range": 15,
+    "shadow_render_power": 3,
+    "blur_enabled": True,
+    "blur_size": 5,
+    "blur_passes": 2,
+    "blur_ignore_opacity": True,
+    "blur_new_optimizations": True,
+    "blur_special": False,
+    "blur_popups": True,
+    "blur_xray": True,
+    "blur_vibrancy": 0.1696,
+}
+
 def generate_vanish_keybinds_conf(shortcuts):
     dispatch_path = VANISH_DISPATCH_SCRIPT if os.path.exists(VANISH_DISPATCH_SCRIPT) else os.path.expanduser("~/.config/hypr/scripts/carbon-vanish-dispatch.sh")
     lines = [
@@ -133,12 +160,9 @@ def generate_vanish_keybinds_conf(shortcuts):
         else:
             cmd = f"sh {dispatch_path} {action}"
         if key in ("Super_L", "Super_R"):
-            # Standalone modifier tap: In Hyprland, bindr with $mainMod ensures the bind
-            # executes ONLY on standalone release and is cancelled if used in any combo.
             lines.append(f"bindr = $mainMod, Super_L, exec, {cmd}\n")
             lines.append(f"bindr = $mainMod, Super_R, exec, {cmd}\n")
         elif "Alt" in key and ("$mainMod" in mods or "SUPER" in mods):
-            # For SUPER + Alt launcher, bind on keydown (press) so it doesn't fight release events
             lines.append(f"bind = {mods}, {key}, exec, {cmd}\n")
             lines.append(f"bind = {mods}, Alt_R, exec, {cmd}\n")
             lines.append(f"bind = ALT, Super_L, exec, {cmd}\n")
@@ -231,6 +255,7 @@ def write_variable(key, val):
 def apply_hyprland_layer_blur(enable: bool):
     blur_conf = os.path.expanduser("~/.config/hypr/configs/carbon-layer-blur.conf")
     try:
+        os.makedirs(os.path.dirname(blur_conf), exist_ok=True)
         with open(blur_conf, "w", encoding="utf-8") as f:
             if enable:
                 f.write(
@@ -243,9 +268,6 @@ def apply_hyprland_layer_blur(enable: bool):
                 )
             else:
                 f.write("# blur disabled\n")
-        # Ensure windowrules.lua reloads with the new state
-        subprocess.run(["hyprctl", "eval", 'dofile("' + os.path.expanduser("~/.config/hypr/carbon/windowrules.lua") + '")'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["hyprctl", "reload"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
         print(f"Error updating layer blur: {e}", file=sys.stderr)
 
@@ -266,32 +288,185 @@ def is_layer_blur_enabled():
             pass
     return True
 
-def update_looknfeel_setting(key: str, val_str: str):
-    look_path = os.path.expanduser("~/.config/hypr/configs/looknfeel.conf")
-    if os.path.exists(look_path):
-        try:
-            with open(look_path, "r", encoding="utf-8") as f:
-                content = f.read()
-            pattern = rf"({key}\s*=\s*)([^\n]+)"
-            if re.search(pattern, content):
-                new_content = re.sub(pattern, rf"\g<1>{val_str}", content)
-                with open(look_path, "w", encoding="utf-8") as f:
-                    f.write(new_content)
-        except Exception as e:
-            print(f"Error updating looknfeel.conf: {e}", file=sys.stderr)
+def read_looknfeel_config():
+    data = dict(DEFAULT_LOOKNFEEL)
+    path = LOOKNFEEL_CONF_PATH
+    if not os.path.exists(path):
+        alt = os.path.expanduser("~/.config/hypr/configs/looknfeel.conf")
+        if os.path.exists(alt):
+            path = alt
+        else:
+            alt2 = os.path.expanduser("~/carbon-shell/hypr/looknfeel.conf")
+            if os.path.exists(alt2):
+                path = alt2
+            else:
+                return data
 
-    lua_path = os.path.expanduser("~/.config/hypr/carbon/looknfeel.lua")
-    if os.path.exists(lua_path):
+    try:
+        current_sections = []
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "{" in line:
+                    sec_name = line.split("{")[0].strip()
+                    current_sections.append(sec_name)
+                    continue
+                if "}" in line:
+                    if current_sections:
+                        current_sections.pop()
+                    continue
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    k = k.strip()
+                    v = v.split("#")[0].strip()
+
+                    def parse_val(val_str):
+                        if val_str.lower() in ("true", "yes", "on"):
+                            return True
+                        elif val_str.lower() in ("false", "no", "off"):
+                            return False
+                        try:
+                            if "." in val_str:
+                                return float(val_str)
+                            return int(val_str)
+                        except ValueError:
+                            return val_str
+
+                    val = parse_val(v)
+                    context = ":".join(current_sections)
+                    if "shadow" in context:
+                        data[f"shadow_{k}"] = val
+                    elif "blur" in context:
+                        data[f"blur_{k}"] = val
+                    else:
+                        data[k] = val
+    except Exception as e:
+        print(f"Error reading looknfeel.conf: {e}", file=sys.stderr)
+    return data
+
+def write_looknfeel_config(data):
+    gaps_in = int(data.get("gaps_in", 6))
+    gaps_out = int(data.get("gaps_out", 6))
+    border_size = int(data.get("border_size", 1))
+    layout = str(data.get("layout", "dwindle"))
+    resize_on_border = "true" if data.get("resize_on_border", False) else "false"
+    allow_tearing = "true" if data.get("allow_tearing", False) else "false"
+
+    rounding = int(data.get("rounding", 15))
+    rounding_power = int(data.get("rounding_power", 2))
+    active_opacity = float(data.get("active_opacity", 0.80))
+    inactive_opacity = float(data.get("inactive_opacity", 0.95))
+
+    shadow_enabled = "true" if data.get("shadow_enabled", True) else "false"
+    shadow_range = int(data.get("shadow_range", 15))
+    shadow_render_power = int(data.get("shadow_render_power", 3))
+
+    blur_enabled = "true" if data.get("blur_enabled", True) else "false"
+    blur_size = int(data.get("blur_size", 5))
+    blur_passes = int(data.get("blur_passes", 2))
+    blur_ignore_opacity = "true" if data.get("blur_ignore_opacity", True) else "false"
+    blur_new_optimizations = "true" if data.get("blur_new_optimizations", True) else "false"
+    blur_special = "true" if data.get("blur_special", False) else "false"
+    blur_popups = "true" if data.get("blur_popups", True) else "false"
+    blur_xray = "true" if data.get("blur_xray", True) else "false"
+    blur_vibrancy = float(data.get("blur_vibrancy", 0.1696))
+
+    content = f"""# ==============================================================================
+# Carbon Shell — Hyprland Look & Feel Configuration
+# Managed automatically by Carbon Settings App
+# ==============================================================================
+
+general {{
+    gaps_in = {gaps_in}
+    gaps_out = {gaps_out}
+
+    border_size = {border_size}
+
+    col.active_border = $outline
+    col.inactive_border = $outline_variant
+
+    # Set to true enable resizing windows by clicking and dragging on borders and gaps
+    resize_on_border = {resize_on_border}
+
+    # Please see https://wiki.hyprland.org/Configuring/Tearing/ before you turn this on
+    allow_tearing = {allow_tearing}
+
+    layout = {layout}
+}}
+
+# https://wiki.hyprland.org/Configuring/Variables/#decoration
+decoration {{
+    rounding = {rounding}
+    rounding_power = {rounding_power}
+
+    # Change transparency of focused and unfocused windows
+    active_opacity = {active_opacity:.2f}
+    inactive_opacity = {inactive_opacity:.2f}
+
+    shadow {{
+        enabled = {shadow_enabled}
+        range = {shadow_range}
+        render_power = {shadow_render_power}
+        color = rgba(1a1a1aee)
+    }}
+
+    # https://wiki.hyprland.org/Configuring/Variables/#blur
+    blur {{
+        enabled = {blur_enabled}
+        size = {blur_size}
+        passes = {blur_passes}
+        ignore_opacity = {blur_ignore_opacity}
+        new_optimizations = {blur_new_optimizations}
+        special = {blur_special}
+        popups = {blur_popups}
+        xray = {blur_xray}
+
+        vibrancy = {blur_vibrancy:.4f}
+    }}
+}}
+"""
+    targets = [
+        LOOKNFEEL_CONF_PATH,
+        os.path.expanduser("~/.config/hypr/configs/looknfeel.conf"),
+        os.path.expanduser("~/carbon-shell/hypr/looknfeel.conf"),
+    ]
+    for target in targets:
         try:
-            with open(lua_path, "r", encoding="utf-8") as f:
-                content = f.read()
-            pattern = rf"({key}\s*=\s*)([^\n,]+)(,?)"
-            if re.search(pattern, content):
-                new_content = re.sub(pattern, rf"\g<1>{val_str}\g<3>", content)
-                with open(lua_path, "w", encoding="utf-8") as f:
-                    f.write(new_content)
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, "w", encoding="utf-8") as f:
+                f.write(content)
         except Exception as e:
-            print(f"Error updating looknfeel.lua: {e}", file=sys.stderr)
+            pass
+
+def apply_hyprland_looknfeel_live(cfg):
+    keywords = [
+        ("general:gaps_in", str(int(cfg.get("gaps_in", 6)))),
+        ("general:gaps_out", str(int(cfg.get("gaps_out", 6)))),
+        ("general:border_size", str(int(cfg.get("border_size", 1)))),
+        ("general:layout", str(cfg.get("layout", "dwindle"))),
+        ("general:resize_on_border", "true" if cfg.get("resize_on_border", False) else "false"),
+        ("general:allow_tearing", "true" if cfg.get("allow_tearing", False) else "false"),
+        ("decoration:rounding", str(int(cfg.get("rounding", 15)))),
+        ("decoration:rounding_power", str(int(cfg.get("rounding_power", 2)))),
+        ("decoration:active_opacity", f"{float(cfg.get('active_opacity', 0.80)):.2f}"),
+        ("decoration:inactive_opacity", f"{float(cfg.get('inactive_opacity', 0.95)):.2f}"),
+        ("decoration:shadow:enabled", "true" if cfg.get("shadow_enabled", True) else "false"),
+        ("decoration:shadow:range", str(int(cfg.get("shadow_range", 15)))),
+        ("decoration:shadow:render_power", str(int(cfg.get("shadow_render_power", 3)))),
+        ("decoration:blur:enabled", "true" if cfg.get("blur_enabled", True) else "false"),
+        ("decoration:blur:size", str(int(cfg.get("blur_size", 5)))),
+        ("decoration:blur:passes", str(int(cfg.get("blur_passes", 2)))),
+        ("decoration:blur:ignore_opacity", "true" if cfg.get("blur_ignore_opacity", True) else "false"),
+        ("decoration:blur:new_optimizations", "true" if cfg.get("blur_new_optimizations", True) else "false"),
+        ("decoration:blur:special", "true" if cfg.get("blur_special", False) else "false"),
+        ("decoration:blur:popups", "true" if cfg.get("blur_popups", True) else "false"),
+        ("decoration:blur:xray", "true" if cfg.get("blur_xray", True) else "false"),
+        ("decoration:blur:vibrancy", f"{float(cfg.get('blur_vibrancy', 0.1696)):.4f}"),
+    ]
+    for key, val in keywords:
+        subprocess.run(["hyprctl", "keyword", key, val], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 # ── Config App Window ────────────────────────────────────────────────────
 class CarbonConfigApp(Adw.Application):
@@ -308,7 +483,7 @@ class CarbonConfigApp(Adw.Application):
 class ConfigEditorWindow(Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title="Settings")
-        self.set_default_size(860, 560)
+        self.set_default_size(880, 580)
         self.set_size_request(760, 480)
 
         # Theme & Accent
@@ -366,6 +541,13 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         if "provider" not in self.wallpaper_source_cfg:
             self.wallpaper_source_cfg["provider"] = "unsplash"
         self.var_data = read_variables()
+        self.looknfeel_cfg = read_looknfeel_config()
+
+        self.pending_layer_blur = None
+
+        # Deferred Save State Tracking
+        self.is_building_ui = True
+        self.dirty = False
 
         # Navigation History
         self.nav_history = []
@@ -374,6 +556,23 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
 
         self.apply_css()
         self.build_ui()
+
+        # Connect window close intercept for unsaved changes confirmation
+        self.connect("close-request", self.on_close_requested)
+
+        # End of initial setup
+        self.is_building_ui = False
+        self.dirty = False
+        self.lbl_status.set_text("")
+        self.apply_btn.set_sensitive(False)
+
+    def mark_dirty(self):
+        if self.is_building_ui:
+            return
+        self.dirty = True
+        self.lbl_status.set_text("• Unsaved changes")
+        self.apply_btn.set_sensitive(True)
+        self.apply_btn.add_css_class("suggested-action")
 
     def apply_css(self):
         css = f"""
@@ -489,6 +688,21 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         .nav-circle-btn:disabled {{
             opacity: 0.35;
         }}
+        .bottom-action-bar {{
+            background-color: #08080c;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 10px 24px;
+        }}
+        .apply-btn {{
+            min-width: 100px;
+            font-weight: 600;
+            border-radius: 12px;
+            padding: 8px 20px;
+        }}
+        .status-label {{
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.55);
+        }}
         scale highlight {{
             background-color: {self.accent_hex};
             border-radius: 3px;
@@ -519,7 +733,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         root_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.set_content(root_box)
 
-        # Header Bar
+        # Header Bar (Clean, no apply button in header)
         header = Adw.HeaderBar()
         header.set_show_end_title_buttons(True)
         title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -527,12 +741,6 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         t_lbl.add_css_class("heading")
         title_box.append(t_lbl)
         header.set_title_widget(title_box)
-
-        # Reload Shell Button
-        reload_btn = Gtk.Button(label="Apply Changes")
-        reload_btn.add_css_class("suggested-action")
-        reload_btn.connect("clicked", self.on_reload_shell)
-        header.pack_end(reload_btn)
 
         root_box.append(header)
 
@@ -601,13 +809,31 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         self.stack.set_transition_duration(180)
         scrolled_content.set_child(self.stack)
 
-        # Define the 10 SaneAspect Categories
+        # Bottom Action Bar (Apply button relocated to bottom right)
+        bottom_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        bottom_bar.add_css_class("bottom-action-bar")
+
+        self.lbl_status = Gtk.Label(label="")
+        self.lbl_status.set_halign(Gtk.Align.START)
+        self.lbl_status.set_hexpand(True)
+        self.lbl_status.add_css_class("status-label")
+        bottom_bar.append(self.lbl_status)
+
+        self.apply_btn = Gtk.Button(label="Apply")
+        self.apply_btn.add_css_class("apply-btn")
+        self.apply_btn.set_halign(Gtk.Align.END)
+        self.apply_btn.connect("clicked", self.on_apply_clicked)
+        bottom_bar.append(self.apply_btn)
+
+        root_box.append(bottom_bar)
+
+        # Define the SaneAspect Categories
         self.categories = [
             ("bar", "Bar & Island", "user-desktop-symbolic", "Bar & Island", "Configure bar style, island shape, position, and dimensions.", self.build_bar_page),
             ("vanish", "Vanish Mode", "view-reveal-symbolic", "Vanish Mode", "Barless atomic desktop with animated clock orb, radial satellites, and gestures.", self.build_vanish_page),
             ("media", "Media", "folder-music-symbolic", "Media", "Media player controls, spinning vinyl disc, and audio visualizer.", self.build_media_page),
             ("clock", "Clock & Date", "preferences-system-time-symbolic", "Clock & Date", "Time formatting, clock typography designs, and calendar integration.", self.build_clock_page),
-            ("appearance", "Appearance", "preferences-desktop-appearance-symbolic", "Appearance", "Window decorations, blur, opacity, and system themes.", self.build_appearance_page),
+            ("looknfeel", "Look & Feel", "preferences-desktop-appearance-symbolic", "Look & Feel", "Hyprland window borders, gaps, layout, decorations, blur, and shadows.", self.build_looknfeel_page),
             ("motion", "Motion", "media-playlist-repeat-symbolic", "Motion", "How fast the shell animates, or whether it animates at all.", self.build_motion_page),
             ("launcher", "Launcher", "system-search-symbolic", "Launcher", "Spotlight search, application launcher, and quick actions.", self.build_launcher_page),
             ("notifications", "Notifications", "preferences-system-notifications-symbolic", "Notifications", "Banner popups, notification badges, and Do Not Disturb.", self.build_notifications_page),
@@ -618,7 +844,6 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
 
         self.nav_rows = {}
         for cat_id, title, icon_name, hero_title, hero_sub, builder_func in self.categories:
-            # Add to sidebar
             row = Gtk.ListBoxRow()
             row.cat_id = cat_id
             row.title_text = title
@@ -626,7 +851,6 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
 
             row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
             
-            # Icon in circular badge
             icon_badge = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
             icon_badge.add_css_class("nav-icon-badge")
             icon_badge.set_halign(Gtk.Align.CENTER)
@@ -644,12 +868,11 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             self.nav_list.append(row)
             self.nav_rows[cat_id] = row
 
-            # Add page to stack
             page_widget = builder_func(icon_name, hero_title, hero_sub)
             self.stack.add_named(page_widget, cat_id)
 
-        # Default to Motion page (matching reference screenshot)
-        initial_cat = "motion"
+        # Default to Look & Feel or Motion page
+        initial_cat = "looknfeel"
         if initial_cat in self.nav_rows:
             self.nav_list.select_row(self.nav_rows[initial_cat])
             self.stack.set_visible_child_name(initial_cat)
@@ -707,12 +930,10 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         box.set_margin_top(4)
         box.set_margin_bottom(24)
 
-        # Hero Card
         hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         hero.add_css_class("hero-card")
         hero.set_halign(Gtk.Align.FILL)
 
-        # Centered Circle Icon
         icon_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         icon_box.set_halign(Gtk.Align.CENTER)
         icon_box.add_css_class("hero-icon-circle")
@@ -723,13 +944,11 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         icon_box.append(img)
         hero.append(icon_box)
 
-        # Title
         t_lbl = Gtk.Label(label=title)
         t_lbl.add_css_class("hero-title")
         t_lbl.set_halign(Gtk.Align.CENTER)
         hero.append(t_lbl)
 
-        # Subtitle
         s_lbl = Gtk.Label(label=subtitle)
         s_lbl.add_css_class("hero-subtitle")
         s_lbl.set_halign(Gtk.Align.CENTER)
@@ -789,7 +1008,6 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             label_box.append(lbl_s)
         row.append(label_box)
 
-        # Scale Control
         scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, min_val, max_val, step)
         scale.set_value(cur_val)
         scale.set_hexpand(True)
@@ -797,8 +1015,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         scale.set_valign(Gtk.Align.CENTER)
         row.append(scale)
 
-        # Live Formatted Value Label
-        fmt = f"{int(cur_val)} {unit}" if unit != "x" else f"{cur_val:.2f}x"
+        fmt = f"{int(cur_val)} {unit}" if unit not in ("x", "pow") else f"{cur_val:.2f}{unit}"
         val_lbl = Gtk.Label(label=fmt)
         val_lbl.add_css_class("value-label")
         val_lbl.set_size_request(65, -1)
@@ -810,7 +1027,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             v = sc.get_value()
             if step >= 1:
                 v = int(round(v))
-                val_lbl.set_text(f"{v} {unit}")
+                val_lbl.set_text(f"{v} {unit}" if unit not in ("x", "pow") else f"{v}{unit}")
             else:
                 v = round(v, 2)
                 val_lbl.set_text(f"{v:.2f}{unit}")
@@ -883,9 +1100,8 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
     # ── Category 1: Bar & Island ───────────────────────────────────────────
     def build_bar_page(self, icon, title, subtitle):
         page = self.create_page_container(icon, title, subtitle)
-
         card = self.create_settings_card()
-        # Bar Mode
+
         modes = ["Notch Mode", "Pill Mode", "Minimal Island", "Vanish Mode (Nucleus)"]
         mode_ids = ["notch", "pill", "minimal", "nucleus"]
         cur_mode = self.bar_mode.get("mode", "notch")
@@ -895,59 +1111,37 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             mode_id = mode_ids[idx]
             self.bar_mode["mode"] = mode_id
             self.bar_mode["islandStyle"] = mode_id
-            write_json(BAR_MODE_PATH, self.bar_mode)
-            hypr_bar_mode = os.path.expanduser("~/.config/hypr/carbon-bar-mode.json")
-            if hypr_bar_mode != BAR_MODE_PATH:
-                write_json(hypr_bar_mode, self.bar_mode)
-            ipc_script = os.path.join(CONFIG_DIR, "scripts/carbon-ipc.sh")
-            if not os.path.exists(ipc_script):
-                ipc_script = os.path.expanduser("~/.config/hypr/scripts/carbon-ipc.sh")
-            if not os.path.exists(ipc_script):
-                ipc_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "carbon-ipc.sh")
-            if mode_id == "nucleus":
-                # Check if transition is enabled
-                if self.bar_mode.get("nucleus", {}).get("transition", True):
-                    subprocess.run(["sh", ipc_script, "nucleus transition"], check=False)
-                else:
-                    subprocess.run(["sh", ipc_script, "set-bar-mode nucleus"], check=False)
-            else:
-                subprocess.run(["sh", ipc_script, f"set-bar-mode {mode_id}"], check=False)
+            self.mark_dirty()
 
         self.add_combo_row(card, "Bar Style", "Choose screen notch, floating pill, or single dynamic island", modes, cur_idx, on_mode_selected)
 
-        # Bar Position
         edges = ["Top", "Bottom"]
         cur_edge = self.bar_pos.get("mainBarEdge", "top")
         edge_idx = 1 if cur_edge == "bottom" else 0
         def on_edge_selected(idx):
-            e = "bottom" if idx == 1 else "top"
-            self.bar_pos["mainBarEdge"] = e
-            write_json(BAR_POS_PATH, self.bar_pos)
+            self.bar_pos["mainBarEdge"] = "bottom" if idx == 1 else "top"
+            self.mark_dirty()
         self.add_combo_row(card, "Screen Position", "Anchor bar to top or bottom edge", edges, edge_idx, on_edge_selected)
 
-        # Bar Height
         cur_h = int(self.bar_pos.get("notchHeight", 32))
         def on_h_changed(v):
             self.bar_pos["notchHeight"] = v
             self.bar_pos["barHeight"] = v
-            write_json(BAR_POS_PATH, self.bar_pos)
+            self.mark_dirty()
         self.add_slider_row(card, "Bar Height", "Vertical height of the notch / bar", 24, 48, 1, cur_h, "px", on_h_changed)
 
-        # Notch Ear Fillet Radius
         cur_ear = int(self.bar_pos.get("notchEarRadius", 10))
         def on_ear_changed(v):
             self.bar_pos["notchEarRadius"] = v
-            write_json(BAR_POS_PATH, self.bar_pos)
+            self.mark_dirty()
         self.add_slider_row(card, "Notch Ear Radius", "SaneAspect top concave fillet curve", 0, 16, 1, cur_ear, "px", on_ear_changed)
 
-        # Notch Bottom Corner Radius
         cur_bot = int(self.bar_pos.get("notchBottomRadius", 14))
         def on_bot_changed(v):
             self.bar_pos["notchBottomRadius"] = v
-            write_json(BAR_POS_PATH, self.bar_pos)
+            self.mark_dirty()
         self.add_slider_row(card, "Notch Corner Radius", "Convex rounded bottom corners", 8, 24, 1, cur_bot, "px", on_bot_changed)
 
-        # Opacity
         cur_o = int(float(self.bar_pos.get("notchOpacity", 0.96)) * 100)
         def on_o_changed(v):
             val = round(v / 100.0, 2)
@@ -955,30 +1149,27 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             self.bar_pos["shellOpacity"] = val
             self.bar_pos["pillOpacity"] = val
             self.bar_pos["minimalOpacity"] = val
-            write_json(BAR_POS_PATH, self.bar_pos)
+            self.mark_dirty()
         self.add_slider_row(card, "Background Opacity", "Surface darkness / transparency", 20, 100, 5, cur_o, "%", on_o_changed)
 
-        # Background Blur
         cur_blur = is_layer_blur_enabled()
         def on_blur_toggle(act):
             self.bar_pos["notchBlur"] = act
             self.bar_pos["shellBlur"] = act
             self.bar_pos["pillBlur"] = act
-            write_json(BAR_POS_PATH, self.bar_pos)
-            apply_hyprland_layer_blur(act)
+            self.pending_layer_blur = act
+            self.mark_dirty()
         self.add_switch_row(card, "Frosted Glass Blur", "Enable backdrop blur behind the bar", cur_blur, on_blur_toggle)
 
         page.append(card)
         return page
 
-    # ── Category: Vanish Mode ───────────────────────────────────────────────
+    # ── Category 2: Vanish Mode ─────────────────────────────────────────────
     def build_vanish_page(self, icon, title, subtitle):
         page = self.create_page_container(icon, title, subtitle)
 
-        # ── Card 1: Transition & Experience ──
         card1 = self.create_settings_card()
 
-        # Switch to Vanish Mode Button
         row_mode = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         row_mode.add_css_class("settings-row")
         lbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
@@ -999,37 +1190,25 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         def on_switch_vanish(b):
             self.bar_mode["mode"] = "nucleus"
             self.bar_mode["islandStyle"] = "nucleus"
-            write_json(BAR_MODE_PATH, self.bar_mode)
-            hypr_bar_mode = os.path.expanduser("~/.config/hypr/carbon-bar-mode.json")
-            if hypr_bar_mode != BAR_MODE_PATH:
-                write_json(hypr_bar_mode, self.bar_mode)
+            self.mark_dirty()
             ipc = os.path.join(CONFIG_DIR, "scripts/carbon-ipc.sh")
             if not os.path.exists(ipc):
                 ipc = os.path.expanduser("~/.config/hypr/scripts/carbon-ipc.sh")
-            if not os.path.exists(ipc):
-                ipc = os.path.join(os.path.dirname(os.path.abspath(__file__)), "carbon-ipc.sh")
-            if self.bar_mode.get("nucleus", {}).get("transition", True):
+            if os.path.exists(ipc):
                 subprocess.run(["sh", ipc, "nucleus transition"], check=False)
-            else:
-                subprocess.run(["sh", ipc, "set-bar-mode nucleus"], check=False)
         btn_act.connect("clicked", on_switch_vanish)
         row_mode.append(btn_act)
         card1.append(row_mode)
 
-        # Mode-Switch Transition
         nuc_cfg = self.bar_mode.get("nucleus", {})
         trans_act = bool(nuc_cfg.get("transition", True))
         def on_trans_toggle(act):
             if "nucleus" not in self.bar_mode or not isinstance(self.bar_mode["nucleus"], dict):
                 self.bar_mode["nucleus"] = {}
             self.bar_mode["nucleus"]["transition"] = bool(act)
-            write_json(BAR_MODE_PATH, self.bar_mode)
-            hypr_bar_mode = os.path.expanduser("~/.config/hypr/carbon-bar-mode.json")
-            if hypr_bar_mode != BAR_MODE_PATH:
-                write_json(hypr_bar_mode, self.bar_mode)
+            self.mark_dirty()
         self.add_switch_row(card1, "Mode-Switch Transition", "Play fullscreen transition sequence when entering Vanish", trans_act, on_trans_toggle)
 
-        # Transition Animation Style (Quantum Collapse vs Instant Crossfade)
         anim_options = ["Quantum Collapse (~2.4s)", "Instant Crossfade (300ms)"]
         anim_ids = ["quantum", "crossfade"]
         cur_anim = nuc_cfg.get("animation", "quantum")
@@ -1039,13 +1218,9 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             if "nucleus" not in self.bar_mode or not isinstance(self.bar_mode["nucleus"], dict):
                 self.bar_mode["nucleus"] = {}
             self.bar_mode["nucleus"]["animation"] = a
-            write_json(BAR_MODE_PATH, self.bar_mode)
-            hypr_bar_mode = os.path.expanduser("~/.config/hypr/carbon-bar-mode.json")
-            if hypr_bar_mode != BAR_MODE_PATH:
-                write_json(hypr_bar_mode, self.bar_mode)
+            self.mark_dirty()
         self.add_combo_row(card1, "Transition Animation", "Visual effect style played during mode switch", anim_options, cur_a_idx, on_anim_sel)
 
-        # Dynamic Transition Word
         cur_word = nuc_cfg.get("transitionWord", "Wooshh!!")
         word_options = ["Wooshh!!", "Vanish!", "Hyperspace!", "Hyperdrive!", "Disappear!"]
         cur_w_idx = word_options.index(cur_word) if cur_word in word_options else 0
@@ -1054,13 +1229,9 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             if "nucleus" not in self.bar_mode or not isinstance(self.bar_mode["nucleus"], dict):
                 self.bar_mode["nucleus"] = {}
             self.bar_mode["nucleus"]["transitionWord"] = w
-            write_json(BAR_MODE_PATH, self.bar_mode)
-            hypr_bar_mode = os.path.expanduser("~/.config/hypr/carbon-bar-mode.json")
-            if hypr_bar_mode != BAR_MODE_PATH:
-                write_json(hypr_bar_mode, self.bar_mode)
+            self.mark_dirty()
         self.add_combo_row(card1, "Transition Dynamic Word", "Text banner displayed during speed blur impact", word_options, cur_w_idx, on_word_sel)
 
-        # Play Preview Button
         row_prev = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         row_prev.add_css_class("settings-row")
         lbox_p = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
@@ -1081,26 +1252,24 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             ipc = os.path.join(CONFIG_DIR, "scripts/carbon-ipc.sh")
             if not os.path.exists(ipc):
                 ipc = os.path.expanduser("~/.config/hypr/scripts/carbon-ipc.sh")
-            subprocess.run(["sh", ipc, "nucleus transition"], check=False)
+            if os.path.exists(ipc):
+                subprocess.run(["sh", ipc, "nucleus transition"], check=False)
         btn_prev.connect("clicked", on_play_prev)
         row_prev.append(btn_prev)
         card1.append(row_prev)
 
         page.append(card1)
 
-        # ── Card 2: Visualizer & Audio ──
         card2 = self.create_settings_card()
         vis_options = ["Liquid Halo (Siri Ring)", "None"]
         vis_val = self.bar_mode.get("musicVisualizer", "liquidHalo")
         vis_idx = 0 if vis_val == "liquidHalo" else 1
         def on_v2_changed(idx):
-            v = "liquidHalo" if idx == 0 else "none"
-            self.bar_mode["musicVisualizer"] = v
-            write_json(BAR_MODE_PATH, self.bar_mode)
+            self.bar_mode["musicVisualizer"] = "liquidHalo" if idx == 0 else "none"
+            self.mark_dirty()
         self.add_combo_row(card2, "Desktop Music Visualizer", "Organic reactive halo pulsing behind central clock orb", vis_options, vis_idx, on_v2_changed)
         page.append(card2)
 
-        # ── Card 3: Dedicated Vanish Shortcuts ──
         card3 = self.create_settings_card()
         lbl_st = Gtk.Label(label="Vanish Mode Dedicated Keybinds")
         lbl_st.set_halign(Gtk.Align.START)
@@ -1128,7 +1297,6 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             row_s.append(lbl_key)
             card3.append(row_s)
 
-        # Reset button
         row_rst = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         row_rst.add_css_class("settings-row")
         lbr = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
@@ -1142,11 +1310,8 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         btn_rst = Gtk.Button(label="Reset Defaults")
         btn_rst.set_valign(Gtk.Align.CENTER)
         def on_reset_vanish_keys(b):
-            import copy
             self.vanish_shortcuts = copy.deepcopy(DEFAULT_VANISH_SHORTCUTS)
-            write_json(VANISH_SHORTCUTS_PATH, self.vanish_shortcuts)
-            generate_vanish_keybinds_conf(self.vanish_shortcuts)
-            subprocess.run(["hyprctl", "reload"], check=False)
+            self.mark_dirty()
         btn_rst.connect("clicked", on_reset_vanish_keys)
         row_rst.append(btn_rst)
         card3.append(row_rst)
@@ -1154,334 +1319,427 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         page.append(card3)
         return page
 
-    # ── Category 2: Media ──────────────────────────────────────────────────
+    # ── Category 3: Media ──────────────────────────────────────────────────
     def build_media_page(self, icon, title, subtitle):
         page = self.create_page_container(icon, title, subtitle)
         card = self.create_settings_card()
 
-        # Spinning Vinyl Disc
         disc_act = bool(self.bar_pos.get("showVinylDisc", True))
         def on_disc(act):
             self.bar_pos["showVinylDisc"] = act
-            write_json(BAR_POS_PATH, self.bar_pos)
+            self.mark_dirty()
         self.add_switch_row(card, "Spinning Album Disc", "Show animated vinyl record with album art", disc_act, on_disc)
 
-        # Equalizer Waveform
         eq_act = bool(self.bar_pos.get("showEqualizer", True))
         def on_eq(act):
             self.bar_pos["showEqualizer"] = act
-            write_json(BAR_POS_PATH, self.bar_pos)
+            self.mark_dirty()
         self.add_switch_row(card, "Waveform Equalizer", "Show animated dynamic island audio bars", eq_act, on_eq)
 
-        # Auto-expand on Track Change
         expand_act = bool(self.bar_pos.get("autoExpandOnTrack", False))
         def on_exp(act):
             self.bar_pos["autoExpandOnTrack"] = act
-            write_json(BAR_POS_PATH, self.bar_pos)
+            self.mark_dirty()
         self.add_switch_row(card, "Auto-expand on Track Change", "Briefly expand island when song changes", expand_act, on_exp)
 
-        # Audio Visualizer Selector
         vis_options = ["Liquid Halo (Siri Ring)", "None"]
         vis_val = self.bar_mode.get("musicVisualizer", "liquidHalo")
         vis_idx = 0 if vis_val == "liquidHalo" else 1
         def on_vis_changed(idx):
-            v = "liquidHalo" if idx == 0 else "none"
-            self.bar_mode["musicVisualizer"] = v
-            write_json(BAR_MODE_PATH, self.bar_mode)
+            self.bar_mode["musicVisualizer"] = "liquidHalo" if idx == 0 else "none"
+            self.mark_dirty()
         self.add_combo_row(card, "Audio Visualizer Effect", "Choose dynamic glowing visualizer for music playback", vis_options, vis_idx, on_vis_changed)
 
         page.append(card)
         return page
 
-    # ── Category 3: Clock & Date ───────────────────────────────────────────
+    # ── Category 4: Clock & Date ───────────────────────────────────────────
     def build_clock_page(self, icon, title, subtitle):
         page = self.create_page_container(icon, title, subtitle)
         card = self.create_settings_card()
 
-        # Typography Style
         styles = ["Titan 3D Pop", "Stacked Dual", "Nordic Monospace", "Valley Modern"]
         cur_s = self.clock_cfg.get("style", "titan")
         idx = {"titan": 0, "stacked": 1, "mono_glow": 2, "valley": 3}.get(cur_s, 0)
         def on_s_changed(sel):
-            k = ["titan", "stacked", "mono_glow", "valley"][sel]
-            self.clock_cfg["style"] = k
-            write_json(CLOCK_STYLE_PATH, self.clock_cfg)
+            self.clock_cfg["style"] = ["titan", "stacked", "mono_glow", "valley"][sel]
+            self.mark_dirty()
         self.add_combo_row(card, "Typography Style", "Visual appearance of center island clock", styles, idx, on_s_changed)
 
-        # Time Format
         fmts = ["12-Hour (AM/PM)", "24-Hour (Military)"]
         cur_fmt = self.clock_cfg.get("format", "12")
         f_idx = 1 if cur_fmt == "24" else 0
         def on_f_changed(sel):
             self.clock_cfg["format"] = "24" if sel == 1 else "12"
-            write_json(CLOCK_STYLE_PATH, self.clock_cfg)
+            self.mark_dirty()
         self.add_combo_row(card, "Clock Format", "12-hour or 24-hour time display", fmts, f_idx, on_f_changed)
 
-        # Show Date
         show_d = bool(self.clock_cfg.get("showDate", True))
         def on_d_toggle(act):
             self.clock_cfg["showDate"] = act
-            write_json(CLOCK_STYLE_PATH, self.clock_cfg)
+            self.mark_dirty()
         self.add_switch_row(card, "Show Calendar Date", "Display day and date in expanded overview", show_d, on_d_toggle)
 
         page.append(card)
         return page
 
-    # ── Category 4: Appearance ─────────────────────────────────────────────
-    def build_appearance_page(self, icon, title, subtitle):
+    # ── Category 5: Look & Feel (Configures ~/.config/carbon/looknfeel.conf) ─
+    def build_looknfeel_page(self, icon, title, subtitle):
         page = self.create_page_container(icon, title, subtitle)
-        card = self.create_settings_card()
 
-        # Window Opacity
-        cur_w_o = int(float(self.var_data.get("windowOpacity", 0.95)) * 100)
-        def on_wo_changed(v):
-            val = round(v / 100.0, 2)
-            self.var_data["windowOpacity"] = val
-            write_variable("windowOpacity", val)
-            update_looknfeel_setting("active_opacity", f"{val:.2f}")
-            update_looknfeel_setting("inactive_opacity", f"{val:.2f}")
-            subprocess.run(["hyprctl", "eval", f"hl.config({{ decoration = {{ active_opacity = {val:.2f}, inactive_opacity = {val:.2f} }} }})"], check=False, stdout=subprocess.DEVNULL)
-        self.add_slider_row(card, "Window Opacity", "Hyprland active window transparency", 50, 100, 5, cur_w_o, "%", on_wo_changed)
+        # ── Card 1: Windows & Layout ──
+        card_win = self.create_settings_card()
+        lbl_win = Gtk.Label(label="Windows & Layout")
+        lbl_win.set_halign(Gtk.Align.START)
+        lbl_win.add_css_class("heading")
+        card_win.append(lbl_win)
 
-        # Window Corner Rounding
-        cur_r = int(self.var_data.get("rounding", 15))
-        def on_r_changed(v):
-            self.var_data["rounding"] = v
-            write_variable("rounding", v)
-            update_looknfeel_setting("rounding", str(int(v)))
-            subprocess.run(["hyprctl", "eval", f"hl.config({{ decoration = {{ rounding = {int(v)} }} }})"], check=False, stdout=subprocess.DEVNULL)
-        self.add_slider_row(card, "Corner Rounding", "Radius of window corners", 0, 24, 1, cur_r, "px", on_r_changed)
+        cur_gi = int(self.looknfeel_cfg.get("gaps_in", 6))
+        def on_gi_changed(v):
+            self.looknfeel_cfg["gaps_in"] = int(v)
+            self.mark_dirty()
+        self.add_slider_row(card_win, "Inner Gaps", "Gaps between adjacent tiled windows", 0, 30, 1, cur_gi, "px", on_gi_changed)
 
-        # Window Border Size
-        cur_b = int(self.var_data.get("borderSize", 1))
+        cur_go = int(self.looknfeel_cfg.get("gaps_out", 6))
+        def on_go_changed(v):
+            self.looknfeel_cfg["gaps_out"] = int(v)
+            self.mark_dirty()
+        self.add_slider_row(card_win, "Outer Gaps", "Gaps between windows and monitor screen edges", 0, 40, 1, cur_go, "px", on_go_changed)
+
+        cur_b = int(self.looknfeel_cfg.get("border_size", 1))
         def on_b_changed(v):
-            self.var_data["borderSize"] = v
-            write_variable("borderSize", v)
-            update_looknfeel_setting("border_size", str(int(v)))
-            subprocess.run(["hyprctl", "eval", f"hl.config({{ general = {{ border_size = {int(v)} }} }})"], check=False, stdout=subprocess.DEVNULL)
-        self.add_slider_row(card, "Border Width", "Thickness of active window border", 0, 6, 1, cur_b, "px", on_b_changed)
+            self.looknfeel_cfg["border_size"] = int(v)
+            self.mark_dirty()
+        self.add_slider_row(card_win, "Border Width", "Thickness of window border outline", 0, 6, 1, cur_b, "px", on_b_changed)
 
-        # Shell UI Scale
+        layouts = ["Dwindle (Spiral / Fib)", "Master (Master & Stack)"]
+        layout_ids = ["dwindle", "master"]
+        cur_lay = str(self.looknfeel_cfg.get("layout", "dwindle")).lower()
+        lay_idx = layout_ids.index(cur_lay) if cur_lay in layout_ids else 0
+        def on_lay_changed(idx):
+            self.looknfeel_cfg["layout"] = layout_ids[idx]
+            self.mark_dirty()
+        self.add_combo_row(card_win, "Window Layout", "Hyprland window tiling layout algorithm", layouts, lay_idx, on_lay_changed)
+
+        cur_rob = bool(self.looknfeel_cfg.get("resize_on_border", False))
+        def on_rob_toggle(act):
+            self.looknfeel_cfg["resize_on_border"] = act
+            self.mark_dirty()
+        self.add_switch_row(card_win, "Resize on Border", "Resize windows by clicking and dragging on borders and gaps", cur_rob, on_rob_toggle)
+
+        cur_tear = bool(self.looknfeel_cfg.get("allow_tearing", False))
+        def on_tear_toggle(act):
+            self.looknfeel_cfg["allow_tearing"] = act
+            self.mark_dirty()
+        self.add_switch_row(card_win, "Allow Tearing", "Reduce tearing latency for full-screen games / applications", cur_tear, on_tear_toggle)
+
+        page.append(card_win)
+
+        # ── Card 2: Corners & Transparency ──
+        card_dec = self.create_settings_card()
+        lbl_dec = Gtk.Label(label="Corners & Transparency")
+        lbl_dec.set_halign(Gtk.Align.START)
+        lbl_dec.add_css_class("heading")
+        card_dec.append(lbl_dec)
+
+        cur_r = int(self.looknfeel_cfg.get("rounding", 15))
+        def on_r_changed(v):
+            self.looknfeel_cfg["rounding"] = int(v)
+            self.mark_dirty()
+        self.add_slider_row(card_dec, "Corner Rounding", "Radius of window corners", 0, 30, 1, cur_r, "px", on_r_changed)
+
+        cur_rp = int(self.looknfeel_cfg.get("rounding_power", 2))
+        def on_rp_changed(v):
+            self.looknfeel_cfg["rounding_power"] = int(v)
+            self.mark_dirty()
+        self.add_slider_row(card_dec, "Rounding Power", "Curvature exponent (squircle shape factor)", 1, 5, 1, cur_rp, "pow", on_rp_changed)
+
+        cur_ao = int(float(self.looknfeel_cfg.get("active_opacity", 0.80)) * 100)
+        def on_ao_changed(v):
+            self.looknfeel_cfg["active_opacity"] = round(v / 100.0, 2)
+            self.mark_dirty()
+        self.add_slider_row(card_dec, "Active Window Opacity", "Focused window surface transparency", 20, 100, 5, cur_ao, "%", on_ao_changed)
+
+        cur_io = int(float(self.looknfeel_cfg.get("inactive_opacity", 0.95)) * 100)
+        def on_io_changed(v):
+            self.looknfeel_cfg["inactive_opacity"] = round(v / 100.0, 2)
+            self.mark_dirty()
+        self.add_slider_row(card_dec, "Inactive Window Opacity", "Unfocused window surface transparency", 20, 100, 5, cur_io, "%", on_io_changed)
+
+        page.append(card_dec)
+
+        # ── Card 3: Window Shadows ──
+        card_sh = self.create_settings_card()
+        lbl_sh = Gtk.Label(label="Window Shadows")
+        lbl_sh.set_halign(Gtk.Align.START)
+        lbl_sh.add_css_class("heading")
+        card_sh.append(lbl_sh)
+
+        cur_she = bool(self.looknfeel_cfg.get("shadow_enabled", True))
+        def on_she_toggle(act):
+            self.looknfeel_cfg["shadow_enabled"] = act
+            self.mark_dirty()
+        self.add_switch_row(card_sh, "Enable Drop Shadows", "Render soft shadows around floating and tiled windows", cur_she, on_she_toggle)
+
+        cur_shr = int(self.looknfeel_cfg.get("shadow_range", 15))
+        def on_shr_changed(v):
+            self.looknfeel_cfg["shadow_range"] = int(v)
+            self.mark_dirty()
+        self.add_slider_row(card_sh, "Shadow Range", "Shadow spread distance", 0, 50, 1, cur_shr, "px", on_shr_changed)
+
+        cur_shp = int(self.looknfeel_cfg.get("shadow_render_power", 3))
+        def on_shp_changed(v):
+            self.looknfeel_cfg["shadow_render_power"] = int(v)
+            self.mark_dirty()
+        self.add_slider_row(card_sh, "Shadow Render Power", "Falloff sharpness / density power", 1, 4, 1, cur_shp, "pow", on_shp_changed)
+
+        page.append(card_sh)
+
+        # ── Card 4: Backdrop Blur ──
+        card_blur = self.create_settings_card()
+        lbl_bl = Gtk.Label(label="Backdrop Blur")
+        lbl_bl.set_halign(Gtk.Align.START)
+        lbl_bl.add_css_class("heading")
+        card_blur.append(lbl_bl)
+
+        cur_ble = bool(self.looknfeel_cfg.get("blur_enabled", True))
+        def on_ble_toggle(act):
+            self.looknfeel_cfg["blur_enabled"] = act
+            self.mark_dirty()
+        self.add_switch_row(card_blur, "Enable Window Blur", "Dual-kawase backdrop blur behind transparent windows", cur_ble, on_ble_toggle)
+
+        cur_bls = int(self.looknfeel_cfg.get("blur_size", 5))
+        def on_bls_changed(v):
+            self.looknfeel_cfg["blur_size"] = int(v)
+            self.mark_dirty()
+        self.add_slider_row(card_blur, "Blur Radius Size", "Kernel sample distance radius", 1, 20, 1, cur_bls, "px", on_bls_changed)
+
+        cur_blp = int(self.looknfeel_cfg.get("blur_passes", 2))
+        def on_blp_changed(v):
+            self.looknfeel_cfg["blur_passes"] = int(v)
+            self.mark_dirty()
+        self.add_slider_row(card_blur, "Blur Passes", "Filter iterations (higher = smoother, GPU intensive)", 1, 5, 1, cur_blp, "passes", on_blp_changed)
+
+        cur_vib = int(float(self.looknfeel_cfg.get("blur_vibrancy", 0.1696)) * 100)
+        def on_vib_changed(v):
+            self.looknfeel_cfg["blur_vibrancy"] = round(v / 100.0, 4)
+            self.mark_dirty()
+        self.add_slider_row(card_blur, "Blur Vibrancy", "Color saturation boost through blur", 0, 100, 5, cur_vib, "%", on_vib_changed)
+
+        cur_blio = bool(self.looknfeel_cfg.get("blur_ignore_opacity", True))
+        def on_blio_toggle(act):
+            self.looknfeel_cfg["blur_ignore_opacity"] = act
+            self.mark_dirty()
+        self.add_switch_row(card_blur, "Ignore Opacity", "Keep full blur intensity through semi-transparent surfaces", cur_blio, on_blio_toggle)
+
+        cur_blpop = bool(self.looknfeel_cfg.get("blur_popups", True))
+        def on_blpop_toggle(act):
+            self.looknfeel_cfg["blur_popups"] = act
+            self.mark_dirty()
+        self.add_switch_row(card_blur, "Blur Popups", "Blur backdrop behind context menus and popups", cur_blpop, on_blpop_toggle)
+
+        cur_blxr = bool(self.looknfeel_cfg.get("blur_xray", True))
+        def on_blxr_toggle(act):
+            self.looknfeel_cfg["blur_xray"] = act
+            self.mark_dirty()
+        self.add_switch_row(card_blur, "X-Ray Mode", "Floating windows blur directly through to wallpaper", cur_blxr, on_blxr_toggle)
+
+        cur_blopt = bool(self.looknfeel_cfg.get("blur_new_optimizations", True))
+        def on_blopt_toggle(act):
+            self.looknfeel_cfg["blur_new_optimizations"] = act
+            self.mark_dirty()
+        self.add_switch_row(card_blur, "Optimized Blur", "Enable optimized dual-kawase rendering pipelines", cur_blopt, on_blopt_toggle)
+
+        cur_blsp = bool(self.looknfeel_cfg.get("blur_special", False))
+        def on_blsp_toggle(act):
+            self.looknfeel_cfg["blur_special"] = act
+            self.mark_dirty()
+        self.add_switch_row(card_blur, "Special Workspace Blur", "Blur behind special scratchpad workspaces", cur_blsp, on_blsp_toggle)
+
+        page.append(card_blur)
+
+        # ── Card 5: Shell & Wallpaper ──
+        card_wp = self.create_settings_card()
+        lbl_wp = Gtk.Label(label="Shell & Wallpaper")
+        lbl_wp.set_halign(Gtk.Align.START)
+        lbl_wp.add_css_class("heading")
+        card_wp.append(lbl_wp)
+
         cur_scale = float(self.bar_pos.get("scale", 1.0))
         def on_scale_changed(v):
             self.bar_pos["scale"] = v
-            write_json(BAR_POS_PATH, self.bar_pos)
-        self.add_slider_row(card, "Shell UI Scale", "Scale bars, menus, and widgets", 0.75, 1.50, 0.05, cur_scale, "x", on_scale_changed)
-
-        page.append(card)
-
-        # ── Online Wallpaper Catalog Settings ──
-        wp_card = self.create_settings_card()
+            self.mark_dirty()
+        self.add_slider_row(card_wp, "Shell UI Scale", "Scale bars, menus, and widgets", 0.75, 1.50, 0.05, cur_scale, "x", on_scale_changed)
 
         provider_options = ["Unsplash (High-Res Curated Photography)", "Wallhaven (Anime & Digital Art)"]
         provider_ids = ["unsplash", "wallhaven"]
         cur_prov = str(self.wallpaper_source_cfg.get("provider", "unsplash")).lower()
         cur_p_idx = provider_ids.index(cur_prov) if cur_prov in provider_ids else 0
-
         def on_provider_sel(idx):
-            p = provider_ids[idx]
-            self.wallpaper_source_cfg["provider"] = p
-            write_json(WALLPAPER_SOURCE_PATH, self.wallpaper_source_cfg)
-            hypr_wp_path = os.path.expanduser("~/.config/hypr/carbon-wallpaper-source.json")
-            if hypr_wp_path != WALLPAPER_SOURCE_PATH:
-                write_json(hypr_wp_path, self.wallpaper_source_cfg)
-
-        self.add_combo_row(wp_card, "Online Wallpaper Provider", "Source catalog used for online wallpapers in the wallpaper picker", provider_options, cur_p_idx, on_provider_sel)
+            self.wallpaper_source_cfg["provider"] = provider_ids[idx]
+            self.mark_dirty()
+        self.add_combo_row(card_wp, "Online Wallpaper Provider", "Source catalog used for online wallpapers in the wallpaper picker", provider_options, cur_p_idx, on_provider_sel)
 
         cur_key = self.wallpaper_source_cfg.get("unsplash_access_key", "")
         def on_key_change(val):
             self.wallpaper_source_cfg["unsplash_access_key"] = val.strip()
-            write_json(WALLPAPER_SOURCE_PATH, self.wallpaper_source_cfg)
-            hypr_wp_path = os.path.expanduser("~/.config/hypr/carbon-wallpaper-source.json")
-            if hypr_wp_path != WALLPAPER_SOURCE_PATH:
-                write_json(hypr_wp_path, self.wallpaper_source_cfg)
+            self.mark_dirty()
+        self.add_entry_row(card_wp, "Unsplash Access Key (Optional)", "Custom developer API key for quotas (leave empty for built-in catalog)", cur_key, "Leave empty for built-in catalog", on_key_change)
 
-        self.add_entry_row(wp_card, "Unsplash Access Key (Optional)", "Custom developer API key for quotas (leave empty for built-in catalog)", cur_key, "Leave empty for built-in catalog", on_key_change)
-
-        page.append(wp_card)
+        page.append(card_wp)
         return page
 
-    # ── Category 5: Motion (EXACT MATCH FOR SCREENSHOT 2!) ──────────────────
+    # ── Category 6: Motion ──────────────────────────────────────────────────
     def build_motion_page(self, icon, title, subtitle):
         page = self.create_page_container(icon, title, subtitle)
         card = self.create_settings_card()
 
-        # Reduce motion switch
         reduce_act = bool(self.motion_cfg.get("reduceMotion", False))
         def on_reduce(act):
             self.motion_cfg["reduceMotion"] = act
-            write_json(MOTION_CONFIG_PATH, self.motion_cfg)
-            subprocess.run(["hyprctl", "eval", f"hl.config({{ animations = {{ enabled = {'false' if act else 'true'} }} }})"], check=False, stdout=subprocess.DEVNULL)
+            self.mark_dirty()
         self.add_switch_row(card, "Reduce motion", None, reduce_act, on_reduce)
 
-        # Movement (size / position)
         mov_dur = int(self.motion_cfg.get("movementDuration", 400))
         def on_mov(v):
             self.motion_cfg["movementDuration"] = v
-            write_json(MOTION_CONFIG_PATH, self.motion_cfg)
+            self.mark_dirty()
         self.add_slider_row(card, "Movement (size / position)", None, 0, 600, 20, mov_dur, "ms", on_mov)
 
-        # Fades & colour
         fade_dur = int(self.motion_cfg.get("fadeDuration", 200))
         def on_fade(v):
             self.motion_cfg["fadeDuration"] = v
-            write_json(MOTION_CONFIG_PATH, self.motion_cfg)
+            self.mark_dirty()
         self.add_slider_row(card, "Fades & colour", None, 0, 400, 10, fade_dur, "ms", on_fade)
 
-        # Hover response
         hover_dur = int(self.motion_cfg.get("hoverResponse", 150))
         def on_hover(v):
             self.motion_cfg["hoverResponse"] = v
-            write_json(MOTION_CONFIG_PATH, self.motion_cfg)
+            self.mark_dirty()
         self.add_slider_row(card, "Hover response", None, 0, 300, 10, hover_dur, "ms", on_hover)
 
-        # Bounce
         bounce_val = int(self.motion_cfg.get("bounce", 40))
         def on_bounce(v):
             self.motion_cfg["bounce"] = v
-            write_json(MOTION_CONFIG_PATH, self.motion_cfg)
+            self.mark_dirty()
         self.add_slider_row(card, "Bounce", None, 0, 100, 5, bounce_val, "%", on_bounce)
 
         page.append(card)
         return page
 
-    # ── Category 6: Launcher ───────────────────────────────────────────────
+    # ── Category 7: Launcher ───────────────────────────────────────────────
     def build_launcher_page(self, icon, title, subtitle):
         page = self.create_page_container(icon, title, subtitle)
         card = self.create_settings_card()
 
-        # Spotlight Opening Animation Speed
         speed = int(self.launcher_cfg.get("animationSpeed", 170))
         def on_speed(v):
             self.launcher_cfg["animationSpeed"] = v
-            write_json(LAUNCHER_CONFIG_PATH, self.launcher_cfg)
+            self.mark_dirty()
         self.add_slider_row(card, "Spotlight Speed", "Duration of opening spring animation", 100, 400, 10, speed, "ms", on_speed)
 
-        # Show Recent Applications
         rec_act = bool(self.launcher_cfg.get("showRecents", True))
         def on_rec(act):
             self.launcher_cfg["showRecents"] = act
-            write_json(LAUNCHER_CONFIG_PATH, self.launcher_cfg)
+            self.mark_dirty()
         self.add_switch_row(card, "Recent Applications", "Show recently used apps on empty search", rec_act, on_rec)
 
-        # Clipboard History
         clip_act = bool(self.launcher_cfg.get("clipboardHistory", True))
         def on_clip(act):
             self.launcher_cfg["clipboardHistory"] = act
-            write_json(LAUNCHER_CONFIG_PATH, self.launcher_cfg)
+            self.mark_dirty()
         self.add_switch_row(card, "Clipboard History Tab", "Enable clipboard manager in Spotlight", clip_act, on_clip)
 
-        # Max Results
         max_r = int(self.launcher_cfg.get("maxResults", 8))
         def on_max(v):
             self.launcher_cfg["maxResults"] = v
-            write_json(LAUNCHER_CONFIG_PATH, self.launcher_cfg)
+            self.mark_dirty()
         self.add_slider_row(card, "Maximum Results", "Number of search results to display", 4, 16, 1, max_r, "items", on_max)
 
         page.append(card)
         return page
 
-    # ── Category 7: Notifications ──────────────────────────────────────────
+    # ── Category 8: Notifications ──────────────────────────────────────────
     def build_notifications_page(self, icon, title, subtitle):
         page = self.create_page_container(icon, title, subtitle)
         card = self.create_settings_card()
 
-        # Enable Notifications
         en_act = bool(self.notif_cfg.get("enabled", True))
         def on_en(act):
             self.notif_cfg["enabled"] = act
-            write_json(NOTIF_CONFIG_PATH, self.notif_cfg)
+            self.mark_dirty()
         self.add_switch_row(card, "Enable Notifications", "Show banner popups for new messages", en_act, on_en)
 
-        # Do Not Disturb
         dnd_act = bool(self.notif_cfg.get("dnd", False))
         def on_dnd(act):
             self.notif_cfg["dnd"] = act
-            write_json(NOTIF_CONFIG_PATH, self.notif_cfg)
+            self.mark_dirty()
         self.add_switch_row(card, "Do Not Disturb", "Silence all incoming notification popups", dnd_act, on_dnd)
 
-        # Display Timeout
         timeout_val = int(self.notif_cfg.get("timeout", 5))
         def on_t(v):
             self.notif_cfg["timeout"] = v
-            write_json(NOTIF_CONFIG_PATH, self.notif_cfg)
+            self.mark_dirty()
         self.add_slider_row(card, "Banner Timeout", "Time before popups dismiss automatically", 2, 10, 1, timeout_val, "s", on_t)
 
         page.append(card)
         return page
 
-    # ── Category 8: Control Center ─────────────────────────────────────────
+    # ── Category 9: Control Center ─────────────────────────────────────────
     def build_control_center_page(self, icon, title, subtitle):
         page = self.create_page_container(icon, title, subtitle)
         card = self.create_settings_card()
 
-        # Volume Step
         vol_step = int(self.control_cfg.get("volumeStep", 5))
         def on_vol(v):
             self.control_cfg["volumeStep"] = v
-            write_json(CONTROL_CONFIG_PATH, self.control_cfg)
+            self.mark_dirty()
         self.add_slider_row(card, "Volume Step", "Step amount for volume keys and sliders", 1, 10, 1, vol_step, "%", on_vol)
 
-        # Brightness Step
         br_step = int(self.control_cfg.get("brightnessStep", 5))
         def on_br(v):
             self.control_cfg["brightnessStep"] = v
-            write_json(CONTROL_CONFIG_PATH, self.control_cfg)
+            self.mark_dirty()
         self.add_slider_row(card, "Brightness Step", "Step amount for screen brightness keys", 1, 10, 1, br_step, "%", on_br)
 
-        # Battery Percentage
         bat_act = bool(self.control_cfg.get("showBatteryPercent", True))
         def on_bat(act):
             self.control_cfg["showBatteryPercent"] = act
-            write_json(CONTROL_CONFIG_PATH, self.control_cfg)
+            self.mark_dirty()
         self.add_switch_row(card, "Show Battery Percentage", "Display text next to battery icon in notch", bat_act, on_bat)
 
         page.append(card)
         return page
 
-    # ── Category 9: Lock Screen ────────────────────────────────────────────
+    # ── Category 10: Lock Screen ────────────────────────────────────────────
     def build_lockscreen_page(self, icon, title, subtitle):
         page = self.create_page_container(icon, title, subtitle)
         card = self.create_settings_card()
 
-        # Style Layout
         layouts = ["Modern Minimal", "Glass Card", "Bold Clock"]
         cur_l = self.lock_cfg.get("layout", "modern")
         idx = {"modern": 0, "glass": 1, "bold": 2}.get(cur_l, 0)
         def on_l_changed(sel):
-            k = ["modern", "glass", "bold"][sel]
-            self.lock_cfg["layout"] = k
-            write_json(LOCKSCREEN_CONFIG_PATH, self.lock_cfg)
+            self.lock_cfg["layout"] = ["modern", "glass", "bold"][sel]
+            self.mark_dirty()
         self.add_combo_row(card, "Lock Screen Layout", "Visual layout of hyprlock interface", layouts, idx, on_l_changed)
 
-        # Background Blur Radius
         blur_r = int(self.lock_cfg.get("blurRadius", 2))
         def on_blur_r(v):
             self.lock_cfg["blurRadius"] = v
-            write_json(LOCKSCREEN_CONFIG_PATH, self.lock_cfg)
-            h_path = os.path.expanduser("~/.config/hypr/hyprlock.conf")
-            if os.path.exists(h_path):
-                try:
-                    with open(h_path, "r", encoding="utf-8") as f:
-                        c = f.read()
-                    c = re.sub(r"(blur_passes\s*=\s*)\d+", rf"\g<1>{int(v)}", c)
-                    with open(h_path, "w", encoding="utf-8") as f:
-                        f.write(c)
-                except Exception:
-                    pass
+            self.mark_dirty()
         self.add_slider_row(card, "Background Blur", "Amount of backdrop blur when locked", 0, 10, 1, blur_r, "passes", on_blur_r)
 
-        # Media Player
         media_act = bool(self.lock_cfg.get("showMedia", True))
         def on_media(act):
             self.lock_cfg["showMedia"] = act
-            write_json(LOCKSCREEN_CONFIG_PATH, self.lock_cfg)
+            self.mark_dirty()
         self.add_switch_row(card, "Media Player on Lock Screen", "Show currently playing track when locked", media_act, on_media)
 
         page.append(card)
         return page
 
-    # ── Category 10: System ────────────────────────────────────────────────
+    # ── Category 11: System ────────────────────────────────────────────────
     def build_system_page(self, icon, title, subtitle):
         page = self.create_page_container(icon, title, subtitle)
         card = self.create_settings_card()
@@ -1508,7 +1766,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         row_up.append(self.btn_check_update)
         card.append(row_up)
 
-        # Actions Row
+        # Actions Row: Restart Carbon Shell
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         row.add_css_class("settings-row")
 
@@ -1518,7 +1776,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         lbl_t.set_halign(Gtk.Align.START)
         lbl_t.add_css_class("row-title")
         label_box.append(lbl_t)
-        lbl_s = Gtk.Label(label="Reload quickshell daemon and apply all visual updates")
+        lbl_s = Gtk.Label(label="Reload quickshell daemon and apply visual updates")
         lbl_s.set_halign(Gtk.Align.START)
         lbl_s.add_css_class("row-subtitle")
         label_box.append(lbl_s)
@@ -1526,7 +1784,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
 
         btn = Gtk.Button(label="Restart")
         btn.set_valign(Gtk.Align.CENTER)
-        btn.connect("clicked", self.on_reload_shell)
+        btn.connect("clicked", lambda b: subprocess.run(["systemctl", "--user", "restart", "carbon-quickshell.service"], check=False))
         row.append(btn)
         card.append(row)
 
@@ -1607,7 +1865,6 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             return res.returncode, res.stdout.strip(), res.stderr.strip()
 
         try:
-            # 1. Determine local branch & remote target branch
             _, curr_branch, _ = git_run(["rev-parse", "--abbrev-ref", "HEAD"])
             if not curr_branch:
                 curr_branch = "main"
@@ -1621,7 +1878,6 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
                 else:
                     remote_target = "main"
 
-            # 2. Fetch remote target branch
             code_fetch, _, _ = git_run(["fetch", "origin", remote_target], timeout=15)
             if code_fetch != 0:
                 GLib.idle_add(
@@ -1635,9 +1891,6 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
                 return
 
             _, local_hash, _ = git_run(["rev-parse", "HEAD"])
-            _, remote_hash, _ = git_run(["rev-parse", f"origin/{remote_target}"])
-
-            # 3. Check commit differences
             _, count_str, _ = git_run(["rev-list", "--count", f"HEAD..origin/{remote_target}"])
             count = int(count_str) if count_str.isdigit() else 0
 
@@ -1701,8 +1954,6 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
                 self.lbl_update_status.set_text("Launching Carbon Shell updater…")
                 self._launch_updater(repo_dir)
             else:
-                # User chose "Later" or dismissed the modal:
-                # Do NOT prompt forcefully; let the user freely keep their current version
                 self.lbl_update_status.set_text(
                     f"Update available ({count} new commit{'s' if count != 1 else ''}) • Kept current version"
                 )
@@ -1759,7 +2010,6 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         if (not updater_cmd or not os.path.exists(updater_cmd)) and repo_dir:
             updater_cmd = os.path.join(repo_dir, "update.sh")
 
-        # Find terminal emulator to display updater progress
         term = None
         for candidate in ["kitty", "alacritty", "foot", "ghostty", "wezterm", "gnome-terminal", "xterm"]:
             path = shutil.which(candidate) or (
@@ -1778,7 +2028,6 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             except Exception as e:
                 print(f"Error launching terminal updater: {e}", file=sys.stderr)
 
-        # Fallback if no terminal or execution error
         try:
             if updater_cmd and os.path.exists(updater_cmd):
                 subprocess.Popen([updater_cmd, "-y"])
@@ -1787,13 +2036,137 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         except Exception as e:
             self.lbl_update_status.set_text(f"Could not launch updater: {e}")
 
-    # ── Reload Shell ───────────────────────────────────────────────────────
-    def on_reload_shell(self, btn):
+    # ── Deferred Save & Close Confirmation ──────────────────────────────────
+    def on_apply_clicked(self, btn):
+        self.save_and_apply()
+
+    def save_and_apply(self):
+        # 1. Save all JSON configs
+        write_json(BAR_MODE_PATH, self.bar_mode)
+        hypr_bar_mode = os.path.expanduser("~/.config/hypr/carbon-bar-mode.json")
+        if hypr_bar_mode != BAR_MODE_PATH:
+            write_json(hypr_bar_mode, self.bar_mode)
+
+        write_json(BAR_POS_PATH, self.bar_pos)
+        write_json(CLOCK_STYLE_PATH, self.clock_cfg)
+        write_json(MOTION_CONFIG_PATH, self.motion_cfg)
+        write_json(LAUNCHER_CONFIG_PATH, self.launcher_cfg)
+        write_json(NOTIF_CONFIG_PATH, self.notif_cfg)
+        write_json(CONTROL_CONFIG_PATH, self.control_cfg)
+        write_json(LOCKSCREEN_CONFIG_PATH, self.lock_cfg)
+        write_json(VANISH_SHORTCUTS_PATH, self.vanish_shortcuts)
+        generate_vanish_keybinds_conf(self.vanish_shortcuts)
+
+        write_json(WALLPAPER_SOURCE_PATH, self.wallpaper_source_cfg)
+        hypr_wp_path = os.path.expanduser("~/.config/hypr/carbon-wallpaper-source.json")
+        if hypr_wp_path != WALLPAPER_SOURCE_PATH:
+            write_json(hypr_wp_path, self.wallpaper_source_cfg)
+
+        # 2. Save variables.lua if needed
+        if "rounding" in self.looknfeel_cfg:
+            write_variable("rounding", self.looknfeel_cfg["rounding"])
+        if "border_size" in self.looknfeel_cfg:
+            write_variable("borderSize", self.looknfeel_cfg["border_size"])
+        if "active_opacity" in self.looknfeel_cfg:
+            write_variable("windowOpacity", self.looknfeel_cfg["active_opacity"])
+
+        # 3. Save looknfeel.conf
+        write_looknfeel_config(self.looknfeel_cfg)
+
+        # 4. Save lockscreen hyprlock.conf if blurRadius changed
+        if "blurRadius" in self.lock_cfg:
+            h_path = os.path.expanduser("~/.config/hypr/hyprlock.conf")
+            if os.path.exists(h_path):
+                try:
+                    with open(h_path, "r", encoding="utf-8") as f:
+                        c = f.read()
+                    c = re.sub(r"(blur_passes\s*=\s*)\d+", rf"\g<1>{int(self.lock_cfg['blurRadius'])}", c)
+                    with open(h_path, "w", encoding="utf-8") as f:
+                        f.write(c)
+                except Exception:
+                    pass
+
+        # 5. Apply layer blur if pending
+        if self.pending_layer_blur is not None:
+            apply_hyprland_layer_blur(self.pending_layer_blur)
+
+        # 6. Apply live Hyprland Look & Feel keywords
+        apply_hyprland_looknfeel_live(self.looknfeel_cfg)
+
+        # Live animations keyword
+        if "reduceMotion" in self.motion_cfg:
+            anim_enabled = "false" if self.motion_cfg["reduceMotion"] else "true"
+            subprocess.run(["hyprctl", "keyword", "animations:enabled", anim_enabled], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        # Bar mode IPC
+        mode_id = self.bar_mode.get("mode", "notch")
+        ipc_script = os.path.join(CONFIG_DIR, "scripts/carbon-ipc.sh")
+        if not os.path.exists(ipc_script):
+            ipc_script = os.path.expanduser("~/.config/hypr/scripts/carbon-ipc.sh")
+        if os.path.exists(ipc_script):
+            if mode_id == "nucleus":
+                if self.bar_mode.get("nucleus", {}).get("transition", True):
+                    subprocess.run(["sh", ipc_script, "nucleus transition"], check=False)
+                else:
+                    subprocess.run(["sh", ipc_script, "set-bar-mode nucleus"], check=False)
+            else:
+                subprocess.run(["sh", ipc_script, f"set-bar-mode {mode_id}"], check=False)
+
+        # 7. Reload Hyprland & Carbon Quickshell
         try:
-            subprocess.run(["systemctl", "--user", "restart", "carbon-quickshell.service"], check=False)
-            subprocess.run(["hyprctl", "reload"], check=False)
+            subprocess.run(["hyprctl", "reload"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["systemctl", "--user", "restart", "carbon-quickshell.service"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception as e:
-            print(f"Error restarting shell: {e}", file=sys.stderr)
+            print("Error restarting shell:", e, file=sys.stderr)
+
+        self.dirty = False
+        self.lbl_status.set_text("Changes applied successfully.")
+        self.apply_btn.set_sensitive(False)
+        self.apply_btn.remove_css_class("suggested-action")
+
+    def on_close_requested(self, window):
+        if self.dirty:
+            self.show_unsaved_changes_dialog()
+            return True
+        return False
+
+    def show_unsaved_changes_dialog(self):
+        def on_response(resp):
+            if resp == "save":
+                self.save_and_apply()
+                self.dirty = False
+                self.destroy()
+            elif resp == "discard":
+                self.dirty = False
+                self.destroy()
+
+        if hasattr(Adw, "AlertDialog"):
+            dialog = Adw.AlertDialog(
+                heading="You have unsaved changes",
+                body=""
+            )
+            dialog.add_response("discard", "discard")
+            dialog.add_response("save", "save")
+            dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+            dialog.set_response_appearance("discard", Adw.ResponseAppearance.DESTRUCTIVE)
+            dialog.set_default_response("save")
+            dialog.set_close_response("cancel")
+            dialog.connect("response", lambda d, r: on_response(r))
+            dialog.present(self)
+        else:
+            dialog = Adw.MessageDialog(
+                transient_for=self,
+                heading="You have unsaved changes",
+                body=""
+            )
+            dialog.add_response("discard", "discard")
+            dialog.add_response("save", "save")
+            dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+            dialog.set_response_appearance("discard", Adw.ResponseAppearance.DESTRUCTIVE)
+            dialog.set_default_response("save")
+            dialog.set_close_response("cancel")
+            dialog.connect("response", lambda d, r: on_response(r))
+            dialog.present()
 
 def main():
     app = CarbonConfigApp()
