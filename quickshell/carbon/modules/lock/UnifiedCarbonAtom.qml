@@ -43,7 +43,7 @@ Item {
     // Continuous rotation time tracker
     property real continuousTime: 0.0
     FrameAnimation {
-        running: true
+        running: atomRoot.visible && (atomRoot.opacity > 0.001)
         onTriggered: {
             atomRoot.continuousTime += 16.67
         }

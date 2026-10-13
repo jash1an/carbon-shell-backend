@@ -1471,6 +1471,18 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             self.mark_dirty()
         self.add_combo_row(card1, "Transition Dynamic Word", "Text banner displayed during speed blur impact", word_options, cur_w_idx, on_word_sel)
 
+        # Resting Atom Orbit Behavior
+        cur_spin = nuc_cfg.get("restingSpin", "hover")
+        spin_options = ["Orbit on Hover / Touch (0% GPU Idle)", "Continuous Orbit 24/7", "Static Atom (No Orbit)"]
+        spin_ids = ["hover", "always", "never"]
+        cur_s_idx = spin_ids.index(cur_spin) if cur_spin in spin_ids else (1 if cur_spin is True else (2 if cur_spin is False else 0))
+        def on_spin_sel(idx):
+            s = spin_ids[idx]
+            if "nucleus" not in self.bar_mode or not isinstance(self.bar_mode["nucleus"], dict):
+                self.bar_mode["nucleus"] = {}
+            self.bar_mode["nucleus"]["restingSpin"] = s
+            self.mark_dirty()
+        self.add_combo_row(card1, "Resting Atom Orbit", "Control background valence electron rotation in Vanish Mode", spin_options, cur_s_idx, on_spin_sel)
         row_prev = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         row_prev.add_css_class("settings-row")
         lbox_p = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)

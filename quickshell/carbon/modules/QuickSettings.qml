@@ -909,6 +909,7 @@ Item {
 
                                 // Wi-Fi Toggle Pill
                                 Rectangle {
+
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 46
                                     radius: 14
@@ -1418,6 +1419,7 @@ Item {
                                         Image {
                                             id: artImg
                                             anchors.fill: parent
+                                            sourceSize: Qt.size(80, 80)
                                             fillMode: Image.PreserveAspectCrop
                                             source: root.artUrl
                                             visible: root.artUrl.length > 0 && status === Image.Ready

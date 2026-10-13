@@ -131,8 +131,8 @@ Item {
     Loader {
         id: visualizerLoader
         anchors.fill: parent
-        active: root.selectedSource !== ""
-        source: root.selectedSource
+        active: root.activeAndVisible && (root.selectedSource !== "")
+        source: root.activeAndVisible ? root.selectedSource : ""
 
         onLoaded: {
             if (item) {

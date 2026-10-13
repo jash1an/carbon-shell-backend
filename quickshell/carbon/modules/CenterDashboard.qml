@@ -1491,6 +1491,7 @@ Item {
                         Image {
                             anchors.fill: parent
                             source: root.musicArtUrl
+                            sourceSize: Qt.size(240, 200)
                             asynchronous: true
                             cache: true
                             fillMode: Image.PreserveAspectCrop
@@ -1571,6 +1572,7 @@ Item {
                                     Image {
                                         anchors.fill: parent
                                         source: root.musicArtUrl
+                                        sourceSize: Qt.size(64, 64)
                                         asynchronous: true
                                         cache: true
                                         visible: root.hasMusicTrack && root.musicArtUrl.length > 0 && status === Image.Ready

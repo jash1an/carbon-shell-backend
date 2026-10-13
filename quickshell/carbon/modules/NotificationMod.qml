@@ -301,6 +301,7 @@ Item {
                                                 icon.startsWith("/") || icon.startsWith("file:")
                                                     ? icon : ""
                                             }
+                                            sourceSize: Qt.size(48, 48)
                                             fillMode: Image.PreserveAspectFit
                                         }
                                     }

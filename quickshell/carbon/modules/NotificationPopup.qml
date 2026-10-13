@@ -375,6 +375,7 @@ Item {
                                         const icon = String(cardItem.modelData ? (cardItem.modelData.appIcon || "") : "")
                                         return (icon.startsWith("/") || icon.startsWith("file:")) ? icon : ""
                                     }
+                                    sourceSize: Qt.size(48, 48)
                                     fillMode: Image.PreserveAspectFit
                                     visible: status === Image.Ready
                                 }

@@ -621,6 +621,7 @@ ShellRoot {
     /* ── Bar Mode Configuration: "pill" or "notch" ──────────────────── */
     property string barMode: "pill"
     property bool workspaceOsdActive: false
+    property var nucleusRestingSpin: "hover"
     onBarModeChanged: console.log("[BAR-MODE CHANGED] New root.barMode is now: " + root.barMode)
 
     FileView {
@@ -692,6 +693,9 @@ ShellRoot {
                     }
                     if (d.nucleus.animation) {
                         root.nucleusTransitionAnimation = String(d.nucleus.animation)
+                    }
+                    if (d.nucleus.restingSpin !== undefined) {
+                        root.nucleusRestingSpin = d.nucleus.restingSpin
                     }
                 }
                 if (d.mode) {
@@ -989,14 +993,23 @@ ShellRoot {
                     console.log("[IPC RECEIVED] " + cmd)
                     if (cmd === "wallpaper" || cmd === "wallpaper-local") {
                         root.wallpaperSource = "local"
+                        if (root.barMode === "nucleus" && root.nucleusHubItem && root.nucleusHubItem.hubOpen) {
+                            root.nucleusHubItem.close()
+                        }
                         root.toggleWallpaperPicker()
                     }
                     else if (cmd === "wallpaper-live") {
                         root.wallpaperSource = "live"
+                        if (root.barMode === "nucleus" && root.nucleusHubItem && root.nucleusHubItem.hubOpen) {
+                            root.nucleusHubItem.close()
+                        }
                         root.openWallpaperPicker()
                     }
                     else if (cmd === "wallpaper-online") {
                         root.wallpaperSource = "wallhaven"
+                        if (root.barMode === "nucleus" && root.nucleusHubItem && root.nucleusHubItem.hubOpen) {
+                            root.nucleusHubItem.close()
+                        }
                         root.openWallpaperPicker()
                     }
                     else if (cmd === "close-wallpaper") {
@@ -1797,6 +1810,7 @@ ShellRoot {
                                 Image {
                                     anchors.fill: parent
                                     source: root.mprisArtUrl
+                                    sourceSize: Qt.size(44, 44)
                                     fillMode: Image.PreserveAspectCrop
                                     visible: root.mprisHasTrack && root.mprisArtUrl.length > 0
                                 }
@@ -2440,12 +2454,9 @@ ShellRoot {
             WlrLayershell.namespace: "carbon-nucleus-resting"
             WlrLayershell.layer: WlrLayer.Bottom
             exclusionMode: ExclusionMode.Ignore
-            anchors {
-                top: true
-                bottom: true
-                left: true
-                right: true
-            }
+            anchors {}
+            implicitWidth: 80
+            implicitHeight: 80
 
             visible: root.barMode === "nucleus" && !root.nucleusHubItem.hubOpen
 
@@ -2467,6 +2478,21 @@ ShellRoot {
                 property bool restingPressing: false
                 property real restingHoldProgress: 0.0
                 property bool justTriggeredPower: false
+                readonly property bool shouldSpin: {
+                    if (!nucleusRestingWindow.visible || !nucleusRestingCenterDot.visible) return false
+                    if (root.nucleusRestingSpin === "never" || root.nucleusRestingSpin === false) return false
+                    if (root.nucleusRestingSpin === "always" || root.nucleusRestingSpin === true) return true
+                    return (restingMouseArea && restingMouseArea.containsMouse) || restingPressing
+                }
+
+                FrameAnimation {
+                    running: nucleusRestingCenterDot.shouldSpin
+                    onTriggered: {
+                        var dt = frameTime > 0.0 ? Math.min(0.05, frameTime) : 0.016
+                        ring1Orbit.rotation = (ring1Orbit.rotation + (20.0 * dt)) % 360
+                        ring2Orbit.rotation = (ring2Orbit.rotation - ((360.0 / 28.0) * dt)) % 360
+                    }
+                }
 
                 // Ring 1 (Inner, 2 electrons)
                 Rectangle {
@@ -2515,14 +2541,6 @@ ShellRoot {
                                 }
                             }
                         }
-                    }
-                }
-
-                FrameAnimation {
-                    running: nucleusRestingWindow.visible
-                    onTriggered: {
-                        ring1Orbit.rotation += frameTime * (360.0 / 18.0)
-                        ring2Orbit.rotation -= frameTime * (360.0 / 28.0)
                     }
                 }
 
@@ -2579,7 +2597,9 @@ ShellRoot {
                 }
 
                 MouseArea {
+                    id: restingMouseArea
                     anchors.fill: parent
+                    hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     acceptedButtons: Qt.LeftButton
                     onPressed: {
@@ -2877,9 +2897,7 @@ ShellRoot {
 
             WallpaperPicker {
                 id: wpItem
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: 24
+                anchors.fill: parent
                 open: root.wallpaperPickerOpen
                 activeSource: root.wallpaperSource
                 onCloseRequested: root.closeWallpaperPicker()
@@ -3667,15 +3685,11 @@ ShellRoot {
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             exclusionMode: ExclusionMode.Ignore
 
-            anchors {
-                top: true
-                bottom: true
-                left: true
-                right: true
-            }
+            anchors {}
+            implicitWidth: 84
+            implicitHeight: 84
 
-            // Keep PanelWindow instantiated so internal state/listeners run continuously
-            visible: root.barMode === "nucleus" || root.barMode === "vanish" 
+            visible: (root.barMode === "nucleus" || root.barMode === "vanish") && (wsOsdItem.active || wsOsdItem.opacity > 0.002)
 
             // Empty region mask ensures 100% mouse click & touch pass-through to underlying windows!
             mask: Region {}
