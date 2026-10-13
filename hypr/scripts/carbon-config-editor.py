@@ -321,7 +321,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title="Settings")
         self.set_default_size(860, 560)
-        self.set_size_request(760, 480)
+        self.set_size_request(600, 440)
 
         # Theme & Accent
         theme = read_json(THEME_PATH, {})
@@ -625,7 +625,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
 
         # Scrolled Stack for Category Pages
         scrolled_content = Gtk.ScrolledWindow()
-        scrolled_content.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scrolled_content.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         scrolled_content.set_vexpand(True)
         content_frame.append(scrolled_content)
 
