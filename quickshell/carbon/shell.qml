@@ -2204,7 +2204,7 @@ ShellRoot {
                 bottom: 0
             }
 
-            implicitHeight: 280
+            implicitHeight: 370
             WlrLayershell.keyboardFocus: root.centerDashboardOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             visible: root.barMode === "notch"
 

@@ -44,8 +44,8 @@ Item {
     readonly property bool hovered: (rootHover && rootHover.hovered) || (mainCardHover && mainCardHover.hovered)
     signal closeRequested()
 
-    implicitWidth: root.minimalCalendarOnly ? 310 : 860
-    implicitHeight: root.minimalCalendarOnly ? 276 : 260
+    implicitWidth: root.minimalCalendarOnly ? 310 : 940
+    implicitHeight: root.minimalCalendarOnly ? 276 : 330
     width: implicitWidth
     height: implicitHeight
     clip: true
@@ -406,6 +406,15 @@ Item {
         if (sourceNode.name) {
             Quickshell.execDetached(["pactl", "set-default-source", sourceNode.name])
         }
+    }
+
+    function selectAudioSink(sinkNode) {
+        if (!sinkNode) return
+        Quickshell.execDetached(["wpctl", "set-default", String(sinkNode.id)])
+        if (sinkNode.name) {
+            Quickshell.execDetached(["pactl", "set-default-sink", sinkNode.name])
+        }
+        root.refreshOutputPorts()
     }
 
     /* ── Audio Settings & Persistent Virtual Devices ─────────────────── */
@@ -2261,13 +2270,18 @@ Item {
 
                         Flickable {
                             anchors.fill: parent
+                            anchors.rightMargin: 2
                             contentWidth: width
                             contentHeight: audioCol.implicitHeight
                             clip: true
                             boundsBehavior: Flickable.StopAtBounds
 
                             ScrollBar.vertical: ScrollBar {
+                                id: audioScroll
                                 policy: ScrollBar.AsNeeded
+                                width: 5
+                                anchors.right: parent.right
+                                anchors.rightMargin: 1
                                 contentItem: Rectangle {
                                     implicitWidth: 4
                                     radius: 2
@@ -2277,13 +2291,243 @@ Item {
 
                             ColumnLayout {
                                 id: audioCol
-                                width: parent.width - 6
+                                width: parent.width - (audioScroll.visible ? 14 : 2)
                                 spacing: 8
 
-                                // SECTION 1: INPUT DEVICES / MICROPHONES
+                                // SECTION 1: OUTPUT DEVICES
                                 Rectangle {
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: micSectionCol.implicitHeight + 12
+                                    Layout.preferredHeight: outSectionCol.implicitHeight + 14
+                                    radius: 10
+                                    color: Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65)
+                                    border.width: 1
+                                    border.color: Theme.outline
+
+                                    ColumnLayout {
+                                        id: outSectionCol
+                                        anchors.fill: parent
+                                        anchors.margins: 8
+                                        spacing: 6
+
+                                        // Section Header
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 6
+                                            Text {
+                                                text: root.isMuted ? "volume_off" : (root.volRatio > 0.5 ? "volume_up" : (root.volRatio > 0.0 ? "volume_down" : "volume_mute"))
+                                                font.family: Theme.fontIcon
+                                                font.pixelSize: 14
+                                                color: root.isMuted ? Theme.err : Theme.accent
+                                            }
+                                            Text {
+                                                text: "Output Devices"
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: Theme.fontPx(8.5)
+                                                font.weight: Font.Bold
+                                                color: Theme.fg
+                                            }
+                                            Item { Layout.fillWidth: true }
+                                            Text {
+                                                text: root.isMuted ? "MUTED" : (Math.round(root.volRatio * 100) + "%")
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: Theme.fontPx(7.5)
+                                                font.weight: Font.Bold
+                                                color: root.isMuted ? Theme.err : Theme.accentLit
+                                            }
+                                        }
+
+                                        // Master Output Slider & Mute Row
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 8
+
+                                            Rectangle {
+                                                width: 22; height: 22; radius: 11
+                                                color: outMuteHov.containsMouse ? Theme.bgHover : (root.isMuted ? Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.20) : "transparent")
+                                                border.width: 1
+                                                border.color: root.isMuted ? Theme.err : (outMuteHov.containsMouse ? Theme.outline : "transparent")
+
+                                                Text {
+                                                    anchors.centerIn: parent
+                                                    text: root.isMuted ? "volume_off" : "volume_up"
+                                                    font.family: Theme.fontIcon
+                                                    font.pixelSize: 13
+                                                    color: root.isMuted ? Theme.err : Theme.accent
+                                                }
+                                                MouseArea {
+                                                    id: outMuteHov
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: {
+                                                        if (root.audioSink && root.audioSink.audio) {
+                                                            root.audioSink.audio.muted = !root.audioSink.audio.muted
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            Item {
+                                                id: outVolTrack
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: 16
+
+                                                Rectangle {
+                                                    anchors.fill: parent
+                                                    radius: 8
+                                                    color: Qt.rgba(1, 1, 1, 0.10)
+                                                }
+                                                Rectangle {
+                                                    height: parent.height
+                                                    width: Math.max(0, Math.min(parent.width, parent.width * (root.isMuted ? 0 : root.volRatio)))
+                                                    radius: 8
+                                                    color: root.isMuted ? Theme.fgFaint : Theme.accent
+                                                }
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    function upd(mx) {
+                                                        var r = Math.max(0, Math.min(1.0, mx / outVolTrack.width))
+                                                        if (root.audioSink && root.audioSink.audio) {
+                                                            root.audioSink.audio.volume = r
+                                                            if (root.audioSink.audio.muted && r > 0) root.audioSink.audio.muted = false
+                                                        }
+                                                    }
+                                                    onPressed: mouse => upd(mouse.x)
+                                                    onPositionChanged: mouse => { if (pressed) upd(mouse.x) }
+                                                }
+                                                WheelHandler {
+                                                    target: outVolTrack
+                                                    onWheel: (event) => {
+                                                        var step = event.angleDelta.y > 0 ? 0.03 : -0.03
+                                                        if (root.audioSink && root.audioSink.audio) {
+                                                            root.audioSink.audio.volume = Math.max(0, Math.min(1.0, root.volRatio + step))
+                                                            if (root.audioSink.audio.muted && step > 0) root.audioSink.audio.muted = false
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Available Output Sinks
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 4
+                                            visible: root.sinks.length > 0
+
+                                            Repeater {
+                                                model: root.sinks
+                                                delegate: Rectangle {
+                                                    required property var modelData
+                                                    readonly property bool isDefault: root.defaultSink && (root.defaultSink.id === modelData.id)
+                                                    Layout.fillWidth: true
+                                                    Layout.preferredHeight: 24
+                                                    radius: 6
+                                                    color: isDefault ? Theme.accent : (snkMH.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.05))
+                                                    border.width: 1
+                                                    border.color: isDefault ? Theme.accentLit : Theme.outline
+
+                                                    RowLayout {
+                                                        anchors.fill: parent
+                                                        anchors.leftMargin: 8
+                                                        anchors.rightMargin: 8
+                                                        spacing: 6
+
+                                                        Text {
+                                                            text: {
+                                                                var n = (root.nodeName(modelData) || "").toLowerCase()
+                                                                if (n.includes("headphone") || n.includes("headset") || n.includes("buds")) return "headphones"
+                                                                if (n.includes("hdmi") || n.includes("displayport")) return "tv"
+                                                                return "speaker"
+                                                            }
+                                                            font.family: Theme.fontIcon
+                                                            font.pixelSize: 12
+                                                            color: isDefault ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                                                        }
+
+                                                        Text {
+                                                            Layout.fillWidth: true
+                                                            text: root.nodeName(modelData)
+                                                            font.family: "JetBrainsMono Nerd Font"
+                                                            font.pixelSize: Theme.fontPx(7.5)
+                                                            font.weight: isDefault ? Font.Bold : Font.Normal
+                                                            color: isDefault ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                                                            elide: Text.ElideRight
+                                                        }
+
+                                                        Text {
+                                                            visible: isDefault
+                                                            text: "check"
+                                                            font.family: Theme.fontIcon
+                                                            font.pixelSize: 12
+                                                            color: Theme.isDark ? "#101116" : "#ffffff"
+                                                        }
+                                                    }
+
+                                                    MouseArea {
+                                                        id: snkMH
+                                                        anchors.fill: parent
+                                                        hoverEnabled: true
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        onClicked: root.selectAudioSink(modelData)
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Ports switcher (Speakers / Headphones)
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 4
+                                            visible: root.outputPorts.length > 1
+
+                                            Repeater {
+                                                model: root.outputPorts
+                                                delegate: Rectangle {
+                                                    required property var modelData
+                                                    readonly property bool isSelected: root.activeOutputPort === modelData.name
+                                                    Layout.fillWidth: true
+                                                    Layout.preferredHeight: 22
+                                                    radius: 6
+                                                    color: isSelected ? Theme.accent : (pMH.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.05))
+                                                    border.width: 1
+                                                    border.color: isSelected ? Theme.accentLit : Theme.outline
+
+                                                    RowLayout {
+                                                        anchors.centerIn: parent
+                                                        spacing: 4
+                                                        Text {
+                                                            text: modelData.name.includes("headphone") ? "headphones" : "speaker"
+                                                            font.family: Theme.fontIcon
+                                                            font.pixelSize: 11
+                                                            color: isSelected ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                                                        }
+                                                        Text {
+                                                            text: modelData.desc || modelData.name
+                                                            font.family: "JetBrainsMono Nerd Font"
+                                                            font.pixelSize: Theme.fontPx(7.2)
+                                                            font.weight: isSelected ? Font.Bold : Font.Normal
+                                                            color: isSelected ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                                                        }
+                                                    }
+                                                    MouseArea {
+                                                        id: pMH
+                                                        anchors.fill: parent
+                                                        hoverEnabled: true
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        onClicked: root.selectOutputPort(modelData.name)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // SECTION 2: INPUT DEVICES (MICROPHONES)
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: micSectionCol.implicitHeight + 14
                                     radius: 10
                                     color: Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65)
                                     border.width: 1
@@ -2300,7 +2544,7 @@ Item {
                                             Layout.fillWidth: true
                                             spacing: 6
                                             Text {
-                                                text: "mic"
+                                                text: root.isMicMuted ? "mic_off" : "mic"
                                                 font.family: Theme.fontIcon
                                                 font.pixelSize: 14
                                                 color: root.isMicMuted ? Theme.err : Theme.accent
@@ -2308,7 +2552,7 @@ Item {
                                             Text {
                                                 text: "Input Devices (Microphone)"
                                                 font.family: "JetBrainsMono Nerd Font"
-                                                font.pixelSize: Theme.fontPx(8)
+                                                font.pixelSize: Theme.fontPx(8.5)
                                                 font.weight: Font.Bold
                                                 color: Theme.fg
                                             }
@@ -2376,13 +2620,21 @@ Item {
                                                     onPressed: mouse => upd(mouse.x)
                                                     onPositionChanged: mouse => { if (pressed) upd(mouse.x) }
                                                 }
+                                                WheelHandler {
+                                                    target: micTrack
+                                                    onWheel: (event) => {
+                                                        var step = event.angleDelta.y > 0 ? 0.03 : -0.03
+                                                        root.setMicVolume(root.micVolRatio + step)
+                                                    }
+                                                }
                                             }
                                         }
 
-                                        // Available Microphones List
-                                        RowLayout {
+                                        // Available Microphones (Sources)
+                                        ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 4
+                                            visible: root.sources.length > 0
 
                                             Repeater {
                                                 model: root.sources
@@ -2390,23 +2642,44 @@ Item {
                                                     required property var modelData
                                                     readonly property bool isDefault: root.defaultSource && (root.defaultSource.id === modelData.id)
                                                     Layout.fillWidth: true
-                                                    Layout.preferredHeight: 22
+                                                    Layout.preferredHeight: 24
                                                     radius: 6
                                                     color: isDefault ? Theme.accent : (srcMH.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.05))
                                                     border.width: 1
                                                     border.color: isDefault ? Theme.accentLit : Theme.outline
 
-                                                    Text {
-                                                        anchors.centerIn: parent
-                                                        text: root.nodeName(modelData)
-                                                        font.family: "JetBrainsMono Nerd Font"
-                                                        font.pixelSize: Theme.fontPx(7)
-                                                        font.weight: isDefault ? Font.Bold : Font.Normal
-                                                        color: isDefault ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
-                                                        elide: Text.ElideRight
-                                                        width: parent.width - 8
-                                                        horizontalAlignment: Text.AlignHCenter
+                                                    RowLayout {
+                                                        anchors.fill: parent
+                                                        anchors.leftMargin: 8
+                                                        anchors.rightMargin: 8
+                                                        spacing: 6
+
+                                                        Text {
+                                                            text: "mic"
+                                                            font.family: Theme.fontIcon
+                                                            font.pixelSize: 12
+                                                            color: isDefault ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                                                        }
+
+                                                        Text {
+                                                            Layout.fillWidth: true
+                                                            text: root.nodeName(modelData)
+                                                            font.family: "JetBrainsMono Nerd Font"
+                                                            font.pixelSize: Theme.fontPx(7.5)
+                                                            font.weight: isDefault ? Font.Bold : Font.Normal
+                                                            color: isDefault ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                                                            elide: Text.ElideRight
+                                                        }
+
+                                                        Text {
+                                                            visible: isDefault
+                                                            text: "check"
+                                                            font.family: Theme.fontIcon
+                                                            font.pixelSize: 12
+                                                            color: Theme.isDark ? "#101116" : "#ffffff"
+                                                        }
                                                     }
+
                                                     MouseArea {
                                                         id: srcMH
                                                         anchors.fill: parent
@@ -2420,150 +2693,7 @@ Item {
                                     }
                                 }
 
-                                // SECTION 2: OUTPUT DEVICES & PORTS
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: outSectionCol.implicitHeight + 12
-                                    radius: 10
-                                    color: Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65)
-                                    border.width: 1
-                                    border.color: Theme.outline
-
-                                    ColumnLayout {
-                                        id: outSectionCol
-                                        anchors.fill: parent
-                                        anchors.margins: 8
-                                        spacing: 6
-
-                                        RowLayout {
-                                            Layout.fillWidth: true
-                                            spacing: 6
-                                            Text {
-                                                text: "volume_up"
-                                                font.family: Theme.fontIcon
-                                                font.pixelSize: 14
-                                                color: Theme.accentLit
-                                            }
-                                            Text {
-                                                text: "Output Devices & Ports"
-                                                font.family: "JetBrainsMono Nerd Font"
-                                                font.pixelSize: Theme.fontPx(8)
-                                                font.weight: Font.Bold
-                                                color: Theme.fg
-                                            }
-                                        }
-
-                                        // Ports switcher (Speakers / Headphones)
-                                        RowLayout {
-                                            Layout.fillWidth: true
-                                            spacing: 4
-
-                                            Repeater {
-                                                model: root.outputPorts
-                                                delegate: Rectangle {
-                                                    required property var modelData
-                                                    readonly property bool isSelected: root.activeOutputPort === modelData.name
-                                                    Layout.fillWidth: true
-                                                    Layout.preferredHeight: 22
-                                                    radius: 6
-                                                    color: isSelected ? Theme.accent : (pMH.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.05))
-                                                    border.width: 1
-                                                    border.color: isSelected ? Theme.accentLit : Theme.outline
-
-                                                    RowLayout {
-                                                        anchors.centerIn: parent
-                                                        spacing: 4
-                                                        Text {
-                                                            text: modelData.name.includes("headphone") ? "headphones" : "speaker"
-                                                            font.family: Theme.fontIcon
-                                                            font.pixelSize: 11
-                                                            color: isSelected ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
-                                                        }
-                                                        Text {
-                                                            text: modelData.desc || modelData.name
-                                                            font.family: "JetBrainsMono Nerd Font"
-                                                            font.pixelSize: Theme.fontPx(7.2)
-                                                            font.weight: isSelected ? Font.Bold : Font.Normal
-                                                            color: isSelected ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
-                                                        }
-                                                    }
-                                                    MouseArea {
-                                                        id: pMH
-                                                        anchors.fill: parent
-                                                        hoverEnabled: true
-                                                        cursorShape: Qt.PointingHandCursor
-                                                        onClicked: root.selectOutputPort(modelData.name)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // SECTION 3: VIRTUAL AUDIO DEVICES PERSISTENT TOGGLE
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: 32
-                                    radius: 10
-                                    color: root.showVirtualDevices ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.12) : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65)
-                                    border.width: 1
-                                    border.color: root.showVirtualDevices ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.40) : Theme.outline
-
-                                    RowLayout {
-                                        anchors.fill: parent
-                                        anchors.margins: 8
-                                        spacing: 8
-
-                                        Text {
-                                            text: "graphic_eq"
-                                            font.family: Theme.fontIcon
-                                            font.pixelSize: 14
-                                            color: root.showVirtualDevices ? Theme.accent : Theme.fgDim
-                                        }
-
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            spacing: 0
-                                            Text {
-                                                text: "Virtual Audio Devices"
-                                                font.family: "JetBrainsMono Nerd Font"
-                                                font.pixelSize: Theme.fontPx(8)
-                                                font.weight: Font.Bold
-                                                color: root.showVirtualDevices ? Theme.fg : Theme.fgDim
-                                            }
-                                            Text {
-                                                text: "EasyEffects & software sinks (persisted)"
-                                                font.family: "JetBrainsMono Nerd Font"
-                                                font.pixelSize: Theme.fontPx(6.8)
-                                                color: Theme.fgFaint
-                                            }
-                                        }
-
-                                        Rectangle {
-                                            Layout.preferredWidth: 32
-                                            Layout.preferredHeight: 18
-                                            radius: 9
-                                            color: root.showVirtualDevices ? Theme.accent : Qt.rgba(1, 1, 1, 0.15)
-
-                                            Rectangle {
-                                                width: 14; height: 14; radius: 7
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                x: root.showVirtualDevices ? parent.width - width - 2 : 2
-                                                color: root.showVirtualDevices ? (Theme.isDark ? "#101116" : "#ffffff") : (Theme.isDark ? "#bbbbbb" : "#888888")
-                                                Behavior on x { NumberAnimation { duration: 150 } }
-                                            }
-                                        }
-                                    }
-
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.toggleVirtualDevices()
-                                    }
-                                }
-
-                                // SECTION 4: APPLICATION AUDIO STREAMS
+                                // SECTION 3: APPLICATION AUDIO STREAMS
                                 Rectangle {
                                     visible: root.activeAppStreams.length > 0
                                     Layout.fillWidth: true
@@ -2647,6 +2777,69 @@ Item {
                                                 }
                                             }
                                         }
+                                    }
+                                }
+
+                                // SECTION 4: VIRTUAL AUDIO DEVICES PERSISTENT TOGGLE
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 32
+                                    radius: 10
+                                    color: root.showVirtualDevices ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.12) : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65)
+                                    border.width: 1
+                                    border.color: root.showVirtualDevices ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.40) : Theme.outline
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 8
+                                        spacing: 8
+
+                                        Text {
+                                            text: "graphic_eq"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: 14
+                                            color: root.showVirtualDevices ? Theme.accent : Theme.fgDim
+                                        }
+
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 0
+                                            Text {
+                                                text: "Virtual Audio Devices"
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: Theme.fontPx(8)
+                                                font.weight: Font.Bold
+                                                color: root.showVirtualDevices ? Theme.fg : Theme.fgDim
+                                            }
+                                            Text {
+                                                text: "EasyEffects & software sinks (persisted)"
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: Theme.fontPx(6.8)
+                                                color: Theme.fgFaint
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            Layout.preferredWidth: 32
+                                            Layout.preferredHeight: 18
+                                            radius: 9
+                                            color: root.showVirtualDevices ? Theme.accent : Qt.rgba(1, 1, 1, 0.15)
+
+                                            Rectangle {
+                                                width: 14; height: 14; radius: 7
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                x: root.showVirtualDevices ? parent.width - width - 2 : 2
+                                                color: root.showVirtualDevices ? (Theme.isDark ? "#101116" : "#ffffff") : (Theme.isDark ? "#bbbbbb" : "#888888")
+                                                Behavior on x { NumberAnimation { duration: 150 } }
+                                            }
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.toggleVirtualDevices()
                                     }
                                 }
                             }

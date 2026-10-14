@@ -173,15 +173,8 @@ Item {
         return list
     }
 
-    implicitWidth: 280
-    implicitHeight: Math.min(390, Math.max(130, mainListCol.implicitHeight + 36))
-
-    Behavior on implicitHeight {
-        NumberAnimation { duration: 200; easing.bezierCurve: Theme.animCurves.expressiveDefaultSpatial }
-    }
-    Behavior on implicitWidth {
-        NumberAnimation { duration: 180; easing.bezierCurve: Theme.animCurves.expressiveDefaultSpatial }
-    }
+    implicitWidth: 330
+    implicitHeight: Math.min(460, Math.max(140, mainListCol.implicitHeight + 48))
 
     HoverHandler {
         id: hoverHandler
@@ -587,32 +580,6 @@ Item {
                                             elide: Text.ElideRight
                                         }
                                     }
-
-                                    // Options button (Chevron / 3-dots)
-                                    Rectangle {
-                                        width: 22
-                                        height: 22
-                                        radius: 5
-                                        color: optBtnMA.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
-
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: appItemDelegate.isSelected ? "expand_less" : "more_vert"
-                                            font.family: Theme.fontIcon
-                                            font.pixelSize: 14
-                                            color: appItemDelegate.isSelected ? Theme.accent : (optBtnMA.containsMouse ? Theme.fg : Theme.fgDim)
-                                        }
-
-                                        MouseArea {
-                                            id: optBtnMA
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
-                                                root.selectedAppId = appItemDelegate.isSelected ? "" : modelData.id
-                                            }
-                                        }
-                                    }
                                 }
 
                                 MouseArea {
@@ -654,9 +621,10 @@ Item {
                             Rectangle {
                                 id: drawerCard
                                 Layout.fillWidth: true
-                                Layout.leftMargin: 10
-                                Layout.rightMargin: 4
+                                Layout.leftMargin: 8
+                                Layout.rightMargin: 8
                                 implicitHeight: appItemDelegate.isSelected ? (drawerContentCol.implicitHeight + 8) : 0
+                                opacity: appItemDelegate.isSelected ? 1.0 : 0.0
                                 visible: implicitHeight > 0
                                 clip: true
                                 radius: 8
@@ -665,7 +633,10 @@ Item {
                                 border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25)
 
                                 Behavior on implicitHeight {
-                                    NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+                                    NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+                                }
+                                Behavior on opacity {
+                                    NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
                                 }
 
                                 ColumnLayout {

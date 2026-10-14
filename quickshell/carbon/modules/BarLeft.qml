@@ -337,39 +337,6 @@ Item {
                     }
                 }
             }
-
-            /* Divider */
-            Rectangle {
-                Layout.preferredWidth: 1
-                Layout.preferredHeight: 14
-                Layout.alignment: Qt.AlignVCenter
-                color: "#25FFFFFF"
-            }
-
-            /* ── Clean Workspace Label & Morphing Shape ────────────────── */
-            Row {
-                Layout.alignment: Qt.AlignVCenter
-                spacing: 6
-
-                MaterialShape {
-                    width: 14
-                    height: 14
-                    anchors.verticalCenter: parent.verticalCenter
-                    shape: root.getShapeForWs(root.activeWs)
-                    animationDuration: 280
-                    animationEasing: Easing.OutBack
-                    color: Theme.accent
-                }
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Workspace " + root.activeWs
-                    font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: Theme.fontPx(11)
-                    font.weight: Font.Medium
-                    color: Theme.fgDim
-                }
-            }
         }
 
         /* ── Vertical Column for Dock / Edge Mode ─────────────── */
@@ -505,37 +472,6 @@ Item {
                             onClicked: root.switchWorkspace(vWsChip.modelData)
                         }
                     }
-                }
-            }
-
-            /* Divider */
-            Rectangle {
-                Layout.preferredWidth: 16
-                Layout.preferredHeight: 1
-                Layout.alignment: Qt.AlignHCenter
-                color: "#25FFFFFF"
-            }
-
-            /* Active Workspace Label Badge */
-            Column {
-                Layout.alignment: Qt.AlignHCenter
-                spacing: 1
-
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "desktop_windows"
-                    font.family: Theme.fontIcon
-                    font.pixelSize: 13
-                    color: Theme.accent
-                }
-
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "WS " + root.activeWs
-                    font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: Theme.fontPx(9)
-                    font.weight: Font.Bold
-                    color: Theme.fg
                 }
             }
         }

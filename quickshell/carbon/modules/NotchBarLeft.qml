@@ -244,51 +244,6 @@ NotchContainer {
                     }
                 }
             }
-        },
-
-        /* Divider */
-        Rectangle {
-            width: 1
-            height: 14
-            color: Theme.isDark ? Qt.alpha(Theme.fg, 0.18) : Qt.alpha(Theme.fg, 0.25)
-            anchors.verticalCenter: parent.verticalCenter
-        },
-
-        /* 3. Active Workspace / Desktop Badge */
-        Row {
-            spacing: 6
-            anchors.verticalCenter: parent.verticalCenter
-
-            MaterialShape {
-                width: 15
-                height: 15
-                anchors.verticalCenter: parent.verticalCenter
-                shape: root.getShapeForWs(root.activeWs)
-                animationDuration: 280
-                animationEasing: Easing.OutBack
-                color: Theme.accent
-            }
-
-            Column {
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 0
-
-                Text {
-                    text: "Desktop"
-                    font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: Theme.fontPx(8)
-                    font.weight: Font.Medium
-                    color: Theme.isDark ? Theme.fgFaint : Theme.fgDim
-                }
-
-                Text {
-                    text: "Workspace " + root.activeWs
-                    font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: Theme.fontPx(10)
-                    font.weight: Font.Bold
-                    color: Theme.fg
-                }
-            }
         }
     ]
 }
