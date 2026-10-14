@@ -56,6 +56,7 @@ ShellRoot {
         if (keep !== "wifi") { root.wifiOpen = false; root.wifiPinned = false }
         if (keep !== "bt") { root.btOpen = false; root.btPinned = false }
         if (keep !== "calendar") { root.calendarOpen = false; root.calendarPinned = false }
+        if (keep !== "notif") { root.notifOpen = false; root.notifPinned = false }
         if (keep !== "centerDashboard" && keep !== "controls") { root.centerDashboardOpen = false; root.centerDashboardPinned = false }
     }
 
@@ -310,10 +311,39 @@ ShellRoot {
         onTriggered: root.batteryHidden = true
     }
 
-    /* Notification compatibility forwarders (integrated in QuickSettings/Controls) */
-    function openNotif() { root.openControls() }
-    function closeNotif() { root.closeControls() }
-    function toggleNotif() { root.toggleControls() }
+    /* Notification Popup State */
+    property bool notifOpen: false
+    property bool notifPinned: false
+    property bool notifHovered: false
+    property bool notifHidden: true
+
+    function openNotif() {
+        root.closeAllPopupsExcept("notif")
+        root.notifOpen = true
+    }
+    function closeNotif() {
+        root.notifOpen = false
+        root.notifPinned = false
+    }
+    function toggleNotif() {
+        if (root.notifOpen) {
+            root.closeNotif()
+        } else {
+            root.closeAllPopupsExcept("notif")
+            root.notifPinned = true
+            root.notifOpen = true
+        }
+    }
+
+    onNotifOpenChanged: {
+        if (root.notifOpen) { notifOutTimer.stop(); root.notifHidden = false }
+        else { notifOutTimer.restart() }
+    }
+    Timer {
+        id: notifOutTimer
+        interval: 240
+        onTriggered: root.notifHidden = true
+    }
     property bool trayOpen: false
     property bool trayPinned: false
     property bool trayHovered: false
@@ -1728,6 +1758,7 @@ ShellRoot {
                             onOpenTray: root.openTray()
                             onCloseTray: trayLeaveTimer.restart()
                             onToggleTray: root.toggleTray()
+                            onToggleNotif: root.toggleNotif()
                             onToggleControls: root.toggleControls()
                             onOpenPower: root.openPower()
                         }
@@ -1873,6 +1904,7 @@ ShellRoot {
                         onOpenTray: root.openTray()
                         onCloseTray: trayLeaveTimer.restart()
                         onToggleTray: root.toggleTray()
+                        onToggleNotif: root.toggleNotif()
                         onToggleControls: root.toggleControls()
                         onOpenPower: root.openPower()
                     }
@@ -2283,6 +2315,10 @@ ShellRoot {
                 onOpenTray: root.openTray()
                 onCloseTray: trayLeaveTimer.restart()
                 onToggleTray: root.toggleTray()
+                notifCount: (notificationServer && notificationServer.trackedNotifications) ? notificationServer.trackedNotifications.values.length : 0
+                onOpenNotif: root.openNotif()
+                onCloseNotif: root.closeNotif()
+                onToggleNotif: root.toggleNotif()
                 onOpenPower: root.openPower()
             }
         }
@@ -3250,6 +3286,47 @@ ShellRoot {
                 else trayLeaveTimer.restart()
             }
             onRequestedClose: root.closeTray()
+        }
+    }
+
+    /* Notification popup: (Positioned beneath notch in notch mode, right-anchored in bar mode) */
+    PanelWindow {
+        id: notifWindow
+        screen: Quickshell.screens[0]
+        color: "transparent"
+        WlrLayershell.namespace: "carbon-notification-popup"
+        WlrLayershell.layer: WlrLayer.Overlay
+        exclusionMode: ExclusionMode.Ignore
+        anchors {
+            top: root.mainBarEdge !== "bottom" && root.mainBarEdge !== "right"
+            bottom: root.mainBarEdge === "bottom" || root.mainBarEdge === "right"
+            right: root.barMode !== "minimal"
+        }
+        margins {
+            top: root.barMode === "notch" ? 38 : root.popupTopMargin
+            bottom: root.popupBottomMargin
+            right: root.popupRightMargin
+        }
+
+        implicitWidth: notifItem.implicitWidth
+        implicitHeight: notifItem.implicitHeight
+
+        visible: (root.notifOpen || notifItem.animatingOut) && root.mainBarEdge !== "left" && root.barMode !== "minimal"
+
+        mask: Region {
+            item: (root.notifOpen || notifItem.animatingOut) ? notifItem : null
+            x: 0; y: 0
+            width: (root.notifOpen || notifItem.animatingOut) ? notifItem.implicitWidth : 0
+            height: (root.notifOpen || notifItem.animatingOut) ? notifItem.implicitHeight : 0
+        }
+
+        NotificationPopup {
+            id: notifItem
+            barMode: root.barMode
+            barEdge: root.mainBarEdge
+            server: notificationServer
+            open: root.notifOpen
+            onRequestClose: root.closeNotif()
         }
     }
 

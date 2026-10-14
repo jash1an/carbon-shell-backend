@@ -126,7 +126,9 @@ def categorize_app(cls_lower, name_lower, categories):
     haystack = f"{cls_lower} {name_lower} {categories.lower()}"
     if any(k in haystack for k in ["gpu-screen-recorder", "screen_recorder", "recorder", "obs", "wf-recorder"]):
         return "recorder"
-    if any(k in haystack for k in ["spotify", "mixtapes", "muse", "serein", "cider", "vlc", "mpv", "audacious", "music", "audio"]):
+    if any(k in haystack for k in ["serein", "viceverse"]):
+        return "chat"
+    if any(k in haystack for k in ["spotify", "mixtapes", "muse", "cider", "vlc", "mpv", "audacious", "music", "audio"]):
         if "easyeffects" in haystack:
             return "audio"
         return "media"
@@ -136,7 +138,7 @@ def categorize_app(cls_lower, name_lower, categories):
         return "browser"
     if any(k in haystack for k in ["kitty", "alacritty", "foot", "wezterm", "ghostty", "terminal"]):
         return "terminal"
-    if any(k in haystack for k in ["discord", "vesktop", "webcord", "slack", "telegram", "element", "chat"]):
+    if any(k in haystack for k in ["discord", "vesktop", "webcord", "slack", "telegram", "element", "chat", "messaging"]):
         return "chat"
     if any(k in haystack for k in ["steam", "lutris", "heroic", "prism", "game"]):
         return "game"

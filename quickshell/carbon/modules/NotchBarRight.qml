@@ -42,6 +42,9 @@ NotchContainer {
     signal openTray()
     signal closeTray()
     signal toggleTray()
+    signal openNotif()
+    signal closeNotif()
+    signal toggleNotif()
     signal openPower()
 
     /* ── Audio Sink State ────────────────────────────────────────────── */
@@ -259,6 +262,66 @@ NotchContainer {
         },
 
         /* Divider after tray */
+        Rectangle {
+            width: 1
+            height: 14
+            anchors.verticalCenter: parent.verticalCenter
+            color: Qt.alpha(Theme.fg, 0.15)
+            visible: true
+        },
+
+        /* 7. Notification Bell Badge */
+        Item {
+            id: notifBadge
+            width: root.notifCount > 0 ? (notifRow.implicitWidth + 12) : 22
+            height: 22
+            anchors.verticalCenter: parent.verticalCenter
+            readonly property bool isHovered: notifMouse.containsMouse
+
+            scale: isHovered ? 1.15 : 1.0
+            Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
+
+            Rectangle {
+                anchors.fill: parent
+                radius: 6
+                color: notifBadge.isHovered ? Theme.bgHover : (root.notifCount > 0 ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) : "transparent")
+                border.color: notifBadge.isHovered ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.40) : (root.notifCount > 0 ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : "transparent")
+                border.width: 1
+                Behavior on color { ColorAnimation { duration: 120 } }
+            }
+
+            RowLayout {
+                id: notifRow
+                anchors.centerIn: parent
+                spacing: 3
+
+                Text {
+                    text: root.notifCount > 0 ? "notifications_active" : "notifications"
+                    font.family: Theme.fontIcon
+                    font.pixelSize: 15
+                    color: root.notifCount > 0 ? Theme.accentLit : (notifBadge.isHovered ? Theme.accent : Theme.fg)
+                }
+
+                Text {
+                    visible: root.notifCount > 0
+                    text: String(root.notifCount)
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(7.5)
+                    font.weight: Font.Bold
+                    color: Theme.accentLit
+                }
+            }
+
+            MouseArea {
+                id: notifMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.toggleNotif()
+            }
+        },
+
+        /* Divider after notifications */
         Rectangle {
             width: 1
             height: 14

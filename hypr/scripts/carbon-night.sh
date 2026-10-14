@@ -4,37 +4,41 @@
 
 ACTION="$1"
 LOCKFILE="/tmp/carbon-night.on"
+SHADER="/home/zily/.config/hypr/shaders/nightlight.frag"
+
+apply_on() {
+    if command -v hyprsunset >/dev/null 2>&1; then
+        pkill -x hyprsunset >/dev/null 2>&1
+        sleep 0.1
+        (nohup hyprsunset -t 3500 </dev/null >/dev/null 2>&1 &)
+    else
+        hyprctl keyword decoration:screen_shader "$SHADER" >/dev/null 2>&1
+    fi
+    touch "$LOCKFILE"
+}
+
+apply_off() {
+    pkill -x hyprsunset >/dev/null 2>&1
+    hyprctl keyword decoration:screen_shader "" >/dev/null 2>&1
+    rm -f "$LOCKFILE"
+}
 
 case "$ACTION" in
     on)
-        pkill -x hyprsunset >/dev/null 2>&1
-        sleep 0.15
-        (nohup hyprsunset -t 3500 </dev/null >/dev/null 2>&1 &)
-        touch "$LOCKFILE"
+        apply_on
         ;;
     off)
-        pkill -x hyprsunset >/dev/null 2>&1
-        sleep 0.15
-        (nohup hyprsunset -i </dev/null >/dev/null 2>&1 & PID=$!; sleep 0.35; kill $PID 2>/dev/null) &
-        rm -f "$LOCKFILE"
+        apply_off
         ;;
     toggle)
-        if [ -f "$LOCKFILE" ] && pgrep -f "hyprsunset.*-t" >/dev/null 2>&1; then
-            pkill -x hyprsunset >/dev/null 2>&1
-            sleep 0.15
-            (nohup hyprsunset -i </dev/null >/dev/null 2>&1 & PID=$!; sleep 0.35; kill $PID 2>/dev/null) &
-            rm -f "$LOCKFILE"
+        if [ -f "$LOCKFILE" ]; then
+            apply_off
         else
-            pkill -x hyprsunset >/dev/null 2>&1
-            sleep 0.15
-            (nohup hyprsunset -t 3500 </dev/null >/dev/null 2>&1 &)
-            touch "$LOCKFILE"
+            apply_on
         fi
         ;;
     status)
-        if ! command -v hyprsunset >/dev/null 2>&1; then
-            echo "missing"
-        elif [ -f "$LOCKFILE" ] && pgrep -f "hyprsunset.*-t" >/dev/null 2>&1; then
+        if [ -f "$LOCKFILE" ]; then
             echo "on"
         else
             echo "off"

@@ -183,6 +183,20 @@ Rectangle {
                 if (root.notifItem && root.notifItem.unread) {
                     NotificationService.markRead(root.notifItem.id)
                 }
+                var app = root.notifItem ? String(root.notifItem.appName || "").trim() : ""
+                var icon = root.notifItem ? String(root.notifItem.appIcon || "").trim() : ""
+                var term = app.toLowerCase()
+                if (term) {
+                    Quickshell.execDetached(["sh", "-c",
+                        "target=\"" + term + "\"; " +
+                        "addr=$(hyprctl clients -j | jq -r --arg t \"$target\" '.[] | select((.class | ascii_downcase | contains($t)) or (.initialClass | ascii_downcase | contains($t)) or (.title | ascii_downcase | contains($t))) | .address' | head -n1); " +
+                        "if [ -n \"$addr\" ] && [ \"$addr\" != \"null\" ]; then " +
+                        "  hyprctl dispatch focuswindow address:$addr; " +
+                        "else " +
+                        "  gtk-launch \"$target\" 2>/dev/null || gtk-launch \"" + icon + "\" 2>/dev/null || \"$target\" & " +
+                        "fi"
+                    ])
+                }
                 root.expanded = !root.expanded
             }
         }
@@ -250,8 +264,18 @@ Rectangle {
                     fillMode: Image.PreserveAspectFit
                     source: {
                         var icon = root.notifItem ? (root.notifItem.appIcon || "") : ""
-                        if (!icon) return ""
                         if (icon.indexOf("/") !== -1 || icon.startsWith("file:")) return icon
+                        if (icon) {
+                            var p = Quickshell.iconPath(icon, "")
+                            if (p) return p
+                        }
+                        var app = root.notifItem ? (root.notifItem.appName || "") : ""
+                        if (app) {
+                            var pApp = Quickshell.iconPath(app.toLowerCase(), "")
+                            if (pApp) return pApp
+                            var pDash = Quickshell.iconPath(app.toLowerCase().replace(/\s+/g, "-"), "")
+                            if (pDash) return pDash
+                        }
                         return ""
                     }
                     visible: status === Image.Ready && source !== ""

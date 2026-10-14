@@ -8,12 +8,11 @@ import "../Singletons"
 
 /**
  * TrayPopup:
- * Windows-style system tray overflow menu displaying running background applications
- * and system tray applets (Discord, Antigravity, Zen, GPU Screen Recorder, EasyEffects, etc.).
- * Pops up when the user clicks the small up-arrow chevron in the bar.
- * Left-click activates / switches to the app window.
- * Right-click opens a tailored contextual options menu with app-specific features
- * and a compulsory Quit / Close button.
+ * Modern desktop-class system tray and background applications manager.
+ * Displays running background applications and SNI applets in a clean desktop list.
+ * Left-click activates or focuses the application window.
+ * Right-click (or clicking the options button) smoothly expands an inline action
+ * drawer right beneath the app without hiding the other background applications.
  */
 Item {
     id: root
@@ -21,7 +20,7 @@ Item {
     property bool open: false
     property string barEdge: "top"
     property bool hovered: hoverHandler.hovered
-    property var selectedApp: null
+    property string selectedAppId: ""
     signal requestedClose()
 
     clip: true
@@ -29,8 +28,8 @@ Item {
     focus: root.open
     Keys.enabled: root.open
     Keys.onEscapePressed: (event) => {
-        if (root.selectedApp !== null) {
-            root.selectedApp = null
+        if (root.selectedAppId !== "") {
+            root.selectedAppId = ""
             event.accepted = true
         } else {
             root.requestedClose()
@@ -46,8 +45,6 @@ Item {
 
     // 2. Active Background & Desktop Applications (scanned from Hyprland & user processes)
     property var bgApps: []
-    property string hoveredAppName: ""
-    property string hoveredAppSub: ""
 
     Process {
         id: bgAppsProbe
@@ -81,14 +78,12 @@ Item {
     property bool animatingOut: false
     onOpenChanged: {
         if (root.open) {
-            root.selectedApp = null
+            root.selectedAppId = ""
             if (!bgAppsProbe.running) bgAppsProbe.running = true
             root.animatingOut = false
             animatingOutTimer.stop()
         } else {
-            root.selectedApp = null
-            root.hoveredAppName = ""
-            root.hoveredAppSub = ""
+            root.selectedAppId = ""
             root.animatingOut = true
             animatingOutTimer.restart()
         }
@@ -114,10 +109,11 @@ Item {
             var key = ((it.id || "") + " " + (it.title || "")).toLowerCase()
             seenKeys[key] = true
             list.push({
+                id: "sni-" + (it.id || i),
                 isSni: true,
                 rawItem: it,
                 name: it.title || it.tooltipTitle || it.id || "Tray App",
-                sub: "System Tray",
+                sub: "System Tray Applet",
                 icon: it.icon,
                 iconPath: "",
                 hasWindow: false,
@@ -130,7 +126,7 @@ Item {
             })
         }
 
-        // Add Background applications (GPU Screen Recorder, EasyEffects, Discord, etc.)
+        // Add Background applications (GPU Screen Recorder, Serein, Kitty, etc.)
         for (var j = 0; j < bgApps.length; j++) {
             var app = bgApps[j]
             var appKey = (app.class || app.name || "").toLowerCase()
@@ -147,11 +143,19 @@ Item {
                     { id: "quit", label: "Close Application", icon: "close", danger: true, action: "close" }
                 ].filter(function (a) { return a !== null })
 
+                var subText = "Background Process"
+                if (app.hasWindow) {
+                    subText = "Workspace " + app.workspace + " • Active"
+                } else if (app.category) {
+                    subText = app.category.charAt(0).toUpperCase() + app.category.slice(1) + " Daemon"
+                }
+
                 list.push({
+                    id: app.id || ("bg-" + j),
                     isSni: false,
                     rawItem: app,
                     name: app.name || app.title || "App",
-                    sub: app.hasWindow ? ("Workspace " + app.workspace) : (app.category ? (app.category.charAt(0).toUpperCase() + app.category.slice(1)) : "Background Process"),
+                    sub: subText,
                     icon: app.icon || "application-x-executable",
                     iconPath: app.iconPath || "",
                     address: app.address || "",
@@ -169,21 +173,11 @@ Item {
         return list
     }
 
-    readonly property int columns: 4
-    readonly property int rows: Math.max(1, Math.ceil(allItems.length / columns))
-
-    implicitWidth: 216
-    implicitHeight: {
-        if (root.selectedApp) {
-            var acts = root.selectedApp.actions || []
-            var count = Math.max(1, acts.length)
-            return Math.min(320, Math.max(160, count * 32 + 66))
-        }
-        return (allItems.length === 0) ? 74 : (rows * 38 + 58)
-    }
+    implicitWidth: 280
+    implicitHeight: Math.min(390, Math.max(130, mainListCol.implicitHeight + 36))
 
     Behavior on implicitHeight {
-        NumberAnimation { duration: 180; easing.bezierCurve: Theme.animCurves.expressiveDefaultSpatial }
+        NumberAnimation { duration: 200; easing.bezierCurve: Theme.animCurves.expressiveDefaultSpatial }
     }
     Behavior on implicitWidth {
         NumberAnimation { duration: 180; easing.bezierCurve: Theme.animCurves.expressiveDefaultSpatial }
@@ -227,7 +221,7 @@ Item {
     function executeAction(act, app) {
         if (!act || !app) return
 
-        // 1. If action specifies a direct shell command (cmd):
+        // 1. Direct shell command
         if (act.cmd) {
             Quickshell.execDetached(["sh", "-c", act.cmd])
         }
@@ -240,7 +234,7 @@ Item {
                 }
                 Quickshell.execDetached(["hyprctl", "dispatch", "focuswindow", "address:" + app.address])
             }
-            root.selectedApp = null
+            root.selectedAppId = ""
             root.requestedClose()
             return
         }
@@ -249,7 +243,7 @@ Item {
                 Quickshell.execDetached(["hyprctl", "dispatch", "movetoworkspace", "+0,address:" + app.address])
                 Quickshell.execDetached(["hyprctl", "dispatch", "focuswindow", "address:" + app.address])
             }
-            root.selectedApp = null
+            root.selectedAppId = ""
             root.requestedClose()
             return
         }
@@ -257,11 +251,11 @@ Item {
             if (app.hasWindow && app.address) {
                 Quickshell.execDetached(["hyprctl", "dispatch", "togglefloating", "address:" + app.address])
             }
-            root.selectedApp = null
+            root.selectedAppId = ""
             root.requestedClose()
             return
         }
-        // 3. Compulsory close / quit:
+        // 3. Compulsory close / quit
         else if (act.action === "close") {
             if (app.hasWindow && app.address) {
                 Quickshell.execDetached(["hyprctl", "dispatch", "closewindow", "address:" + app.address])
@@ -269,19 +263,19 @@ Item {
             if (app.pid) {
                 Quickshell.execDetached(["kill", String(app.pid)])
             }
-            if (app.class && (app.class.includes("gpu_screen_recorder") || app.class.includes("gpu-screen-recorder"))) {
+            if (app.appClass && (app.appClass.includes("gpu_screen_recorder") || app.appClass.includes("gpu-screen-recorder"))) {
                 Quickshell.execDetached(["sh", "-c", "pkill -f gpu-screen-recorder; flatpak kill com.dec05eba.gpu_screen_recorder 2>/dev/null"])
             }
-            root.selectedApp = null
+            root.selectedAppId = ""
             root.requestedClose()
             bgRefreshTimer.restart()
             if (!bgAppsProbe.running) bgAppsProbe.running = true
             return
         }
-        // 4. Native SNI actions:
+        // 4. Native SNI actions
         else if (act.action === "sniActivate") {
             if (app.rawItem) app.rawItem.activate()
-            root.selectedApp = null
+            root.selectedAppId = ""
             root.requestedClose()
             return
         }
@@ -291,7 +285,7 @@ Item {
             } else if (app.rawItem) {
                 app.rawItem.secondaryActivate()
             }
-            root.selectedApp = null
+            root.selectedAppId = ""
             root.requestedClose()
             return
         }
@@ -303,15 +297,15 @@ Item {
             if (procName) {
                 Quickshell.execDetached(["sh", "-c", "pkill -f " + procName + " 2>/dev/null || true"])
             }
-            root.selectedApp = null
+            root.selectedAppId = ""
             root.requestedClose()
             bgRefreshTimer.restart()
             return
         }
 
-        // Close after executing danger / quit actions
+        // Close after danger actions
         if (act.danger) {
-            root.selectedApp = null
+            root.selectedAppId = ""
             root.requestedClose()
             bgRefreshTimer.restart()
             if (!bgAppsProbe.running) bgAppsProbe.running = true
@@ -347,279 +341,85 @@ Item {
         }
 
         opacity: root.open ? 1.0 : 0.0
-        scale: root.open ? 1.0 : 0.95
+        scale: root.open ? 1.0 : 0.96
         y: root.open ? 0 : (root.barEdge === "bottom" ? -6 : 6)
 
         Behavior on opacity {
             NumberAnimation {
-                duration: root.open ? 200 : 140
+                duration: root.open ? 180 : 130
                 easing.bezierCurve: Theme.animCurves.expressiveDefaultEffects
             }
         }
         Behavior on scale {
             NumberAnimation {
-                duration: root.open ? 280 : 160
+                duration: root.open ? 240 : 150
                 easing.bezierCurve: root.open ? Theme.animCurves.expressiveDefaultSpatial : Theme.animCurves.standardAccel
             }
         }
         Behavior on y {
             NumberAnimation {
-                duration: root.open ? 280 : 160
+                duration: root.open ? 240 : 150
                 easing.bezierCurve: root.open ? Theme.animCurves.expressiveDefaultSpatial : Theme.animCurves.standardAccel
             }
         }
 
-        /* ── VIEW A: Apps Grid (when selectedApp === null) ── */
         ColumnLayout {
+            id: mainLayout
             anchors.fill: parent
-            anchors.margins: 10
-            anchors.leftMargin: root.barMode === "notch" ? 22 : 10
-            spacing: 6
-            visible: root.selectedApp === null
+            anchors.margins: 12
+            anchors.leftMargin: root.barMode === "notch" ? 22 : 12
+            spacing: 8
 
-            // Header: "Background Apps"
+            // Desktop Header: App Icon, Title, Active Count Badge, Close
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 6
-
-                Text {
-                    text: "apps"
-                    font.family: Theme.fontIcon
-                    font.pixelSize: 13
-                    color: Theme.accent
-                }
-
-                Column {
-                    Layout.fillWidth: true
-                    spacing: 0
-
-                    Text {
-                        text: root.hoveredAppName ? root.hoveredAppName : "Background Apps"
-                        font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: Theme.fontPx(9.5)
-                        font.weight: Font.Bold
-                        color: Theme.fg
-                        elide: Text.ElideRight
-                        width: parent.width
-                    }
-
-                    Text {
-                        text: root.hoveredAppSub ? root.hoveredAppSub : (root.allItems.length + " running")
-                        font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: Theme.fontPx(7.5)
-                        color: Theme.fgDim
-                        elide: Text.ElideRight
-                        width: parent.width
-                    }
-                }
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                height: 1
-                color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08)
-            }
-
-            // Grid of Background App Icons
-            Item {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-
-                Text {
-                    anchors.centerIn: parent
-                    visible: root.allItems.length === 0
-                    text: "No background apps"
-                    font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: Theme.fontPx(10)
-                    color: Theme.fgDim
-                }
-
-                Grid {
-                    anchors.centerIn: parent
-                    columns: root.columns
-                    spacing: 8
-                    visible: root.allItems.length > 0
-
-                    Repeater {
-                        model: root.allItems
-                        delegate: Item {
-                            id: slot
-                            required property var modelData
-                            required property int index
-
-                            width: 32
-                            height: 32
-
-                            readonly property bool isHovered: slotMouse.containsMouse
-
-                            onIsHoveredChanged: {
-                                if (isHovered) {
-                                    root.hoveredAppName = slot.modelData.name
-                                    root.hoveredAppSub = slot.modelData.sub
-                                } else if (root.hoveredAppName === slot.modelData.name) {
-                                    root.hoveredAppName = ""
-                                    root.hoveredAppSub = ""
-                                }
-                            }
-
-                            Rectangle {
-                                anchors.fill: parent
-                                radius: 8
-                                color: slot.isHovered ? Theme.bgHover : "transparent"
-                                border.color: slot.isHovered ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45) : "transparent"
-                                border.width: 1
-                                scale: slot.isHovered ? 1.08 : 1.0
-                                Behavior on color { ColorAnimation { duration: 120 } }
-                                Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutBack } }
-                            }
-
-                            Image {
-                                id: appImg
-                                anchors.centerIn: parent
-                                source: {
-                                    if (slot.modelData.isSni) {
-                                        return slot.modelData.rawItem.icon || ""
-                                    } else {
-                                        return slot.modelData.iconPath || Quickshell.iconPath(slot.modelData.icon, "application-x-executable")
-                                    }
-                                }
-                                sourceSize: Qt.size(22, 22)
-                                width: 22
-                                height: 22
-                                fillMode: Image.PreserveAspectFit
-                                smooth: true
-                                mipmap: true
-                            }
-
-                            Text {
-                                anchors.centerIn: parent
-                                visible: appImg.status !== Image.Ready
-                                text: "widgets"
-                                font.family: Theme.fontIcon
-                                font.pixelSize: 16
-                                color: Theme.accent
-                            }
-
-                            MouseArea {
-                                id: slotMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                acceptedButtons: Qt.LeftButton | Qt.RightButton
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: (mouse) => {
-                                    if (mouse.button === Qt.RightButton) {
-                                        // Right Click: Open contextual options menu
-                                        root.selectedApp = slot.modelData
-                                    } else {
-                                        // Left Click: Default quick activate action
-                                        if (slot.modelData.isSni) {
-                                            slot.modelData.rawItem.activate()
-                                            root.requestedClose()
-                                        } else {
-                                            var app = slot.modelData
-                                            if (app.hasWindow && app.address) {
-                                                if (app.workspace > 0) {
-                                                    Quickshell.execDetached(["hyprctl", "dispatch", "workspace", String(app.workspace)])
-                                                }
-                                                Quickshell.execDetached(["hyprctl", "dispatch", "focuswindow", "address:" + app.address])
-                                                root.requestedClose()
-                                            } else {
-                                                if (app.exec) {
-                                                    Quickshell.execDetached(["sh", "-c", app.exec])
-                                                    root.requestedClose()
-                                                } else {
-                                                    // Open options menu if no direct window/exec
-                                                    root.selectedApp = app
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        /* ── VIEW B: App Context Options Menu (when selectedApp !== null) ── */
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 10
-            anchors.leftMargin: root.barMode === "notch" ? 22 : 10
-            spacing: 6
-            visible: root.selectedApp !== null
-
-            // Header: Back button, App Icon, App Name & Subtitle, Close
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 6
+                spacing: 8
 
                 Rectangle {
-                    width: 22
-                    height: 22
-                    radius: 11
-                    color: backMA.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.06)
+                    width: 24
+                    height: 24
+                    radius: 7
+                    color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.15)
                     border.width: 1
-                    border.color: backMA.containsMouse ? Theme.accent : Theme.outline
+                    border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35)
 
                     Text {
                         anchors.centerIn: parent
-                        text: "arrow_back"
+                        text: "widgets"
                         font.family: Theme.fontIcon
-                        font.pixelSize: 12
-                        color: backMA.containsMouse ? Theme.accent : Theme.fgDim
-                    }
-
-                    MouseArea {
-                        id: backMA
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.selectedApp = null
+                        font.pixelSize: 14
+                        color: Theme.accent
                     }
                 }
 
-                Image {
-                    id: selAppImg
-                    width: 20
-                    height: 20
-                    source: {
-                        if (!root.selectedApp) return ""
-                        if (root.selectedApp.isSni) {
-                            return root.selectedApp.rawItem.icon || ""
-                        } else {
-                            return root.selectedApp.iconPath || Quickshell.iconPath(root.selectedApp.icon, "application-x-executable")
-                        }
-                    }
-                    sourceSize: Qt.size(20, 20)
-                    fillMode: Image.PreserveAspectFit
-                    smooth: true
+                Text {
+                    text: "Background Apps"
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(9.5)
+                    font.weight: Font.Bold
+                    color: Theme.fg
                 }
 
-                Column {
-                    Layout.fillWidth: true
-                    spacing: 0
+                Rectangle {
+                    Layout.preferredHeight: 18
+                    Layout.preferredWidth: countTxt.implicitWidth + 10
+                    radius: 9
+                    color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
+                    border.width: 1
+                    border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.30)
 
                     Text {
-                        text: root.selectedApp ? root.selectedApp.name : ""
-                        font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: Theme.fontPx(9)
-                        font.weight: Font.Bold
-                        color: Theme.fg
-                        elide: Text.ElideRight
-                        width: parent.width
-                    }
-
-                    Text {
-                        text: root.selectedApp ? (root.selectedApp.sub || "Options") : ""
+                        id: countTxt
+                        anchors.centerIn: parent
+                        text: root.allItems.length + " active"
                         font.family: "JetBrainsMono Nerd Font"
                         font.pixelSize: Theme.fontPx(7)
+                        font.weight: Font.Bold
                         color: Theme.accentLit
-                        elide: Text.ElideRight
-                        width: parent.width
                     }
                 }
+
+                Item { Layout.fillWidth: true }
 
                 Rectangle {
                     width: 20
@@ -640,7 +440,7 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: root.selectedApp = null
+                        onClicked: root.requestedClose()
                     }
                 }
             }
@@ -651,65 +451,281 @@ Item {
                 color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08)
             }
 
-            // Context Actions List
+            // Desktop App List View with Inline Expandable Drawers
             Flickable {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 contentWidth: width
-                contentHeight: actCol.implicitHeight
+                contentHeight: mainListCol.implicitHeight
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
 
                 ColumnLayout {
-                    id: actCol
+                    id: mainListCol
                     width: parent.width
-                    spacing: 4
+                    spacing: 6
 
+                    // Empty State
+                    Rectangle {
+                        visible: root.allItems.length === 0
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 64
+                        radius: 8
+                        color: Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.30)
+                        border.width: 1
+                        border.color: Theme.outline
+
+                        RowLayout {
+                            anchors.centerIn: parent
+                            spacing: 8
+                            Text {
+                                text: "layers_clear"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: 18
+                                color: Theme.fgFaint
+                            }
+                            Text {
+                                text: "No background apps running"
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(8.5)
+                                color: Theme.fgFaint
+                            }
+                        }
+                    }
+
+                    // App Items Repeater
                     Repeater {
-                        model: (root.selectedApp && root.selectedApp.actions) ? root.selectedApp.actions : []
-                        delegate: Rectangle {
-                            id: actBtn
+                        model: root.allItems
+                        delegate: ColumnLayout {
+                            id: appItemDelegate
                             required property var modelData
+                            required property int index
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 28
-                            radius: 8
-                            color: modelData.danger ? (actBtnMA.containsMouse ? Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.22) : Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.08)) : (actBtnMA.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.04))
-                            border.width: 1
-                            border.color: modelData.danger ? Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.40) : (actBtnMA.containsMouse ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : Theme.outline)
+                            spacing: 3
 
-                            Behavior on color { ColorAnimation { duration: 100 } }
-                            Behavior on border.color { ColorAnimation { duration: 100 } }
+                            readonly property bool isSelected: root.selectedAppId === modelData.id
+                            readonly property bool isRowHovered: rowMA.containsMouse
 
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 8
-                                anchors.rightMargin: 8
-                                spacing: 8
+                            // Main App Tile Row
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 38
+                                radius: 8
+                                color: appItemDelegate.isSelected
+                                       ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
+                                       : (appItemDelegate.isRowHovered ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.04))
+                                border.width: 1
+                                border.color: appItemDelegate.isSelected
+                                              ? Theme.accent
+                                              : (appItemDelegate.isRowHovered ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : Theme.outline)
 
-                                Text {
-                                    text: modelData.icon || (modelData.danger ? "close" : "play_arrow")
-                                    font.family: Theme.fontIcon
-                                    font.pixelSize: 13
-                                    color: modelData.danger ? Theme.err : (actBtnMA.containsMouse ? Theme.accent : Theme.fgDim)
+                                Behavior on color { ColorAnimation { duration: 120 } }
+                                Behavior on border.color { ColorAnimation { duration: 120 } }
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 8
+                                    anchors.rightMargin: 8
+                                    spacing: 8
+
+                                    // App Icon Tile
+                                    Rectangle {
+                                        width: 24
+                                        height: 24
+                                        radius: 6
+                                        color: Qt.rgba(1, 1, 1, 0.05)
+                                        border.width: 1
+                                        border.color: Qt.rgba(1, 1, 1, 0.08)
+
+                                        Image {
+                                            id: appIconImg
+                                            anchors.centerIn: parent
+                                            width: 18
+                                            height: 18
+                                            fillMode: Image.PreserveAspectFit
+                                            source: {
+                                                if (modelData.isSni) {
+                                                    return modelData.rawItem.icon || ""
+                                                }
+                                                return modelData.iconPath || Quickshell.iconPath(modelData.icon, "application-x-executable")
+                                            }
+                                            smooth: true
+                                            mipmap: true
+                                        }
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            visible: appIconImg.status !== Image.Ready
+                                            text: "widgets"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: 13
+                                            color: Theme.accent
+                                        }
+                                    }
+
+                                    // Name & Subtitle
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 0
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: modelData.name || ""
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: Theme.fontPx(8.5)
+                                            font.weight: Font.Bold
+                                            color: appItemDelegate.isSelected ? Theme.accent : Theme.fg
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: modelData.sub || ""
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: Theme.fontPx(7)
+                                            color: appItemDelegate.isSelected ? Theme.accentLit : Theme.fgDim
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+
+                                    // Options button (Chevron / 3-dots)
+                                    Rectangle {
+                                        width: 22
+                                        height: 22
+                                        radius: 5
+                                        color: optBtnMA.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: appItemDelegate.isSelected ? "expand_less" : "more_vert"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: 14
+                                            color: appItemDelegate.isSelected ? Theme.accent : (optBtnMA.containsMouse ? Theme.fg : Theme.fgDim)
+                                        }
+
+                                        MouseArea {
+                                            id: optBtnMA
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                root.selectedAppId = appItemDelegate.isSelected ? "" : modelData.id
+                                            }
+                                        }
+                                    }
                                 }
 
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: modelData.label || ""
-                                    font.family: "JetBrainsMono Nerd Font"
-                                    font.pixelSize: Theme.fontPx(8)
-                                    font.weight: modelData.danger ? Font.Bold : Font.Normal
-                                    color: modelData.danger ? Theme.err : (actBtnMA.containsMouse ? Theme.fg : Theme.fgDim)
-                                    elide: Text.ElideRight
+                                MouseArea {
+                                    id: rowMA
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: (mouse) => {
+                                        if (mouse.button === Qt.RightButton) {
+                                            // Right click: toggle inline options drawer
+                                            root.selectedAppId = appItemDelegate.isSelected ? "" : modelData.id
+                                        } else {
+                                            // Left click: default activation
+                                            if (modelData.isSni) {
+                                                modelData.rawItem.activate()
+                                                root.requestedClose()
+                                            } else {
+                                                if (modelData.hasWindow && modelData.address) {
+                                                    if (modelData.workspace > 0) {
+                                                        Quickshell.execDetached(["hyprctl", "dispatch", "workspace", String(modelData.workspace)])
+                                                    }
+                                                    Quickshell.execDetached(["hyprctl", "dispatch", "focuswindow", "address:" + modelData.address])
+                                                    root.requestedClose()
+                                                } else if (modelData.exec) {
+                                                    Quickshell.execDetached(["sh", "-c", modelData.exec])
+                                                    root.requestedClose()
+                                                } else {
+                                                    // Toggle drawer if no direct window
+                                                    root.selectedAppId = appItemDelegate.isSelected ? "" : modelData.id
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
 
-                            MouseArea {
-                                id: actBtnMA
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.executeAction(modelData, root.selectedApp)
+                            // Inline Expandable Action Drawer (Appears right beneath the app without hiding other apps)
+                            Rectangle {
+                                id: drawerCard
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 10
+                                Layout.rightMargin: 4
+                                implicitHeight: appItemDelegate.isSelected ? (drawerContentCol.implicitHeight + 8) : 0
+                                visible: implicitHeight > 0
+                                clip: true
+                                radius: 8
+                                color: Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.45)
+                                border.width: 1
+                                border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25)
+
+                                Behavior on implicitHeight {
+                                    NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+                                }
+
+                                ColumnLayout {
+                                    id: drawerContentCol
+                                    anchors.top: parent.top
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.margins: 4
+                                    spacing: 3
+
+                                    Repeater {
+                                        model: modelData.actions || []
+                                        delegate: Rectangle {
+                                            id: actBtn
+                                            required property var modelData
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 25
+                                            radius: 6
+                                            color: modelData.danger
+                                                   ? (actMA.containsMouse ? Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.22) : Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.08))
+                                                   : (actMA.containsMouse ? Theme.bgHover : "transparent")
+                                            border.width: 1
+                                            border.color: modelData.danger
+                                                          ? Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.40)
+                                                          : (actMA.containsMouse ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : "transparent")
+
+                                            RowLayout {
+                                                anchors.fill: parent
+                                                anchors.leftMargin: 8
+                                                anchors.rightMargin: 8
+                                                spacing: 6
+
+                                                Text {
+                                                    text: modelData.icon || (modelData.danger ? "close" : "play_arrow")
+                                                    font.family: Theme.fontIcon
+                                                    font.pixelSize: 12
+                                                    color: modelData.danger ? Theme.err : (actMA.containsMouse ? Theme.accent : Theme.fgDim)
+                                                }
+
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    text: modelData.label || ""
+                                                    font.family: "JetBrainsMono Nerd Font"
+                                                    font.pixelSize: Theme.fontPx(7.5)
+                                                    font.weight: modelData.danger ? Font.Bold : Font.Normal
+                                                    color: modelData.danger ? Theme.err : (actMA.containsMouse ? Theme.fg : Theme.fgDim)
+                                                    elide: Text.ElideRight
+                                                }
+                                            }
+
+                                            MouseArea {
+                                                id: actMA
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: root.executeAction(modelData, appItemDelegate.modelData)
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

@@ -40,6 +40,9 @@ Item {
     signal openTray()
     signal closeTray()
     signal toggleTray()
+    signal openNotif()
+    signal closeNotif()
+    signal toggleNotif()
     signal toggleControls()
     signal openPower()
 
@@ -398,6 +401,57 @@ Item {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.toggleBrightness()
+                }
+            }
+
+            /* Notification Bell Badge */
+            Item {
+                id: notifBadge
+                Layout.preferredWidth: root.notifCount > 0 ? (notifRow.implicitWidth + 12) : 26
+                Layout.preferredHeight: 26
+                Layout.alignment: Qt.AlignVCenter
+                readonly property bool isHovered: notifMouse.containsMouse
+
+                scale: isHovered ? 1.15 : 1.0
+                Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 7
+                    color: notifBadge.isHovered ? Theme.bgHover : (root.notifCount > 0 ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) : "transparent")
+                    border.color: notifBadge.isHovered ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.40) : (root.notifCount > 0 ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : "transparent")
+                    border.width: 1
+                    Behavior on color { ColorAnimation { duration: 120 } }
+                }
+
+                RowLayout {
+                    id: notifRow
+                    anchors.centerIn: parent
+                    spacing: 3
+
+                    Text {
+                        text: root.notifCount > 0 ? "notifications_active" : "notifications"
+                        font.family: Theme.fontIcon
+                        font.pixelSize: 15
+                        color: root.notifCount > 0 ? Theme.accentLit : (notifBadge.isHovered ? Theme.accent : Theme.fg)
+                    }
+
+                    Text {
+                        visible: root.notifCount > 0
+                        text: String(root.notifCount)
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(7.5)
+                        font.weight: Font.Bold
+                        color: Theme.accentLit
+                    }
+                }
+
+                MouseArea {
+                    id: notifMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.toggleNotif()
                 }
             }
 
