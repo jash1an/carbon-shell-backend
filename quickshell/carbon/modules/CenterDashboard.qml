@@ -91,6 +91,8 @@ Item {
             animatingOutTimer.stop()
             root.currentDate = new Date()
             root.refreshStates()
+            root.refreshOutputPorts()
+            root.loadAudioSettings()
         } else {
             root.animatingOut = true
             animatingOutTimer.restart()
@@ -252,8 +254,184 @@ Item {
 
     /* ── Audio & Brightness Sliders ───────────────────────────────────── */
     readonly property var audioSink: Pipewire.defaultAudioSink
+    readonly property var defaultSink: audioSink
     readonly property real volRatio: (audioSink && audioSink.audio) ? Math.max(0, Math.min(1.0, audioSink.audio.volume)) : 0.0
     readonly property bool isMuted: (audioSink && audioSink.audio) ? audioSink.audio.muted : false
+
+    /* ── Audio Settings & Persistent Virtual Devices ─────────────────── */
+    property bool showVirtualDevices: false
+    readonly property string audioSettingsPath: root.home + "/.config/carbon/carbon-audio.json"
+
+    FileView {
+        id: audioSettingsFile
+        path: root.audioSettingsPath
+        watchChanges: true
+        blockLoading: true
+        printErrors: false
+        onLoaded: root.loadAudioSettings()
+        onFileChanged: root.loadAudioSettings()
+    }
+
+    function loadAudioSettings() {
+        try {
+            audioSettingsFile.reload()
+            var txt = audioSettingsFile.text().trim()
+            if (txt.length > 0) {
+                var d = JSON.parse(txt)
+                if (d.showVirtualDevices !== undefined) {
+                    root.showVirtualDevices = Boolean(d.showVirtualDevices)
+                }
+            }
+        } catch (e) {}
+    }
+
+    function toggleVirtualDevices() {
+        root.showVirtualDevices = !root.showVirtualDevices
+        var obj = { "showVirtualDevices": root.showVirtualDevices }
+        var jsonStr = JSON.stringify(obj, null, 2)
+        Quickshell.execDetached(["sh", "-c", "mkdir -p $(dirname " + root.audioSettingsPath + ") && printf '%s\\n' '" + jsonStr.replace(/'/g, "'\\''") + "' > " + root.audioSettingsPath])
+    }
+
+    /* ── Pipewire Nodes, Streams & Output Ports ───────────────────────── */
+    readonly property bool pwReady: Pipewire.ready
+    readonly property var allNodes: pwReady ? Pipewire.nodes.values : []
+
+    readonly property var sinks: allNodes.filter(n => {
+        if (!n || !n.audio || n.isStream) return false;
+        var isSink = (n.properties && n.properties["media.class"] === "Audio/Sink") || (n.isSink && (!n.properties || !n.properties["media.class"]));
+        if (!isSink) return false;
+        if (root.showVirtualDevices) return true;
+        var idStr = String((n.properties && (n.properties["media.class"] || n.properties["node.name"])) || n.name || "");
+        return !/virtual|null|stream|easyeffects/i.test(idStr);
+    })
+
+    /* Apps currently routed towards the default sink */
+    PwNodeLinkTracker {
+        id: linkTracker
+        node: root.defaultSink
+    }
+
+    readonly property var streams: linkTracker.linkGroups
+
+    PwObjectTracker {
+        objects: [ root.defaultSink ].filter(n => n !== null)
+    }
+
+    readonly property var activeAppStreams: {
+        if (!root.pwReady) return []
+        let list = []
+        let seenIds = {}
+        if (root.streams) {
+            for (let i = 0; i < root.streams.length; i++) {
+                let lg = root.streams[i]
+                let src = lg ? lg.source : null
+                if (src && src.audio && !seenIds[src.id]) {
+                    const name = String((src.properties && (src.properties["application.name"] || src.properties["node.name"])) || src.name || "")
+                    if (!/easyeffects|speech-dispatcher/i.test(name) || root.showVirtualDevices) {
+                        seenIds[src.id] = true
+                        list.push(src)
+                    }
+                }
+            }
+        }
+        if (root.allNodes) {
+            for (let i = 0; i < root.allNodes.length; i++) {
+                let n = root.allNodes[i]
+                if (n && n.audio && n.isStream && !seenIds[n.id]) {
+                    const mClass = String((n.properties && n.properties["media.class"]) || "")
+                    if (mClass === "Stream/Output/Audio" || !mClass) {
+                        const name = String((n.properties && (n.properties["application.name"] || n.properties["node.name"])) || n.name || "")
+                        if (!/easyeffects|speech-dispatcher/i.test(name) || root.showVirtualDevices) {
+                            seenIds[n.id] = true
+                            list.push(n)
+                        }
+                    }
+                }
+            }
+        }
+        return list
+    }
+
+    function nodeName(n) {
+        if (!n) return "Default Audio Output";
+        const props = n.properties || {};
+        const app = String(props["application.name"] || props["application.process.binary"] || "");
+        if (n.isStream && app && app.trim() !== "" && app !== "?") return app.trim();
+        const alsaChip = String(props["alsa.name"] || props["alsa.mixer_name"] || props["alsa.card_name"] || "");
+        const desc = String(props["node.description"] || n.description || props["device.description"] || n.nickname || "");
+        if (desc && desc.trim() !== "" && desc !== "?") {
+            if (alsaChip && !desc.toLowerCase().includes(alsaChip.toLowerCase())) {
+                return desc.trim() + " (" + alsaChip.trim() + ")";
+            }
+            return desc.trim();
+        }
+        if (alsaChip) return alsaChip;
+        if (app && app.trim() !== "" && app !== "?") return app.trim();
+        return String(n.name || "Audio Device");
+    }
+
+    /* Output ports (Speakers / Headphones routes on the active card) */
+    property var outputPorts: []
+    property string activeOutputPort: ""
+
+    Process {
+        id: sinkProc
+        command: ["pactl", "list", "sinks"]
+        stdout: StdioCollector {
+            id: sinkCollector
+            waitForEnd: true
+        }
+        onExited: (code, status) => root.parseSinks(sinkCollector.text)
+    }
+
+    function refreshOutputPorts() {
+        if (!root.pwReady || !root.defaultSink) return
+        root.activeOutputPort = ""
+        if (!sinkProc.running) sinkProc.running = true
+    }
+
+    function parseSinks(text) {
+        const name = root.defaultSink ? String(root.defaultSink.name || "") : ""
+        let foundPorts = []
+        for (const block of String(text).split(/\r?\nSink #/)) {
+            const nm = /^\tName: (.+)$/m.exec(block)
+            if (name && nm && nm[1] !== name) continue
+            const port = /^\s*Active Port: (.+)$/m.exec(block)
+            if (port) root.activeOutputPort = port[1].trim()
+            const portSection = block.split(/\r?\n\tPorts:\r?\n/)[1]
+            if (portSection) {
+                const portsText = portSection.split(/\r?\n\tActive Port:/)[0]
+                const re = /^\t\t([a-z0-9_.-]+)\s*:\s*([^(]+?)(?:\s*\((.*)\))?$/gmi
+                let m
+                while ((m = re.exec(portsText))) {
+                    const pName = m[1].trim()
+                    let pDesc = m[2].trim()
+                    if (pDesc.length === 0) pDesc = pName
+                    foundPorts.push({ name: pName, desc: pDesc })
+                }
+                if (foundPorts.length > 0) break
+            }
+        }
+        if (foundPorts.length === 0 && name.includes("analog")) {
+            foundPorts = [
+                { name: "analog-output-speaker", desc: "Speakers" },
+                { name: "analog-output-headphones", desc: "Headphones" }
+            ]
+        }
+        root.outputPorts = foundPorts
+    }
+
+    function selectOutputPort(portName) {
+        if (!root.defaultSink) return
+        Quickshell.execDetached(["pactl", "set-sink-port", root.defaultSink.name, portName])
+        Quickshell.execDetached(["amixer", "-q", "sset", "Master", "unmute"])
+        if (/speaker/i.test(portName)) {
+            Quickshell.execDetached(["amixer", "-q", "sset", "Speaker", "unmute", "100%"])
+        } else if (/headphone/i.test(portName)) {
+            Quickshell.execDetached(["amixer", "-q", "sset", "Headphone", "unmute", "100%"])
+        }
+        root.activeOutputPort = portName
+    }
 
     property real brightRatio: 0.5
     property real brightMax: 1
@@ -288,7 +466,7 @@ Item {
     /* ── Notifications Integration ────────────────────────────────────── */
     readonly property var notifItems: NotificationService.list || []
     readonly property int notifCount: notifItems.length
-    property int centerTab: 0 // 0: Notifications, 1: Calendar
+    property int centerTab: 0 // 0: Notifications, 1: Calendar, 2: Audio
 
     function dismissAllNotifs() {
         NotificationService.clearAll()
@@ -338,6 +516,7 @@ Item {
 
     Component.onCompleted: {
         root.refreshStates()
+        root.loadAudioSettings()
     }
 
     /* ── Main Panel Card ─────────────────────────────────────────────── */
@@ -861,13 +1040,38 @@ Item {
                             }
 
                             Text {
-                                Layout.preferredWidth: 28
+                                Layout.preferredWidth: 26
                                 horizontalAlignment: Text.AlignRight
                                 text: Math.round((root.isMuted ? 0 : root.volRatio) * 100) + "%"
                                 font.family: "JetBrainsMono Nerd Font"
                                 font.pixelSize: Theme.fontPx(8)
                                 font.weight: Font.Bold
                                 color: Theme.fgDim
+                            }
+
+                            // Quick jump to Audio tab in Center Column
+                            Rectangle {
+                                width: 22; height: 22; radius: 11
+                                color: audioJumpMH.containsMouse ? Theme.bgHover : (root.centerTab === 2 ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.20) : "transparent")
+                                border.width: 1
+                                border.color: root.centerTab === 2 ? Theme.accent : (audioJumpMH.containsMouse ? Theme.outline : "transparent")
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "tune"
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: 13
+                                    color: root.centerTab === 2 ? Theme.accent : Theme.fgDim
+                                }
+                                MouseArea {
+                                    id: audioJumpMH
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.centerTab = 2
+                                        root.refreshOutputPorts()
+                                    }
+                                }
                             }
                         }
 
@@ -930,7 +1134,7 @@ Item {
                             }
 
                             Text {
-                                Layout.preferredWidth: 28
+                                Layout.preferredWidth: 26
                                 horizontalAlignment: Text.AlignRight
                                 text: Math.round(root.brightRatio * 100) + "%"
                                 font.family: "JetBrainsMono Nerd Font"
@@ -938,6 +1142,8 @@ Item {
                                 font.weight: Font.Bold
                                 color: Theme.fgDim
                             }
+
+                            Item { width: 22; height: 22 }
                         }
                     }
                 }
@@ -1042,6 +1248,61 @@ Item {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: root.centerTab = 1
+                        }
+                    }
+
+                    // Audio Tab Pill
+                    Rectangle {
+                        Layout.preferredHeight: 24
+                        Layout.preferredWidth: audioTabRow.implicitWidth + 16
+                        radius: 12
+                        color: root.centerTab === 2 ? Theme.accent : (audioTabHov.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.06))
+                        border.width: 1
+                        border.color: root.centerTab === 2 ? Theme.accentLit : Theme.outline
+
+                        RowLayout {
+                            id: audioTabRow
+                            anchors.centerIn: parent
+                            spacing: 4
+                            Text {
+                                text: "tune"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: 13
+                                color: root.centerTab === 2 ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                            }
+                            Text {
+                                text: "Audio"
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(8.5)
+                                font.weight: Font.Bold
+                                color: root.centerTab === 2 ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                            }
+                            Rectangle {
+                                visible: root.activeAppStreams.length > 0
+                                Layout.preferredHeight: 14
+                                Layout.preferredWidth: strmCntTxt.implicitWidth + 6
+                                radius: 7
+                                color: root.centerTab === 2 ? (Theme.isDark ? Qt.rgba(0,0,0,0.3) : Qt.rgba(1,1,1,0.4)) : Theme.accent
+                                Text {
+                                    id: strmCntTxt
+                                    anchors.centerIn: parent
+                                    text: String(root.activeAppStreams.length)
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(7)
+                                    font.weight: Font.Bold
+                                    color: root.centerTab === 2 ? (Theme.isDark ? "#ffffff" : "#101116") : (Theme.isDark ? "#101116" : "#ffffff")
+                                }
+                            }
+                        }
+                        MouseArea {
+                            id: audioTabHov
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                root.centerTab = 2
+                                root.refreshOutputPorts()
+                            }
                         }
                     }
 
@@ -1389,6 +1650,478 @@ Item {
                                             cursorShape: isCurrentMonth ? Qt.PointingHandCursor : Qt.ArrowCursor
                                             onClicked: {
                                                 if (isCurrentMonth) root.selectedDay = dayNum
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ── View C: Audio Devices, Apps Volume & Virtual Devices Toggle ──
+                    Item {
+                        anchors.fill: parent
+                        visible: root.centerTab === 2
+
+                        Flickable {
+                            id: audioFlick
+                            anchors.fill: parent
+                            contentWidth: width
+                            contentHeight: audioCol.implicitHeight
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+
+                            ScrollBar.vertical: ScrollBar {
+                                parent: audioFlick
+                                anchors.right: audioFlick.right
+                                anchors.top: audioFlick.top
+                                anchors.bottom: audioFlick.bottom
+                                width: 4
+                                policy: ScrollBar.AsNeeded
+                                contentItem: Rectangle {
+                                    implicitWidth: 4
+                                    radius: 2
+                                    color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45)
+                                }
+                            }
+
+                            ColumnLayout {
+                                id: audioCol
+                                width: parent.width - 6
+                                spacing: 8
+
+                                // 1. Virtual Devices Toggle Card
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 34
+                                    radius: 10
+                                    color: root.showVirtualDevices ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.12) : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65)
+                                    border.width: 1
+                                    border.color: root.showVirtualDevices ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.40) : Theme.outline
+
+                                    Behavior on color { ColorAnimation { duration: 150 } }
+                                    Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 8
+                                        anchors.rightMargin: 8
+                                        spacing: 8
+
+                                        Text {
+                                            text: "tune"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: 14
+                                            color: root.showVirtualDevices ? Theme.accent : Theme.fgDim
+                                        }
+
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 0
+                                            Text {
+                                                text: "Virtual Audio Devices"
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: Theme.fontPx(8)
+                                                font.weight: Font.Bold
+                                                color: root.showVirtualDevices ? Theme.fg : Theme.fgDim
+                                            }
+                                            Text {
+                                                text: "EasyEffects & software sinks"
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: Theme.fontPx(6.8)
+                                                color: Theme.fgFaint
+                                            }
+                                        }
+
+                                        // Switch Pill
+                                        Rectangle {
+                                            Layout.preferredWidth: 32
+                                            Layout.preferredHeight: 18
+                                            radius: 9
+                                            color: root.showVirtualDevices ? Theme.accent : Qt.rgba(1, 1, 1, 0.15)
+                                            Behavior on color { ColorAnimation { duration: 150 } }
+
+                                            Rectangle {
+                                                width: 14
+                                                height: 14
+                                                radius: 7
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                x: root.showVirtualDevices ? parent.width - width - 2 : 2
+                                                color: root.showVirtualDevices ? (Theme.isDark ? "#101116" : "#ffffff") : (Theme.isDark ? "#bbbbbb" : "#888888")
+                                                Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                                            }
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.toggleVirtualDevices()
+                                    }
+                                }
+
+                                // 2A. Output Ports (Speakers / Headphones)
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 4
+                                    visible: root.outputPorts.length > 0
+
+                                    Text {
+                                        text: "Output Port"
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(7.5)
+                                        font.weight: Font.Bold
+                                        color: Theme.fgFaint
+                                    }
+
+                                    Repeater {
+                                        model: root.outputPorts
+                                        delegate: Rectangle {
+                                            required property var modelData
+                                            readonly property bool isActive: root.activeOutputPort === modelData.name
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 28
+                                            radius: 8
+                                            color: isActive ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16) : (portMH.containsMouse ? Theme.bgHover : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.40))
+                                            border.width: 1
+                                            border.color: isActive ? Theme.accent : (portMH.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : Theme.outline)
+
+                                            RowLayout {
+                                                anchors.fill: parent
+                                                anchors.leftMargin: 8
+                                                anchors.rightMargin: 8
+                                                spacing: 6
+
+                                                Rectangle {
+                                                    width: 12; height: 12; radius: 6
+                                                    color: isActive ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25) : "transparent"
+                                                    border.width: 1.5
+                                                    border.color: isActive ? Theme.accent : Theme.fgFaint
+                                                    Rectangle {
+                                                        anchors.centerIn: parent
+                                                        width: 5; height: 5; radius: 2.5
+                                                        color: Theme.accent
+                                                        visible: isActive
+                                                    }
+                                                }
+
+                                                Text {
+                                                    text: /headphone|headset/i.test(modelData.desc || modelData.name) ? "headphones" : "volume_up"
+                                                    font.family: Theme.fontIcon
+                                                    font.pixelSize: 13
+                                                    color: isActive ? Theme.accent : Theme.fgDim
+                                                }
+
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    text: modelData.desc || modelData.name
+                                                    font.family: "JetBrainsMono Nerd Font"
+                                                    font.pixelSize: Theme.fontPx(7.8)
+                                                    font.weight: isActive ? Font.Bold : Font.Normal
+                                                    color: isActive ? Theme.fg : Theme.fgDim
+                                                    elide: Text.ElideRight
+                                                }
+
+                                                Text {
+                                                    visible: isActive
+                                                    text: "check"
+                                                    font.family: Theme.fontIcon
+                                                    font.pixelSize: 12
+                                                    color: Theme.accent
+                                                }
+                                            }
+
+                                            MouseArea {
+                                                id: portMH
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: root.selectOutputPort(modelData.name)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 2B. Audio Devices List (Sinks)
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 4
+
+                                    Text {
+                                        text: "Output Devices"
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(7.5)
+                                        font.weight: Font.Bold
+                                        color: Theme.fgFaint
+                                    }
+
+                                    Repeater {
+                                        model: root.sinks
+                                        delegate: Rectangle {
+                                            id: sinkCard
+                                            required property var modelData
+                                            readonly property var node: modelData
+                                            readonly property bool isDefault: root.defaultSink && root.defaultSink.id === node.id
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 30
+                                            radius: 8
+                                            color: isDefault ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16) : (sinkMH.containsMouse ? Theme.bgHover : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.40))
+                                            border.width: 1
+                                            border.color: isDefault ? Theme.accent : (sinkMH.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : Theme.outline)
+
+                                            RowLayout {
+                                                anchors.fill: parent
+                                                anchors.leftMargin: 8
+                                                anchors.rightMargin: 8
+                                                spacing: 6
+
+                                                Rectangle {
+                                                    width: 12; height: 12; radius: 6
+                                                    color: isDefault ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25) : "transparent"
+                                                    border.width: 1.5
+                                                    border.color: isDefault ? Theme.accent : Theme.fgFaint
+                                                    Rectangle {
+                                                        anchors.centerIn: parent
+                                                        width: 5; height: 5; radius: 2.5
+                                                        color: Theme.accent
+                                                        visible: isDefault
+                                                    }
+                                                }
+
+                                                Text {
+                                                    text: {
+                                                        const nm = (node.name || "") + " " + (node.description || "")
+                                                        if (/easyeffects/i.test(nm)) return "graphic_eq"
+                                                        if (/bluez|bluetooth/i.test(nm)) return "bluetooth_audio"
+                                                        if (/hdmi/i.test(nm)) return "tv"
+                                                        if (/headphone|headset/i.test(nm)) return "headphones"
+                                                        if (/usb/i.test(nm)) return "speaker"
+                                                        return "volume_up"
+                                                    }
+                                                    font.family: Theme.fontIcon
+                                                    font.pixelSize: 13
+                                                    color: isDefault ? Theme.accent : Theme.fgDim
+                                                }
+
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    text: root.nodeName(node)
+                                                    font.family: "JetBrainsMono Nerd Font"
+                                                    font.pixelSize: Theme.fontPx(7.8)
+                                                    font.weight: isDefault ? Font.Bold : Font.Normal
+                                                    color: isDefault ? Theme.fg : Theme.fgDim
+                                                    elide: Text.ElideRight
+                                                }
+
+                                                Text {
+                                                    visible: isDefault
+                                                    text: "check"
+                                                    font.family: Theme.fontIcon
+                                                    font.pixelSize: 12
+                                                    color: Theme.accent
+                                                }
+                                            }
+
+                                            MouseArea {
+                                                id: sinkMH
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    Pipewire.preferredDefaultAudioSink = node
+                                                    Quickshell.execDetached(["wpctl", "set-default", String(node.id)])
+                                                    root.refreshOutputPorts()
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        visible: root.sinks.length === 0
+                                        Layout.fillWidth: true
+                                        text: "No audio output devices found"
+                                        font.family: "JetBrainsMono Nerd Font"
+                                        font.pixelSize: Theme.fontPx(7.5)
+                                        color: Theme.fgFaint
+                                        horizontalAlignment: Text.AlignHCenter
+                                    }
+                                }
+
+                                // 3. Application Volumes Section
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 4
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Text {
+                                            text: "Application Volumes"
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: Theme.fontPx(7.5)
+                                            font.weight: Font.Bold
+                                            color: Theme.fgFaint
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        Text {
+                                            visible: root.activeAppStreams.length > 0
+                                            text: root.activeAppStreams.length + " active"
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: Theme.fontPx(6.8)
+                                            color: Theme.accentLit
+                                        }
+                                    }
+
+                                    Repeater {
+                                        model: root.activeAppStreams
+                                        delegate: Rectangle {
+                                            id: appCard
+                                            required property var modelData
+                                            readonly property var node: modelData
+                                            readonly property bool appMuted: (node && node.audio) ? node.audio.muted : false
+                                            readonly property real appVol: (node && node.audio) ? Math.max(0, Math.min(1.0, node.audio.volume)) : 0.0
+
+                                            PwObjectTracker { objects: node ? [node] : [] }
+
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 46
+                                            radius: 10
+                                            color: Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.50)
+                                            border.width: 1
+                                            border.color: Theme.outline
+
+                                            ColumnLayout {
+                                                anchors.fill: parent
+                                                anchors.margins: 6
+                                                spacing: 4
+
+                                                // Top row: App Icon, Name, Mute Icon, App %
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: 6
+
+                                                    Rectangle {
+                                                        width: 18; height: 18; radius: 9
+                                                        color: appMuteMH.containsMouse ? Theme.bgHover : "transparent"
+                                                        Text {
+                                                            anchors.centerIn: parent
+                                                            text: appCard.appMuted ? "volume_off" : "volume_down"
+                                                            font.family: Theme.fontIcon
+                                                            font.pixelSize: 12
+                                                            color: appCard.appMuted ? Theme.err : Theme.accent
+                                                        }
+                                                        MouseArea {
+                                                            id: appMuteMH
+                                                            anchors.fill: parent
+                                                            hoverEnabled: true
+                                                            cursorShape: Qt.PointingHandCursor
+                                                            onClicked: {
+                                                                if (appCard.node && appCard.node.audio) {
+                                                                    appCard.node.audio.muted = !appCard.node.audio.muted
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    Text {
+                                                        Layout.fillWidth: true
+                                                        text: root.nodeName(appCard.node)
+                                                        font.family: "JetBrainsMono Nerd Font"
+                                                        font.pixelSize: Theme.fontPx(7.8)
+                                                        font.weight: Font.Bold
+                                                        color: appCard.appMuted ? Theme.fgFaint : Theme.fg
+                                                        elide: Text.ElideRight
+                                                    }
+
+                                                    Text {
+                                                        text: Math.round((appCard.appMuted ? 0 : appCard.appVol) * 100) + "%"
+                                                        font.family: "JetBrainsMono Nerd Font"
+                                                        font.pixelSize: Theme.fontPx(7.2)
+                                                        font.weight: Font.Bold
+                                                        color: Theme.fgDim
+                                                    }
+                                                }
+
+                                                // Bottom row: Interactive Slider Track
+                                                Item {
+                                                    id: appVolTrack
+                                                    Layout.fillWidth: true
+                                                    Layout.preferredHeight: 12
+
+                                                    Rectangle {
+                                                        anchors.fill: parent
+                                                        radius: 6
+                                                        color: Qt.rgba(1, 1, 1, 0.08)
+                                                    }
+
+                                                    Rectangle {
+                                                        height: parent.height
+                                                        width: Math.max(0, Math.min(parent.width, parent.width * (appCard.appMuted ? 0 : appCard.appVol)))
+                                                        radius: 6
+                                                        color: appCard.appMuted ? Theme.fgFaint : Theme.accent
+                                                        Behavior on width {
+                                                            enabled: !appVolMA.pressed
+                                                            NumberAnimation { duration: 80 }
+                                                        }
+                                                    }
+
+                                                    MouseArea {
+                                                        id: appVolMA
+                                                        anchors.fill: parent
+                                                        preventStealing: true
+                                                        hoverEnabled: true
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        function setAppVol(mx) {
+                                                            var r = Math.max(0, Math.min(1.0, mx / appVolTrack.width))
+                                                            if (appCard.node && appCard.node.audio) {
+                                                                appCard.node.audio.volume = r
+                                                                if (appCard.node.audio.muted && r > 0) appCard.node.audio.muted = false
+                                                            }
+                                                        }
+                                                        onPressed: mouse => setAppVol(mouse.x)
+                                                        onPositionChanged: mouse => { if (pressed) setAppVol(mouse.x) }
+                                                    }
+
+                                                    WheelHandler {
+                                                        target: appVolTrack
+                                                        onWheel: (event) => {
+                                                            var step = event.angleDelta.y > 0 ? 0.04 : -0.04
+                                                            if (appCard.node && appCard.node.audio) {
+                                                                var nv = Math.max(0, Math.min(1.0, appCard.appVol + step))
+                                                                appCard.node.audio.volume = nv
+                                                                if (appCard.node.audio.muted && step > 0) appCard.node.audio.muted = false
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Empty state when no apps playing audio
+                                    Rectangle {
+                                        visible: root.activeAppStreams.length === 0
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 46
+                                        radius: 10
+                                        color: Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.30)
+                                        border.width: 1
+                                        border.color: Theme.outline
+
+                                        RowLayout {
+                                            anchors.centerIn: parent
+                                            spacing: 6
+                                            Text {
+                                                text: "music_off"
+                                                font.family: Theme.fontIcon
+                                                font.pixelSize: 14
+                                                color: Theme.fgFaint
+                                            }
+                                            Text {
+                                                text: "No active audio streams playing"
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: Theme.fontPx(7.5)
+                                                color: Theme.fgFaint
                                             }
                                         }
                                     }
