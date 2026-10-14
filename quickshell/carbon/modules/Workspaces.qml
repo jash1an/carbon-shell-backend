@@ -161,7 +161,7 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Hyprland.dispatch("hl.dsp.focus({ workspace = " + String(modelData) + " })")
+                    onClicked: Quickshell.execDetached(["hyprctl", "dispatch", "workspace", String(modelData)])
                     onEntered: root.hoverIndex = index
                     onExited: root.hoverIndex = -1
                 }

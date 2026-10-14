@@ -98,10 +98,6 @@ Item {
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         acceptedButtons: Qt.LeftButton | Qt.RightButton
-        onEntered: {
-            if (!root.hudActive) root.openCenterDashboard()
-        }
-        onExited: root.closeCenterDashboard()
         onClicked: (mouse) => {
             if (root.hudActive) {
                 HudService.dismiss()
@@ -110,7 +106,7 @@ Item {
             if (mouse.button === Qt.RightButton) {
                 root.togglePlayPause()
             } else {
-                root.toggleCenterDashboard()
+                root.toggleControls()
             }
         }
     }

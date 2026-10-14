@@ -20,7 +20,8 @@ NotchContainer {
     earWidth: 20
     contentSpacing: 7
 
-    signal openLauncher()
+    signal openSpotlight()
+    signal toggleSpotlight()
 
     /* Hyprland workspace tracking */
     property int activeWs: 1
@@ -53,7 +54,7 @@ NotchContainer {
 
     function switchWorkspace(id) {
         root.activeWs = id
-        Quickshell.execDetached(["hyprctl", "eval", "local fn = require('hyprland.functions'); fn.wsaction('focus', '', " + id + ")()"])
+        Quickshell.execDetached(["hyprctl", "dispatch", "workspace", String(id)])
     }
 
     Connections {
@@ -179,7 +180,7 @@ NotchContainer {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.openLauncher()
+                onClicked: root.toggleSpotlight()
             }
         },
 

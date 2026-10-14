@@ -562,11 +562,16 @@ Item {
             }
         }
 
-        transformOrigin: root.corner === "top_left" ? Item.TopLeft :
-                         (root.corner === "bottom_left" ? Item.BottomLeft : Item.BottomRight)
+        transformOrigin: (root.corner === "top_center" || root.corner === "center") ? Item.Top :
+                         (root.corner === "bottom_center" ? Item.Bottom :
+                         (root.corner === "top_left" ? Item.TopLeft :
+                         (root.corner === "bottom_left" ? Item.BottomLeft : Item.BottomRight)))
 
-        x: (root.corner === "top_left" || root.corner === "bottom_left") ? (root.open ? 0 : -14) : (root.open ? 0 : 14)
-        y: root.corner === "top_left" ? (root.open ? 0 : -14) : (root.open ? 0 : 14)
+        x: (root.corner === "top_center" || root.corner === "center" || root.corner === "bottom_center") ? 0 :
+           ((root.corner === "top_left" || root.corner === "bottom_left") ? (root.open ? 0 : -14) : (root.open ? 0 : 14))
+        y: (root.corner === "top_center" || root.corner === "center") ? (root.open ? 0 : -12) :
+           (root.corner === "bottom_center" ? (root.open ? 0 : 12) :
+           (root.corner === "top_left" ? (root.open ? 0 : -14) : (root.open ? 0 : 14)))
         scale: root.open ? 1.0 : 0.97
         opacity: root.open ? 1.0 : 0.0
 

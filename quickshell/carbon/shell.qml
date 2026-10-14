@@ -800,12 +800,11 @@ ShellRoot {
     property string centerEdge: "top"
     property string rightEdge: "top"
 
-    /* Panel corner placement for Quick Settings:
-     * - Bottom edge -> "top_left"
-     * - Top edge (default) -> "bottom_right"
+    /* Panel corner placement for Quick Settings (Control Center):
+     * Centered horizontally below/above the bar/notch
      */
     readonly property string controlsCorner: {
-        return (root.mainBarEdge === "bottom" || root.barEdge === "bottom") ? "top_left" : "bottom_right"
+        return (root.mainBarEdge === "bottom" || root.barEdge === "bottom") ? "bottom_center" : "top_center"
     }
 
     property int notchEarRadius: 10
@@ -1718,12 +1717,12 @@ ShellRoot {
                             id: pillCenterItem
                             anchors.centerIn: parent
                             barContent: root.musicBarContent
-                            onOpenCenterDashboard: root.openCenterDashboard()
-                            onCloseCenterDashboard: centerDashboardLeaveTimer.restart()
-                            onToggleCenterDashboard: root.toggleCenterDashboard()
-                            onToggleMusic: root.toggleCenterDashboard()
-                            onOpenMusic: root.openCenterDashboard()
-                            onToggleControls: root.toggleCenterDashboard()
+                            onOpenCenterDashboard: root.openControls()
+                            onCloseCenterDashboard: controlsLeaveTimer.restart()
+                            onToggleCenterDashboard: root.toggleControls()
+                            onToggleMusic: root.toggleControls()
+                            onOpenMusic: root.openControls()
+                            onToggleControls: root.toggleControls()
                         }
 
                         /* Right: System Tray & Controls */
@@ -2250,7 +2249,8 @@ ShellRoot {
                 anchors.left: parent.left
                 leftFillet: false
                 rightFillet: true
-                onOpenLauncher: root.openLauncher()
+                onToggleSpotlight: root.toggleSpotlight()
+                onOpenSpotlight: root.toggleSpotlight()
             }
 
             NotchBarCenter {
@@ -2258,21 +2258,21 @@ ShellRoot {
                 notchOpacity: root.notchOpacity
                 filletRadius: root.notchEarRadius
                 bottomRadius: root.notchBottomRadius
-                isExpanded: root.centerDashboardOpen
+                isExpanded: false
                 visible: root.musicBarEdge === root.mainBarEdge
                 barContent: root.musicBarContent
                 attachedBottom: root.mainBarEdge === "bottom"
-                hasAttachedPopup: (root.calendarOpen || root.smallMusicOpen) && !root.centerDashboardOpen
+                hasAttachedPopup: root.controlsVisible
                 anchors.top: root.mainBarEdge !== "bottom" ? parent.top : undefined
                 anchors.bottom: root.mainBarEdge === "bottom" ? parent.bottom : undefined
                 anchors.horizontalCenter: parent.horizontalCenter
                 leftFillet: true
                 rightFillet: true
-                onToggleCenterDashboard: root.toggleCenterDashboard()
-                onCloseCenterDashboard: root.closeCenterDashboard()
-                onToggleMusic: root.toggleCenterDashboard()
-                onOpenMusic: root.toggleCenterDashboard()
-                onToggleControls: root.toggleCenterDashboard()
+                onToggleCenterDashboard: root.toggleControls()
+                onCloseCenterDashboard: root.closeControls()
+                onToggleMusic: root.toggleControls()
+                onOpenMusic: root.openControls()
+                onToggleControls: root.toggleControls()
             }
 
             NotchBarRight {
@@ -2803,16 +2803,16 @@ ShellRoot {
                 id: separateNotchCenter
                 barContent: root.musicBarContent
                 attachedBottom: root.musicBarEdge === "bottom"
-                hasAttachedPopup: root.centerDashboardOpen || root.calendarOpen || root.smallMusicOpen
+                hasAttachedPopup: root.controlsVisible
                 anchors.fill: parent
-                onOpenMusicHover: root.openCenterDashboard()
-                onCloseMusicHover: centerDashboardLeaveTimer.restart()
-                onOpenCenterDashboard: root.openCenterDashboard()
-                onCloseCenterDashboard: centerDashboardLeaveTimer.restart()
-                onToggleCenterDashboard: root.toggleCenterDashboard()
-                onToggleMusic: root.toggleCenterDashboard()
-                onOpenMusic: root.openCenterDashboard()
-                onToggleControls: root.toggleCenterDashboard()
+                onOpenMusicHover: {}
+                onCloseMusicHover: {}
+                onOpenCenterDashboard: root.openControls()
+                onCloseCenterDashboard: controlsLeaveTimer.restart()
+                onToggleCenterDashboard: root.toggleControls()
+                onToggleMusic: root.toggleControls()
+                onOpenMusic: root.openControls()
+                onToggleControls: root.toggleControls()
             }
         }
     }
@@ -3340,6 +3340,8 @@ ShellRoot {
         anchors {
             top: root.mainBarEdge !== "bottom"
             bottom: root.mainBarEdge === "bottom"
+            left: true
+            right: true
         }
         margins {
             top: root.popupTopMargin
@@ -3611,44 +3613,41 @@ ShellRoot {
     }
 
 
-    /* Quick-settings panel: now-playing strip over the quick toggles, positioned
-     * dynamically according to root.controlsCorner ("bottom_right", "top_left", or "bottom_left"). */
+    /* Quick-settings panel (Control Center): positioned in the middle,
+     * integrated with notch mode, minimal island mode, and bar mode */
     PanelWindow {
         id: controlsWindow
         screen: Quickshell.screens[0]
         color: "transparent"
         WlrLayershell.namespace: "carbon-controls"
         WlrLayershell.layer: WlrLayer.Overlay
-        WlrLayershell.keyboardFocus: root.controlsVisible ? (root.barMode === "minimal" ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand) : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: root.controlsVisible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
         exclusionMode: ExclusionMode.Ignore
 
         anchors {
-            top: root.controlsCorner === "top_left"
-            bottom: root.controlsCorner !== "top_left"
-            left: root.controlsCorner === "top_left" || root.controlsCorner === "bottom_left"
-            right: root.controlsCorner === "bottom_right"
+            top: root.mainBarEdge !== "bottom"
+            bottom: root.mainBarEdge === "bottom"
+            left: true
+            right: true
         }
         margins {
-            top: 0
-            bottom: 0
+            top: root.mainBarEdge === "bottom" ? 0 : (root.barMode === "notch" ? (root.notchHeight + 4) : (root.barMode === "minimal" ? 44 : root.popupTopMargin))
+            bottom: root.mainBarEdge === "bottom" ? (root.barMode === "notch" ? (root.notchHeight + 4) : (root.barMode === "minimal" ? 44 : root.popupBottomMargin)) : 0
             left: 0
             right: 0
         }
 
-        implicitWidth: controlsItem.implicitWidth
         implicitHeight: controlsItem.implicitHeight
 
         mask: Region {
-            item: (root.controlsVisible || controlsItem.animatingOut) ? controlsItem : null
-            x: 0; y: 0
-            width: (root.controlsVisible || controlsItem.animatingOut) ? controlsItem.implicitWidth : 0
-            height: (root.controlsVisible || controlsItem.animatingOut) ? controlsItem.implicitHeight : 0
+            item: (root.controlsVisible || controlsItem.animatingOut) ? controlsItem.cardItem : null
         }
 
         visible: (root.controlsVisible || controlsItem.animatingOut)
 
         QuickSettings {
             id: controlsItem
+            anchors.horizontalCenter: parent.horizontalCenter
             focus: root.controlsVisible
             Keys.onEscapePressed: event => {
                 root.closeControls()

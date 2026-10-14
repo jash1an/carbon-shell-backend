@@ -329,8 +329,6 @@ NotchContainer {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onEntered: root.openMixer()
-                onExited: root.closeMixer()
                 onClicked: root.toggleMixer()
             }
         },
@@ -397,8 +395,6 @@ NotchContainer {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onEntered: root.openBrightness()
-                onExited: root.closeBrightness()
                 onClicked: root.toggleBrightness()
             }
         },
@@ -465,8 +461,6 @@ NotchContainer {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onEntered: root.openBattery()
-                onExited: root.closeBattery()
                 onClicked: root.toggleBattery()
             }
         },

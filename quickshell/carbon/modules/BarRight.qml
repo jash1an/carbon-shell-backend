@@ -267,8 +267,6 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onEntered: root.openBattery()
-                    onExited: root.closeBattery()
                     onClicked: root.toggleBattery()
                 }
             }
@@ -298,7 +296,7 @@ Item {
                     color: volBadge.isHovered ? (root.muted ? Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.25) : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25)) : "transparent"
                     scale: volBadge.isHovered ? 1.12 : 0.6
                     opacity: volBadge.isHovered ? 1.0 : 0.0
-                    rotation: volBadge.isHovered ? -8 : 0
+                    rotation: volBadge.isHovered ? -4 : 0
                     Behavior on opacity { NumberAnimation { duration: 180 } }
                     Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutBack } }
                     Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
@@ -311,9 +309,9 @@ Item {
                     animationDuration: 260
                     animationEasing: Easing.OutBack
                     color: volBadge.isHovered ? Theme.bgHover : "transparent"
-                    strokeColor: volBadge.isHovered ? (root.muted ? Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.45) : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.40)) : "transparent"
+                    strokeColor: volBadge.isHovered ? (root.muted ? Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.45) : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35)) : "transparent"
                     strokeWidth: 1.2
-                    rotation: volBadge.isHovered ? -8 : 0
+                    rotation: volBadge.isHovered ? -4 : 0
                     Behavior on color { ColorAnimation { duration: 120 } }
                     Behavior on strokeColor { ColorAnimation { duration: 120 } }
                     Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
@@ -334,8 +332,6 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onEntered: root.openMixer()
-                    onExited: root.closeMixer()
                     onClicked: root.toggleMixer()
                 }
             }
@@ -403,8 +399,6 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onEntered: root.openBrightness()
-                    onExited: root.closeBrightness()
                     onClicked: root.toggleBrightness()
                 }
             }
@@ -586,8 +580,6 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onEntered: root.openBattery()
-                    onExited: root.closeBattery()
                     onClicked: root.toggleBattery()
                 }
             }
@@ -651,8 +643,6 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onEntered: root.openMixer()
-                    onExited: root.closeMixer()
                     onClicked: root.toggleMixer()
                 }
             }
@@ -718,8 +708,6 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onEntered: root.openBrightness()
-                    onExited: root.closeBrightness()
                     onClicked: root.toggleBrightness()
                 }
             }

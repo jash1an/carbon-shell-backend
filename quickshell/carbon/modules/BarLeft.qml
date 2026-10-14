@@ -53,7 +53,7 @@ Item {
 
     function switchWorkspace(id) {
         root.activeWs = id
-        Quickshell.execDetached(["hyprctl", "eval", "local fn = require('hyprland.functions'); fn.wsaction('focus', '', " + id + ")()"])
+        Quickshell.execDetached(["hyprctl", "dispatch", "workspace", String(id)])
     }
 
     /* Track active workspace instantly via Hyprland Raw IPC Events */
