@@ -190,8 +190,6 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onEntered: root.openTray()
-                    onExited: root.closeTray()
                     onClicked: root.toggleTray()
                 }
             }
@@ -514,8 +512,6 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onEntered: root.openTray()
-                    onExited: root.closeTray()
                     onClicked: root.toggleTray()
                 }
             }

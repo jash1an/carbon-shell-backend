@@ -56,8 +56,7 @@ ShellRoot {
         if (keep !== "wifi") { root.wifiOpen = false; root.wifiPinned = false }
         if (keep !== "bt") { root.btOpen = false; root.btPinned = false }
         if (keep !== "calendar") { root.calendarOpen = false; root.calendarPinned = false }
-        if (keep !== "centerDashboard") { root.centerDashboardOpen = false; root.centerDashboardPinned = false }
-        if (keep !== "controls") { root.controlsVisible = false; root.controlsPinned = false }
+        if (keep !== "centerDashboard" && keep !== "controls") { root.centerDashboardOpen = false; root.centerDashboardPinned = false }
     }
 
     property bool smallMusicOpen: false
@@ -813,20 +812,20 @@ ShellRoot {
 
     readonly property int popupTopMargin: {
         if (root.mainBarEdge === "bottom") return 0
-        if (root.barMode === "notch") return -1
+        if (root.barMode === "notch") return root.notchHeight + 4
         if (root.barMode === "pill") return root.pillHeight + 10
         return 0
     }
 
     readonly property int popupBottomMargin: {
         if (root.mainBarEdge !== "bottom") return 0
-        if (root.barMode === "notch") return -1
+        if (root.barMode === "notch") return root.notchHeight + 4
         if (root.barMode === "pill") return root.pillHeight + 10
         return 0
     }
 
     readonly property int popupRightMargin: {
-        if (root.barMode === "notch") return 0
+        if (root.barMode === "notch") return 12
         if (root.barMode === "pill") return 12
         return 0
     }
@@ -936,31 +935,14 @@ ShellRoot {
 
     /* Quick-settings panel: hover the top-right hot corner to summon it, and
      * keep it while the pointer is over the panel (or the corner). */
-    property bool controlsVisible: false
-    property bool controlsHovered: false
-    property bool controlsPinned: false
+    property bool controlsVisible: root.centerDashboardOpen
+    property bool controlsHovered: root.centerDashboardHovered
+    property bool controlsPinned: root.centerDashboardPinned
 
-    function openControls() {
-        root.closeAllPopupsExcept("controls")
-        root.controlsPinned = true
-        root.controlsVisible = true
-    }
-    function openControlsHover() {
-        root.closeAllPopupsExcept("controls")
-        root.controlsPinned = false
-        root.controlsVisible = true
-        controlsLeaveTimer.stop()
-    }
-    function closeControls() { root.controlsVisible = false; root.controlsPinned = false }
-    function toggleControls() {
-        if (root.controlsVisible) {
-            root.closeControls()
-        } else {
-            root.closeAllPopupsExcept("controls")
-            root.controlsPinned = true
-            root.controlsVisible = true
-        }
-    }
+    function openControls() { root.openCenterDashboard() }
+    function openControlsHover() { root.openCenterDashboard() }
+    function closeControls() { root.closeCenterDashboard() }
+    function toggleControls() { root.toggleCenterDashboard() }
 
     Timer {
         id: controlsLeaveTimer
@@ -2258,21 +2240,21 @@ ShellRoot {
                 notchOpacity: root.notchOpacity
                 filletRadius: root.notchEarRadius
                 bottomRadius: root.notchBottomRadius
-                isExpanded: false
+                isExpanded: root.centerDashboardOpen
                 visible: root.musicBarEdge === root.mainBarEdge
                 barContent: root.musicBarContent
                 attachedBottom: root.mainBarEdge === "bottom"
-                hasAttachedPopup: root.controlsVisible
+                hasAttachedPopup: root.centerDashboardOpen
                 anchors.top: root.mainBarEdge !== "bottom" ? parent.top : undefined
                 anchors.bottom: root.mainBarEdge === "bottom" ? parent.bottom : undefined
                 anchors.horizontalCenter: parent.horizontalCenter
                 leftFillet: true
                 rightFillet: true
-                onToggleCenterDashboard: root.toggleControls()
-                onCloseCenterDashboard: root.closeControls()
-                onToggleMusic: root.toggleControls()
-                onOpenMusic: root.openControls()
-                onToggleControls: root.toggleControls()
+                onToggleCenterDashboard: root.toggleCenterDashboard()
+                onCloseCenterDashboard: root.closeCenterDashboard()
+                onToggleMusic: root.toggleCenterDashboard()
+                onOpenMusic: root.openCenterDashboard()
+                onToggleControls: root.toggleCenterDashboard()
             }
 
             NotchBarRight {
@@ -3344,8 +3326,8 @@ ShellRoot {
             right: true
         }
         margins {
-            top: root.popupTopMargin
-            bottom: root.popupBottomMargin
+            top: root.barMode === "minimal" ? 44 : root.popupTopMargin
+            bottom: root.barMode === "minimal" ? 44 : root.popupBottomMargin
         }
 
         implicitWidth: centerDashboardItem.implicitWidth
@@ -3355,7 +3337,7 @@ ShellRoot {
             item: (root.centerDashboardOpen || centerDashboardItem.animatingOut) ? centerDashboardItem.cardItem : null
         }
 
-        visible: (root.centerDashboardOpen || centerDashboardItem.animatingOut) && root.barMode !== "notch" && root.barMode !== "minimal"
+        visible: (root.centerDashboardOpen || centerDashboardItem.animatingOut) && root.barMode !== "notch"
 
         function updateHover() {
             var isHov = windowHoverArea.containsMouse || centerDashboardItem.hovered
@@ -3382,7 +3364,7 @@ ShellRoot {
             id: centerDashboardItem
             anchors.centerIn: parent
             open: root.centerDashboardOpen
-            minimalCalendarOnly: root.barMode === "minimal"
+            minimalCalendarOnly: false
             attachedBottom: root.mainBarEdge === "bottom"
             onCloseRequested: root.closeCenterDashboard()
             onHoveredChanged: centerDashboardWindow.updateHover()
@@ -3643,7 +3625,7 @@ ShellRoot {
             item: (root.controlsVisible || controlsItem.animatingOut) ? controlsItem.cardItem : null
         }
 
-        visible: (root.controlsVisible || controlsItem.animatingOut)
+        visible: false
 
         QuickSettings {
             id: controlsItem

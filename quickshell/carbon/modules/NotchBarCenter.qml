@@ -18,9 +18,9 @@ NotchContainer {
 
     property bool isExpanded: false
     clip: true
-    bottomRadius: 14
-    implicitHeight: 32
-    implicitWidth: (contentImplicitWidth + (leftFillet ? filletRadius : 0) + (rightFillet ? filletRadius : 0) + (horizontalPadding * 2))
+    bottomRadius: isExpanded ? 20 : 14
+    implicitHeight: isExpanded ? 270 : 32
+    implicitWidth: isExpanded ? 860 : (contentImplicitWidth + (leftFillet ? filletRadius : 0) + (rightFillet ? filletRadius : 0) + (horizontalPadding * 2))
 
     earWidth: 20
     contentSpacing: 8
@@ -36,6 +36,25 @@ NotchContainer {
 
     readonly property bool hudActive: HudService.active
 
+    focus: root.isExpanded
+    Keys.enabled: root.isExpanded
+    Keys.onPressed: (event) => {
+        if (event.key === Qt.Key_Escape) {
+            root.closeCenterDashboard()
+            event.accepted = true
+        }
+    }
+    Keys.onEscapePressed: (event) => {
+        root.closeCenterDashboard()
+        event.accepted = true
+    }
+
+    onIsExpandedChanged: {
+        if (root.isExpanded) {
+            root.forceActiveFocus()
+        }
+    }
+
     mouseArea.hoverEnabled: false
     mouseArea.cursorShape: Qt.PointingHandCursor
     mouseArea.acceptedButtons: Qt.LeftButton | Qt.RightButton
@@ -47,7 +66,7 @@ NotchContainer {
         if (mouse.button === Qt.RightButton) {
             root.togglePlayPause()
         } else {
-            root.toggleControls()
+            root.toggleCenterDashboard()
         }
     }
 
@@ -116,8 +135,12 @@ NotchContainer {
             anchors.verticalCenter: parent.verticalCenter
             implicitHeight: 26
             implicitWidth: root.hudActive ? dynamicPill.implicitWidth : normalNotchRow.implicitWidth
-            opacity: 1.0
-            visible: true
+            opacity: root.isExpanded ? 0.0 : 1.0
+            visible: opacity > 0.01
+
+            Behavior on opacity {
+                NumberAnimation { duration: 180; easing.type: Easing.OutQuad }
+            }
 
             Behavior on implicitWidth {
                 NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
@@ -164,7 +187,7 @@ NotchContainer {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.toggleControls()
+                onClicked: root.toggleCenterDashboard()
             }
         }
 
@@ -305,5 +328,27 @@ NotchContainer {
     }
     }
     ]
-}
 
+    CenterDashboard {
+        id: dashContent
+        parent: root
+        z: 5
+        anchors.top: parent.top
+        anchors.topMargin: 4
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: 860
+        height: 260
+        showBackground: false
+        open: root.isExpanded
+        visible: opacity > 0.01
+        opacity: root.isExpanded ? 1.0 : 0.0
+        scale: root.isExpanded ? 1.0 : 0.96
+        Behavior on opacity {
+            NumberAnimation { duration: root.isExpanded ? 220 : 150; easing.type: Easing.OutCubic }
+        }
+        Behavior on scale {
+            NumberAnimation { duration: root.isExpanded ? 260 : 180; easing.type: Easing.OutCubic }
+        }
+        onCloseRequested: root.closeCenterDashboard()
+    }
+}

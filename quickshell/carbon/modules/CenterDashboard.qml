@@ -10,11 +10,22 @@ import "../Singletons"
 import "../components"
 
 /**
- * CenterDashboard: Top-center panel
- *  - Left: Compact month calendar with month navigation and day selector
- *  - Center: Digital clock surrounded by a small dotted circle, with the weather capsule
- *            smoothly orbiting and rotating through the whole circle (360°)
- *  - Right: Weather overview + Compact Music Player Overlay in the bottom right
+ * CenterDashboard: Integrated Landscape Control Center
+ * Dimensions: 860x260px (fits expanded notch container & centered panel windows)
+ *
+ * Left Column (Quick Controls & Sliders):
+ *   - System shortcuts: Screen recorder (live timer/stop), Screenshot, Settings, Lock, Power
+ *   - 2x2 Quick toggles: Wi-Fi, Bluetooth, Night Light, Do Not Disturb (DND)
+ *   - Hardware sliders: Volume (mute toggle, interactive track, live %, wheel) & Brightness (interactive track, live %, wheel)
+ *
+ * Center Column (Hub: Notifications & Calendar):
+ *   - Header tabs: Notifications (with unread badge + Clear all) & Calendar
+ *   - Notifications View: Scrollable list of active notifications with app icon, title, body, and dismiss
+ *   - Calendar View: Month navigation & dynamic calendar grid
+ *
+ * Right Column (Media Player & Live Info):
+ *   - Live Clock & Weather capsule
+ *   - Rich Media Player: Album art / vinyl disc, title, artist, seekable progress bar, play/pause/prev/next
  */
 Item {
     id: root
@@ -32,17 +43,17 @@ Item {
     height: implicitHeight
     clip: true
 
+    readonly property string home: Quickshell.env("HOME") || ""
+
     focus: root.open
     Keys.enabled: root.open
     Keys.onPressed: (event) => {
         if (event.key === Qt.Key_Escape) {
-            console.log("[CenterDashboard] ESCAPE PRESSED - requesting close")
             root.closeRequested()
             event.accepted = true
         }
     }
     Keys.onEscapePressed: (event) => {
-        console.log("[CenterDashboard] onEscapePressed - requesting close")
         root.closeRequested()
         event.accepted = true
     }
@@ -52,31 +63,26 @@ Item {
     }
 
     readonly property var cardItem: mainCard
-    readonly property var rightColItem: rightCol
     property bool animatingOut: false
 
-    /* ── Live Clock State ────────────────────────────────────────────── */
+    /* ── Live Clock & Date State ─────────────────────────────────────── */
     property var currentDate: new Date()
-    property int currentHourRaw: currentDate.getHours()
-    property string hourStr: (currentHourRaw < 10 ? "0" : "") + currentHourRaw
-    property string minStr: {
-        let m = currentDate.getMinutes()
-        return (m < 10 ? "0" : "") + m
-    }
-    property string secStr: {
-        let s = currentDate.getSeconds()
-        return (s < 10 ? "0" : "") + s
-    }
-    property string dayOfWeekStr: currentDate.toLocaleDateString(Qt.locale(), "dddd")
-    property string fullDateStr: currentDate.toLocaleDateString(Qt.locale(), "dddd, MMMM dd")
+    property string timeStr: Qt.formatTime(currentDate, "hh:mm")
+    property string dateStr: Qt.formatDate(currentDate, "ddd, MMM d")
+    property int calYear: currentDate.getFullYear()
+    property int calMonth: currentDate.getMonth()
+    property int selectedDay: currentDate.getDate()
 
-    property real secondPulse: 1.0
-    NumberAnimation on secondPulse {
-        id: pulseReset
-        to: 1.0
-        duration: 600
-        easing.type: Easing.OutQuint
-        running: false
+    Timer {
+        interval: 1000
+        repeat: true
+        running: true
+        triggeredOnStart: true
+        onTriggered: {
+            root.currentDate = new Date()
+            root.timeStr = Qt.formatTime(root.currentDate, "hh:mm")
+            root.dateStr = Qt.formatDate(root.currentDate, "ddd, MMM d")
+        }
     }
 
     onOpenChanged: {
@@ -84,14 +90,7 @@ Item {
             root.animatingOut = false
             animatingOutTimer.stop()
             root.currentDate = new Date()
-            root.calendarViewMode = "grid"
-            root.eventFormMode = false
-            root.reloadEvents()
-            if (!root.minimalCalendarOnly) {
-                centerCol.syncClockAngle()
-                if (centerCol.levAnim) centerCol.levAnim.restart()
-                if (centerCol.breathAnim) centerCol.breathAnim.restart()
-            }
+            root.refreshStates()
         } else {
             root.animatingOut = true
             animatingOutTimer.restart()
@@ -100,174 +99,218 @@ Item {
 
     Timer {
         id: animatingOutTimer
-        interval: 200
+        interval: 220
         onTriggered: root.animatingOut = false
     }
 
-    FrameAnimation {
-        id: orbitSmoothAnim
-        running: root.open && !root.minimalCalendarOnly && !centerCol.userDragging && root.visible
-        onTriggered: centerCol.syncClockAngle()
+    /* ── Quick Toggles State & Probes ─────────────────────────────────── */
+    property bool wifiOn: true
+    property string wifiName: ""
+    property bool btOn: false
+    property string btName: ""
+    property bool nightAvailable: true
+    property bool nightOn: false
+    property bool dndOn: Theme.dnd
+
+    Timer {
+        id: settleTimer
+        interval: 900
+        onTriggered: root.refreshStates()
+    }
+
+    function refreshStates() {
+        if (!root.open) return
+        if (!wifiProbe.running) wifiProbe.running = true
+        if (!wifiNameProbe.running) wifiNameProbe.running = true
+        if (!btProbe.running) btProbe.running = true
+        if (!btNameProbe.running) btNameProbe.running = true
+        if (!nightProbe.running) nightProbe.running = true
+        if (!dndProbe.running) dndProbe.running = true
+        if (!recProbe.running) recProbe.running = true
+        root.refreshBrightness()
+    }
+
+    // Wi-Fi
+    Process {
+        id: wifiProbe
+        command: ["sh", "-c", "nmcli radio wifi | tr -d ' \\n\\r'"]
+        stdout: StdioCollector { id: wifiC; waitForEnd: true }
+        onExited: root.wifiOn = String(wifiC.text).trim() === "enabled"
+    }
+    Process {
+        id: wifiNameProbe
+        command: ["sh", "-c", "wifi=$(nmcli -t -f IN-USE,SSID dev wifi 2>/dev/null | grep -E '^\\*:|^yes:' | head -1 | cut -d: -f2-); [ -n \"$wifi\" ] && echo \"$wifi\" || nmcli -t -f NAME connection show --active 2>/dev/null | grep -v '^lo:' | head -1 | cut -d: -f1"]
+        stdout: StdioCollector { id: wifiNameC; waitForEnd: true }
+        onExited: root.wifiName = String(wifiNameC.text).trim()
+    }
+    function toggleWifi() {
+        root.wifiOn = !root.wifiOn
+        if (!root.wifiOn) root.wifiName = ""
+        Quickshell.execDetached(["sh", "-c", "nmcli radio wifi " + (root.wifiOn ? "on" : "off") + " >/dev/null 2>&1"])
+        settleTimer.restart()
+    }
+
+    // Bluetooth
+    Process {
+        id: btProbe
+        command: ["sh", "-c", "timeout 4 bluetoothctl show | sed -n 's/.*Powered:[ ]*//p' | tr -d ' \\n\\r'"]
+        stdout: StdioCollector { id: btC; waitForEnd: true }
+        onExited: root.btOn = String(btC.text).trim() === "yes"
+    }
+    Process {
+        id: btNameProbe
+        command: ["sh", "-c", "bluetoothctl devices Connected 2>/dev/null | sed 's/^Device [0-9A-F:]* //'"]
+        stdout: StdioCollector { id: btNameC; waitForEnd: true }
+        onExited: root.btName = String(btNameC.text).trim()
+    }
+    function toggleBt() {
+        root.btOn = !root.btOn
+        if (!root.btOn) root.btName = ""
+        Quickshell.execDetached(["sh", "-c", "bluetoothctl power " + (root.btOn ? "on" : "off") + " >/dev/null 2>&1"])
+        settleTimer.restart()
+    }
+
+    // Night Light
+    Process {
+        id: nightProbe
+        command: [root.home + "/.config/hypr/scripts/carbon-night.sh", "status"]
+        stdout: StdioCollector { id: nightC; waitForEnd: true }
+        onExited: {
+            const v = String(nightC.text).trim()
+            root.nightAvailable = v !== "missing"
+            root.nightOn = v === "on"
+        }
+    }
+    function toggleNight() {
+        if (!root.nightAvailable) return
+        root.nightOn = !root.nightOn
+        Quickshell.execDetached([root.home + "/.config/hypr/scripts/carbon-night.sh", root.nightOn ? "on" : "off"])
+        settleTimer.restart()
+    }
+
+    // Do Not Disturb
+    Process {
+        id: dndProbe
+        command: ["sh", "-c", "if [ -f /tmp/carbon-dnd.on ]; then echo true; else echo false; fi"]
+        stdout: StdioCollector { id: dndC; waitForEnd: true }
+        onExited: {
+            root.dndOn = String(dndC.text).trim() === "true"
+            Theme.dnd = root.dndOn
+        }
+    }
+    function toggleDnd() {
+        root.dndOn = !root.dndOn
+        Theme.dnd = root.dndOn
+        Quickshell.execDetached(["sh", "-c", root.dndOn ? "touch /tmp/carbon-dnd.on" : "rm -f /tmp/carbon-dnd.on"])
+        settleTimer.restart()
+    }
+
+    /* ── Screen Recorder ──────────────────────────────────────────────── */
+    property bool recWorking: false
+    property int recElapsed: 0
+    readonly property string recScriptDir: root.home + "/.config/hypr/scripts"
+
+    Process {
+        id: recProbe
+        command: ["sh", "-c", "if pgrep -x wf-recorder >/dev/null 2>&1 || ([ -f /tmp/rec.pid ] && kill -0 $(cat /tmp/rec.pid 2>/dev/null) 2>/dev/null); then st=$(stat -c %Y /tmp/rec.pid 2>/dev/null || stat -c %Y /tmp/rec.out 2>/dev/null || date +%s); now=$(date +%s); echo \"alive:$((now - st))\"; else echo \"dead:0\"; fi"]
+        stdout: StdioCollector { id: recProbeC; waitForEnd: true }
+        onExited: {
+            const raw = String(recProbeC.text).trim()
+            const parts = raw.split(":")
+            const isAlive = parts[0] === "alive"
+            root.recWorking = isAlive
+            if (isAlive && parts.length > 1) {
+                const el = parseInt(parts[1]) || 0
+                if (el > 0) root.recElapsed = el
+            }
+        }
+    }
+
+    function fmtRec(s) {
+        const m = Math.floor(s / 60)
+        return String(m).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0")
+    }
+
+    function toggleRecorder() {
+        if (root.recWorking) {
+            Quickshell.execDetached(["/bin/sh", root.recScriptDir + "/carbon-rec-stop.sh"])
+            root.recWorking = false
+        } else {
+            root.recElapsed = 0
+            Quickshell.execDetached(["/bin/sh", root.recScriptDir + "/carbon-rec-start.sh", "full", "1", "1"])
+            root.recWorking = true
+        }
+        settleTimer.restart()
     }
 
     Timer {
         interval: 1000
         repeat: true
-        running: true
-        onTriggered: {
-            root.currentDate = new Date()
-            root.secondPulse = 1.08
-            pulseReset.start()
-        }
+        running: root.recWorking
+        onTriggered: root.recElapsed++
     }
 
-    /* ── Weather State from WeatherService ───────────────────────────── */
-    property int weatherDayIndex: 0
-    readonly property var curDayForecast: (WeatherService.forecast && WeatherService.forecast.length > root.weatherDayIndex) ? WeatherService.forecast[root.weatherDayIndex] : null
+    /* ── Audio & Brightness Sliders ───────────────────────────────────── */
+    readonly property var audioSink: Pipewire.defaultAudioSink
+    readonly property real volRatio: (audioSink && audioSink.audio) ? Math.max(0, Math.min(1.0, audioSink.audio.volume)) : 0.0
+    readonly property bool isMuted: (audioSink && audioSink.audio) ? audioSink.audio.muted : false
 
-    readonly property string weatherTemp: curDayForecast ? (root.weatherDayIndex === 0 ? WeatherService.temp : curDayForecast.max_temp) : WeatherService.temp
-    readonly property string weatherTempFull: WeatherService.tempFull
-    readonly property string weatherCond: curDayForecast ? curDayForecast.condition : WeatherService.condition
-    readonly property string weatherIcon: curDayForecast ? curDayForecast.icon : WeatherService.icon
-    readonly property string weatherDayTitle: curDayForecast ? curDayForecast.day : root.dayOfWeekStr.toUpperCase()
-    readonly property string weatherWind: curDayForecast ? (curDayForecast.wind || "") : (WeatherService.wind || "")
-    readonly property string weatherHumid: curDayForecast ? (curDayForecast.humidity || "") : (WeatherService.humidity || "")
-
-    function prevWeatherDay() {
-        if (root.weatherDayIndex > 0) root.weatherDayIndex--
-    }
-    function nextWeatherDay() {
-        if (WeatherService.forecast && root.weatherDayIndex < WeatherService.forecast.length - 1) root.weatherDayIndex++
-    }
-
-    /* ── Calendar State & Event Management ───────────────────────────── */
-    property int calYear: currentDate.getFullYear()
-    property int calMonth: currentDate.getMonth() // 0-11
-    property int selectedDay: currentDate.getDate()
-    property var monthEvents: ({})
-    property string calendarViewMode: "grid" // "grid" or "events"
-    property bool eventFormMode: false
-    property string editingEventId: ""
-
-    readonly property var monthNames: [
-        "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
-        "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"
-    ]
-
-    readonly property var weekdayShortNames: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-
-    function prevMonth() {
-        if (calMonth === 0) {
-            calMonth = 11
-            calYear--
-        } else {
-            calMonth--
-        }
-        root.reloadEvents()
-    }
-
-    function nextMonth() {
-        if (calMonth === 11) {
-            calMonth = 0
-            calYear++
-        } else {
-            calMonth++
-        }
-        root.reloadEvents()
-    }
-
-    function daysInMonth(y, m) {
-        return new Date(y, m + 1, 0).getDate()
-    }
-
-    function firstDayWeekday(y, m) {
-        let d = new Date(y, m, 1).getDay()
-        return d === 0 ? 6 : d - 1
-    }
-
-    function getDayKey(day) {
-        let mm = (root.calMonth + 1 < 10 ? "0" : "") + (root.calMonth + 1)
-        let dd = (day < 10 ? "0" : "") + day
-        return root.calYear + "-" + mm + "-" + dd
-    }
-
-    function getEventsForDay(day) {
-        let key = root.getDayKey(day)
-        return (root.monthEvents && root.monthEvents[key]) ? root.monthEvents[key] : []
-    }
-
-    function hasEvent(day) {
-        return root.getEventsForDay(day).length > 0
-    }
-
-    function hasFestival(day) {
-        let evs = root.getEventsForDay(day)
-        for (let i = 0; i < evs.length; i++) {
-            if (evs[i].type === "festival") return true
-        }
-        return false
-    }
-
-    function getSelectedDateWeekday() {
-        let d = new Date(root.calYear, root.calMonth, root.selectedDay).getDay()
-        return root.weekdayShortNames[d]
-    }
-
-    readonly property string calScript: (Quickshell.env("HOME") || "") + "/.config/hypr/scripts/carbon-calendar.py"
+    property real brightRatio: 0.5
+    property real brightMax: 1
+    property real lastBrightWrite: 0
 
     Process {
-        id: eventLoaderProc
-        command: ["python3", root.calScript, "--get-month", String(root.calYear), String(root.calMonth + 1)]
-        stdout: StdioCollector { id: eventLoaderC; waitForEnd: true }
+        id: brightProbe
+        command: ["sh", "-c", 'echo "a b c $(brightnessctl --class backlight get) $(brightnessctl --class backlight max)"']
+        stdout: StdioCollector { id: bC; waitForEnd: true }
         onExited: {
-            try {
-                let txt = String(eventLoaderC.text).trim()
-                if (txt.length > 2) {
-                    root.monthEvents = JSON.parse(txt)
-                } else {
-                    root.monthEvents = ({})
-                }
-            } catch (e) {
-                root.monthEvents = ({})
+            const raw = String(bC.text).trim().split(/\s+/)
+            if (raw.length >= 5) {
+                const cur = parseFloat(raw[3]) || 0
+                const max = parseFloat(raw[4]) || 1
+                root.brightMax = max
+                root.brightRatio = Math.max(0, Math.min(1.0, cur / max))
             }
         }
     }
 
-    Process {
-        id: eventOpProc
-        command: ["true"]
-        onExited: {
-            root.eventFormMode = false
-            root.editingEventId = ""
-            root.reloadEvents()
-        }
+    function refreshBrightness() {
+        if (!brightProbe.running) brightProbe.running = true
     }
 
-    function reloadEvents() {
-        eventLoaderProc.command = ["python3", root.calScript, "--get-month", String(root.calYear), String(root.calMonth + 1)]
-        eventLoaderProc.running = true
+    function setBrightness(r) {
+        r = Math.max(0.01, Math.min(1.0, r))
+        root.brightRatio = r
+        root.lastBrightWrite = Date.now()
+        Quickshell.execDetached(["brightnessctl", "--class", "backlight", "s", Math.max(1, Math.round(r * 100)) + "%"])
     }
 
-    function addOrSaveEvent(title, time) {
-        if (!title || title.trim().length === 0) return
-        let t = (time && time.trim().length > 0) ? time.trim() : "All day"
-        if (root.editingEventId.length > 0) {
-            eventOpProc.command = ["python3", root.calScript, "--edit", root.editingEventId, "--title", title.trim(), "--time", t]
-        } else {
-            let key = root.getDayKey(root.selectedDay)
-            eventOpProc.command = ["python3", root.calScript, "--add", key, title.trim(), "--time", t]
-        }
-        eventOpProc.running = true
+    /* ── Notifications Integration ────────────────────────────────────── */
+    readonly property var notifItems: NotificationService.list || []
+    readonly property int notifCount: notifItems.length
+    property int centerTab: 0 // 0: Notifications, 1: Calendar
+
+    function dismissAllNotifs() {
+        NotificationService.clearAll()
     }
 
-    function deleteEvent(evId) {
-        if (!evId) return
-        eventOpProc.command = ["python3", root.calScript, "--delete", evId]
-        eventOpProc.running = true
-    }
+    /* ── Calendar Integration ─────────────────────────────────────────── */
+    readonly property var monthNames: [
+        "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
+        "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"
+    ]
+    readonly property var weekdayShortNames: ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
 
-    onCalMonthChanged: reloadEvents()
-    onCalYearChanged: reloadEvents()
+    function prevMonth() {
+        if (calMonth === 0) { calMonth = 11; calYear--; }
+        else { calMonth--; }
+    }
+    function nextMonth() {
+        if (calMonth === 11) { calMonth = 0; calYear++; }
+        else { calMonth++; }
+    }
+    function daysInMonth(y, m) { return new Date(y, m + 1, 0).getDate() }
+    function firstDayWeekday(y, m) { return new Date(y, m, 1).getDay() }
 
     /* ── MPRIS Music State ───────────────────────────────────────────── */
     readonly property var mprisPlayer: LyricsService.activePlayer
@@ -287,17 +330,25 @@ Item {
         return (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s
     }
 
-    /* ── Main Card ───────────────────────────────────────────────────── */
+    function seekRatio(r) {
+        if (!hasMusicTrack || musicLength <= 0) return
+        const targetSec = Math.max(0, Math.min(musicLength, r * musicLength))
+        Quickshell.execDetached(["playerctl", "position", targetSec.toFixed(2)])
+    }
+
+    Component.onCompleted: {
+        root.refreshStates()
+    }
+
+    /* ── Main Panel Card ─────────────────────────────────────────────── */
     Item {
         id: mainCard
-        width: parent.width
-        height: parent.height
+        anchors.fill: parent
 
         HoverHandler {
             id: mainCardHover
         }
 
-        /* Dead-zone click absorber inside card boundary so clicks never fall through */
         MouseArea {
             anchors.fill: parent
             z: 0
@@ -311,7 +362,7 @@ Item {
             preferredRendererType: Shape.CurveRenderer
             visible: root.showBackground
 
-            // 1. Fill background (Seamlessly attached: square top, rounded bottom)
+            // 1. Background fill (seamless top, rounded bottom)
             ShapePath {
                 fillColor: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, Theme.shellOpacity)
                 strokeColor: "transparent"
@@ -325,10 +376,10 @@ Item {
                 PathLine { x: 0; y: 0 }
             }
 
-            // 2. Continuous stroke (Right, Bottom, Left - NO stroke on top edge to blend seamlessly into the bar)
+            // 2. Stroke outline (Right, Bottom, Left - open top)
             ShapePath {
                 fillColor: "transparent"
-                strokeColor: root.open ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.45) : Theme.outline
+                strokeColor: root.open ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.40) : Theme.outline
                 strokeWidth: 1
                 startX: mainCard.width; startY: 0
                 PathLine { x: mainCard.width; y: mainCard.height - 20 }
@@ -344,710 +395,865 @@ Item {
 
         Behavior on opacity {
             enabled: root.showBackground
-            NumberAnimation {
-                duration: root.open ? 180 : 140
-                easing.bezierCurve: Theme.animCurves.expressiveDefaultEffects
-            }
+            NumberAnimation { duration: root.open ? 180 : 140; easing.type: Easing.OutCubic }
         }
         Behavior on y {
-            NumberAnimation {
-                duration: root.open ? 240 : 160
-                easing.bezierCurve: root.open ? Theme.animCurves.expressiveDefaultSpatial : Theme.animCurves.standardAccel
-            }
+            NumberAnimation { duration: root.open ? 240 : 160; easing.type: Easing.OutCubic }
         }
 
-        /* Ambient subtle color blobs from imperative-dots */
-        Rectangle {
-            visible: !root.minimalCalendarOnly
-            width: parent.width * 0.45; height: width; radius: width / 2
-            x: (parent.width * 0.7 - width / 2) + Math.cos(centerCol.orbitAngle * Math.PI / 180 * 1.5) * 40
-            y: (parent.height * 0.3 - height / 2) + Math.sin(centerCol.orbitAngle * Math.PI / 180 * 1.5) * 20
-            opacity: 0.03
-            color: Theme.accentLit
-        }
-        Rectangle {
-            visible: !root.minimalCalendarOnly
-            width: parent.width * 0.4; height: width; radius: width / 2
-            x: (parent.width * 0.3 - width / 2) + Math.sin(centerCol.orbitAngle * Math.PI / 180 * 1.2) * -30
-            y: (parent.height * 0.7 - height / 2) + Math.cos(centerCol.orbitAngle * Math.PI / 180 * 1.2) * -25
-            opacity: 0.02
-            color: Theme.accent
-        }
-
-        /* ── 3-Column Layout ─────────────────────────────────────────── */
+        /* ── 3-Column Landscape Layout (860x260px) ─────────────────────── */
         RowLayout {
             anchors.fill: parent
-            anchors.margins: 14
+            anchors.margins: 12
             spacing: 12
             z: 1
 
             /* ========================================================= */
-            /* 1. LEFT COLUMN: CALENDAR                                 */
+            /* 1. LEFT COLUMN: QUICK CONTROLS & SLIDERS (~270px)        */
             /* ========================================================= */
-            Item {
-                id: calendarCol
-                Layout.preferredWidth: root.minimalCalendarOnly ? 282 : 220
-                Layout.fillWidth: root.minimalCalendarOnly
+            ColumnLayout {
+                Layout.preferredWidth: 268
                 Layout.fillHeight: true
-                clip: true
+                spacing: 8
 
-                /* ── 1A. Month Grid View ──────────────────────────────── */
-                ColumnLayout {
-                    id: monthGridView
-                    anchors.fill: parent
+                // 1A. Shortcuts Header Row (Recorder, Screenshot, Settings, Lock, Power)
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 26
                     spacing: 6
-                    visible: opacity > 0.001
-                    opacity: root.calendarViewMode === "grid" ? 1.0 : 0.0
-                    Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-                    transform: Translate {
-                        x: root.calendarViewMode === "grid" ? 0 : -20
-                        Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-                    }
 
-                    /* Header: <  MONTH YEAR  >  Today */
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 4
+                    // Screen Recorder
+                    Rectangle {
+                        width: root.recWorking ? recRow.implicitWidth + 12 : 26
+                        height: 26
+                        radius: 13
+                        color: root.recWorking ? Qt.rgba(1, 0.2, 0.2, 0.25) : (recMH.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.05))
+                        border.width: 1
+                        border.color: root.recWorking ? "#ff4444" : (recMH.containsMouse ? Theme.accent : Theme.outline)
 
-                        Rectangle {
-                            width: 20
-                            height: 20
-                            radius: 10
-                            color: prevM.containsMouse ? Theme.bgHover : "transparent"
+                        RowLayout {
+                            id: recRow
+                            anchors.centerIn: parent
+                            spacing: 3
                             Text {
-                                anchors.centerIn: parent
-                                text: "‹"
-                                font.pixelSize: Theme.fontPx(14)
-                                font.weight: Font.Bold
-                                color: prevM.containsMouse ? Theme.fg : Theme.fgDim
+                                text: root.recWorking ? "stop_circle" : "videocam"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: 13
+                                color: root.recWorking ? "#ff4444" : (recMH.containsMouse ? Theme.accent : Theme.fgDim)
                             }
-                            MouseArea {
-                                id: prevM
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.prevMonth()
-                            }
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: root.monthNames[root.calMonth] + " " + root.calYear
-                            font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: Theme.fontPx(11)
-                            font.weight: Font.Bold
-                            font.letterSpacing: 1.0
-                            color: Theme.fg
-                            horizontalAlignment: Text.AlignHCenter
-                        }
-
-                        Rectangle {
-                            width: 20
-                            height: 20
-                            radius: 10
-                            color: nextM.containsMouse ? Theme.bgHover : "transparent"
                             Text {
-                                anchors.centerIn: parent
-                                text: "›"
-                                font.pixelSize: Theme.fontPx(14)
+                                visible: root.recWorking
+                                text: root.fmtRec(root.recElapsed)
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(7.5)
                                 font.weight: Font.Bold
-                                color: nextM.containsMouse ? Theme.fg : Theme.fgDim
-                            }
-                            MouseArea {
-                                id: nextM
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.nextMonth()
+                                color: "#ff4444"
                             }
                         }
-
-                        Rectangle {
-                            width: 20
-                            height: 20
-                            radius: 10
-                            color: addM.containsMouse ? Theme.bgHover : "transparent"
-                            Text {
-                                anchors.centerIn: parent
-                                text: "•"
-                                font.pixelSize: Theme.fontPx(14)
-                                font.weight: Font.Bold
-                                color: addM.containsMouse ? Theme.accentLit : Theme.fgDim
-                            }
-                            MouseArea {
-                                id: addM
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    root.calMonth = root.currentDate.getMonth()
-                                    root.calYear = root.currentDate.getFullYear()
-                                    root.selectedDay = root.currentDate.getDate()
-                                    root.reloadEvents()
-                                }
-                            }
-                        }
-                    }
-
-                    /* Weekday Names Row */
-                    Row {
-                        Layout.fillWidth: true
-                        spacing: 0
-                        readonly property var dayHeaders: ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
-                        Repeater {
-                            model: parent.dayHeaders
-                            Item {
-                                width: calendarCol.width / 7
-                                height: 18
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: modelData
-                                    font.family: "JetBrainsMono Nerd Font"
-                                    font.pixelSize: Theme.fontPx(9)
-                                    font.weight: Font.DemiBold
-                                    color: Theme.fgDim
-                                }
-                            }
-                        }
-                    }
-
-                    /* Days Grid */
-                    Item {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-
-                        Grid {
-                            id: daysGrid
+                        MouseArea {
+                            id: recMH
                             anchors.fill: parent
-                            columns: 7
-                            rows: 6
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.toggleRecorder()
+                        }
+                    }
 
-                            readonly property int totalDaysCur: root.daysInMonth(root.calYear, root.calMonth)
-                            readonly property int firstDayIndex: root.firstDayWeekday(root.calYear, root.calMonth)
-                            readonly property int prevMonthDays: {
-                                let pm = root.calMonth === 0 ? 11 : root.calMonth - 1
-                                let py = root.calMonth === 0 ? root.calYear - 1 : root.calYear
-                                return root.daysInMonth(py, pm)
-                            }
+                    // Screenshot
+                    Rectangle {
+                        width: 26; height: 26; radius: 13
+                        color: shotMH.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.05)
+                        border.width: 1
+                        border.color: shotMH.containsMouse ? Theme.accent : Theme.outline
+                        Text {
+                            anchors.centerIn: parent
+                            text: "photo_camera"
+                            font.family: Theme.fontIcon
+                            font.pixelSize: 13
+                            color: shotMH.containsMouse ? Theme.accent : Theme.fgDim
+                        }
+                        MouseArea {
+                            id: shotMH
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: Quickshell.execDetached([root.home + "/.config/hypr/scripts/carbon-screenshot-region.sh"])
+                        }
+                    }
 
-                            Repeater {
-                                model: 42
-                                Item {
-                                    width: daysGrid.width / 7
-                                    height: daysGrid.height / 6
+                    // Settings
+                    Rectangle {
+                        width: 26; height: 26; radius: 13
+                        color: setMH.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.05)
+                        border.width: 1
+                        border.color: setMH.containsMouse ? Theme.accent : Theme.outline
+                        Text {
+                            anchors.centerIn: parent
+                            text: "settings"
+                            font.family: Theme.fontIcon
+                            font.pixelSize: 13
+                            color: setMH.containsMouse ? Theme.accent : Theme.fgDim
+                        }
+                        MouseArea {
+                            id: setMH
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: Quickshell.execDetached(["sh", "-c", "command -v carbon-config-editor >/dev/null && carbon-config-editor || systemsettings || true"])
+                        }
+                    }
 
-                                    readonly property int cellIndex: index
-                                    readonly property bool isPrevMonth: cellIndex < daysGrid.firstDayIndex
-                                    readonly property bool isNextMonth: cellIndex >= (daysGrid.firstDayIndex + daysGrid.totalDaysCur)
-                                    readonly property bool isCurMonth: !isPrevMonth && !isNextMonth
+                    // Lock
+                    Rectangle {
+                        width: 26; height: 26; radius: 13
+                        color: lockMH.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.05)
+                        border.width: 1
+                        border.color: lockMH.containsMouse ? Theme.accent : Theme.outline
+                        Text {
+                            anchors.centerIn: parent
+                            text: "lock"
+                            font.family: Theme.fontIcon
+                            font.pixelSize: 13
+                            color: lockMH.containsMouse ? Theme.accent : Theme.fgDim
+                        }
+                        MouseArea {
+                            id: lockMH
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: Quickshell.execDetached([root.home + "/.config/hypr/scripts/hyprlock.sh"])
+                        }
+                    }
 
-                                    readonly property int dayNum: {
-                                        if (isPrevMonth) {
-                                            return daysGrid.prevMonthDays - (daysGrid.firstDayIndex - cellIndex - 1)
-                                        } else if (isCurMonth) {
-                                            return cellIndex - daysGrid.firstDayIndex + 1
-                                        } else {
-                                            return cellIndex - (daysGrid.firstDayIndex + daysGrid.totalDaysCur) + 1
-                                        }
-                                    }
+                    Item { Layout.fillWidth: true }
 
-                                    readonly property bool isToday: isCurMonth &&
-                                                                    dayNum === root.currentDate.getDate() &&
-                                                                    root.calMonth === root.currentDate.getMonth() &&
-                                                                    root.calYear === root.currentDate.getFullYear()
-
-                                    readonly property bool isSelected: isCurMonth && dayNum === root.selectedDay
-                                    readonly property bool dayHasEvent: isCurMonth && root.hasEvent(dayNum)
-                                    readonly property bool dayHasFest: isCurMonth && root.hasFestival(dayNum)
-
-                                    Rectangle {
-                                        anchors.centerIn: parent
-                                        width: 22
-                                        height: 22
-                                        radius: 11
-                                        color: isToday
-                                            ? Theme.accentLit
-                                            : (isSelected
-                                                ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.40)
-                                                : (dayMouseArea.containsMouse
-                                                    ? (isCurMonth ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.22) : Qt.rgba(1, 1, 1, 0.08))
-                                                    : "transparent"))
-                                        border.color: isToday
-                                            ? "transparent"
-                                            : (isSelected
-                                                ? Theme.accentLit
-                                                : (dayMouseArea.containsMouse
-                                                    ? (isCurMonth ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.60) : Qt.rgba(1, 1, 1, 0.18))
-                                                    : "transparent"))
-                                        border.width: 1
-
-                                        scale: dayMouseArea.containsMouse && !isToday ? 1.08 : 1.0
-                                        Behavior on scale { NumberAnimation { duration: 120 } }
-                                        Behavior on color { ColorAnimation { duration: 100 } }
-                                        Behavior on border.color { ColorAnimation { duration: 100 } }
-                                    }
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        anchors.verticalCenterOffset: dayHasEvent ? -2 : 0
-                                        text: dayNum
-                                        font.family: "JetBrainsMono Nerd Font"
-                                        font.pixelSize: Theme.fontPx(10)
-                                        font.weight: (isToday || isSelected || dayMouseArea.containsMouse) ? Font.Bold : Font.Normal
-                                        color: isToday
-                                            ? (Theme.isDark ? "#121118" : "#ffffff")
-                                            : ((isSelected || (dayMouseArea.containsMouse && isCurMonth))
-                                                ? Theme.accentLit
-                                                : (dayMouseArea.containsMouse
-                                                    ? Theme.fg
-                                                    : (isCurMonth ? Theme.fg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.22))))
-                                    }
-
-                                    /* Small Event Indicator Dot */
-                                    Rectangle {
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        anchors.bottom: parent.bottom
-                                        anchors.bottomMargin: 1.5
-                                        width: 3.5
-                                        height: 3.5
-                                        radius: 1.75
-                                        visible: dayHasEvent
-                                        color: dayHasFest ? "#ffb86c" : Theme.accentLit
-                                    }
-
-                                    MouseArea {
-                                        id: dayMouseArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: parent.isCurMonth ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                        onClicked: {
-                                            if (parent.isCurMonth) {
-                                                if (root.minimalCalendarOnly) {
-                                                    if (root.selectedDay === parent.dayNum && (dayHasEvent || dayHasFest)) {
-                                                        root.calendarViewMode = "events"
-                                                        root.eventFormMode = false
-                                                        root.editingEventId = ""
-                                                    } else {
-                                                        root.selectedDay = parent.dayNum
-                                                    }
-                                                } else {
-                                                    root.selectedDay = parent.dayNum
-                                                    root.calendarViewMode = "events"
-                                                    root.eventFormMode = false
-                                                    root.editingEventId = ""
-                                                }
-                                            } else if (parent.isPrevMonth) {
-                                                root.prevMonth()
-                                            } else if (parent.isNextMonth) {
-                                                root.nextMonth()
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                    // Power
+                    Rectangle {
+                        width: 26; height: 26; radius: 13
+                        color: pwrMH.containsMouse ? Qt.rgba(1, 0.2, 0.2, 0.25) : Qt.rgba(1, 1, 1, 0.05)
+                        border.width: 1
+                        border.color: pwrMH.containsMouse ? "#ff5555" : Theme.outline
+                        Text {
+                            anchors.centerIn: parent
+                            text: "power_settings_new"
+                            font.family: Theme.fontIcon
+                            font.pixelSize: 13
+                            color: pwrMH.containsMouse ? "#ff5555" : Theme.fgDim
+                        }
+                        MouseArea {
+                            id: pwrMH
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: Quickshell.execDetached(["sh", root.home + "/.config/carbon/scripts/carbon-ipc.sh", "power"])
                         }
                     }
                 }
 
-                /* ── 1B. Day Events View ──────────────────────────────── */
-                ColumnLayout {
-                    id: dayEventsView
-                    anchors.fill: parent
-                    spacing: 6
-                    visible: opacity > 0.001
-                    opacity: root.calendarViewMode === "events" ? 1.0 : 0.0
-                    Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-                    transform: Translate {
-                        x: root.calendarViewMode === "events" ? 0 : 20
-                        Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-                    }
+                // 1B. 2x2 Quick Toggles Grid (Wi-Fi, Bluetooth, Night Light, DND)
+                GridLayout {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 96
+                    columns: 2
+                    rowSpacing: 6
+                    columnSpacing: 6
 
-                    /* Day Header */
-                    RowLayout {
+                    // Tile 1: Wi-Fi
+                    Rectangle {
                         Layout.fillWidth: true
-                        spacing: 4
+                        Layout.preferredHeight: 45
+                        radius: 12
+                        color: root.wifiOn ? Theme.accent : (wifiTileHov.containsMouse ? Theme.bgHover : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65))
+                        border.width: 1
+                        border.color: root.wifiOn ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.60) : Theme.outline
 
-                        Rectangle {
-                            width: 22
-                            height: 22
-                            radius: 11
-                            color: backHov.containsMouse ? Theme.bgHover : "transparent"
-                            Text {
-                                anchors.centerIn: parent
-                                text: "‹"
-                                font.pixelSize: Theme.fontPx(16)
-                                font.weight: Font.Bold
-                                color: backHov.containsMouse ? Theme.accentLit : Theme.fg
-                            }
-                            MouseArea {
-                                id: backHov
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    root.eventFormMode = false
-                                    root.editingEventId = ""
-                                    root.calendarViewMode = "grid"
-                                }
-                            }
-                        }
-
-                        Column {
-                            Layout.fillWidth: true
-                            spacing: 0
-                            Text {
-                                text: root.selectedDay + " " + root.monthNames[root.calMonth].substring(0, 3) + " " + root.calYear
-                                font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: Theme.fontPx(11)
-                                font.weight: Font.Bold
-                                color: Theme.fg
-                                elide: Text.ElideRight
-                            }
-                            Text {
-                                text: root.getSelectedDateWeekday()
-                                font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: Theme.fontPx(9)
-                                color: Theme.accentLit
-                            }
-                        }
-
-                        Rectangle {
-                            width: 22
-                            height: 22
-                            radius: 11
-                            color: addEvHov.containsMouse ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25) : Theme.bgAlt
-                            border.color: Theme.accent
-                            border.width: 1
-                            Text {
-                                anchors.centerIn: parent
-                                text: root.eventFormMode ? "✕" : "+"
-                                font.pixelSize: Theme.fontPx(12)
-                                font.weight: Font.Bold
-                                color: Theme.accentLit
-                            }
-                            MouseArea {
-                                id: addEvHov
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (root.eventFormMode) {
-                                        root.eventFormMode = false
-                                        root.editingEventId = ""
-                                    } else {
-                                        root.editingEventId = ""
-                                        formTitleInput.text = ""
-                                        formTimeInput.text = ""
-                                        root.eventFormMode = true
-                                        Qt.callLater(() => formTitleInput.forceActiveFocus())
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    /* Content area: Form OR Event List */
-                    Item {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-
-                        /* Inline Add / Edit Form */
-                        ColumnLayout {
+                        RowLayout {
                             anchors.fill: parent
+                            anchors.margins: 6
                             spacing: 6
-                            visible: root.eventFormMode
+
+                            Rectangle {
+                                width: 28; height: 28; radius: 14
+                                color: root.wifiOn ? (Theme.isDark ? Qt.rgba(0,0,0,0.2) : Qt.rgba(1,1,1,0.3)) : Qt.rgba(1, 1, 1, 0.08)
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "wifi"
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: 15
+                                    color: root.wifiOn ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                                }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 0
+                                Text {
+                                    text: "Wi-Fi"
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(8.5)
+                                    font.weight: Font.Bold
+                                    color: root.wifiOn ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.wifiOn ? (root.wifiName.length > 0 ? root.wifiName : "Connected") : "Off"
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(7)
+                                    color: root.wifiOn ? (Theme.isDark ? Qt.rgba(0.06,0.07,0.09,0.8) : Qt.rgba(1,1,1,0.85)) : Theme.fgDim
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+                        MouseArea {
+                            id: wifiTileHov
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.toggleWifi()
+                        }
+                    }
+
+                    // Tile 2: Bluetooth
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 45
+                        radius: 12
+                        color: root.btOn ? Theme.accent : (btTileHov.containsMouse ? Theme.bgHover : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65))
+                        border.width: 1
+                        border.color: root.btOn ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.60) : Theme.outline
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: 6
+                            spacing: 6
+
+                            Rectangle {
+                                width: 28; height: 28; radius: 14
+                                color: root.btOn ? (Theme.isDark ? Qt.rgba(0,0,0,0.2) : Qt.rgba(1,1,1,0.3)) : Qt.rgba(1, 1, 1, 0.08)
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "bluetooth"
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: 15
+                                    color: root.btOn ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                                }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 0
+                                Text {
+                                    text: "Bluetooth"
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(8.5)
+                                    font.weight: Font.Bold
+                                    color: root.btOn ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.btOn ? (root.btName.length > 0 ? root.btName : "On") : "Off"
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(7)
+                                    color: root.btOn ? (Theme.isDark ? Qt.rgba(0.06,0.07,0.09,0.8) : Qt.rgba(1,1,1,0.85)) : Theme.fgDim
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+                        MouseArea {
+                            id: btTileHov
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.toggleBt()
+                        }
+                    }
+
+                    // Tile 3: Night Light
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 45
+                        radius: 12
+                        color: root.nightOn ? Theme.accent : (nightTileHov.containsMouse ? Theme.bgHover : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65))
+                        border.width: 1
+                        border.color: root.nightOn ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.60) : Theme.outline
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: 6
+                            spacing: 6
+
+                            Rectangle {
+                                width: 28; height: 28; radius: 14
+                                color: root.nightOn ? (Theme.isDark ? Qt.rgba(0,0,0,0.2) : Qt.rgba(1,1,1,0.3)) : Qt.rgba(1, 1, 1, 0.08)
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "nightlight"
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: 15
+                                    color: root.nightOn ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                                }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 0
+                                Text {
+                                    text: "Night Light"
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(8.5)
+                                    font.weight: Font.Bold
+                                    color: root.nightOn ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                                }
+                                Text {
+                                    text: root.nightOn ? "On" : "Off"
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(7)
+                                    color: root.nightOn ? (Theme.isDark ? Qt.rgba(0.06,0.07,0.09,0.8) : Qt.rgba(1,1,1,0.85)) : Theme.fgDim
+                                }
+                            }
+                        }
+                        MouseArea {
+                            id: nightTileHov
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.toggleNight()
+                        }
+                    }
+
+                    // Tile 4: Do Not Disturb
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 45
+                        radius: 12
+                        color: root.dndOn ? Theme.accent : (dndTileHov.containsMouse ? Theme.bgHover : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65))
+                        border.width: 1
+                        border.color: root.dndOn ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.60) : Theme.outline
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: 6
+                            spacing: 6
+
+                            Rectangle {
+                                width: 28; height: 28; radius: 14
+                                color: root.dndOn ? (Theme.isDark ? Qt.rgba(0,0,0,0.2) : Qt.rgba(1,1,1,0.3)) : Qt.rgba(1, 1, 1, 0.08)
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: root.dndOn ? "notifications_off" : "notifications"
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: 15
+                                    color: root.dndOn ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                                }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 0
+                                Text {
+                                    text: "DND"
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(8.5)
+                                    font.weight: Font.Bold
+                                    color: root.dndOn ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                                }
+                                Text {
+                                    text: root.dndOn ? "On" : "Off"
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(7)
+                                    color: root.dndOn ? (Theme.isDark ? Qt.rgba(0.06,0.07,0.09,0.8) : Qt.rgba(1,1,1,0.85)) : Theme.fgDim
+                                }
+                            }
+                        }
+                        MouseArea {
+                            id: dndTileHov
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.toggleDnd()
+                        }
+                    }
+                }
+
+                // 1C. Hardware Sliders Card (Volume & Brightness)
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 88
+                    radius: 14
+                    color: Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65)
+                    border.width: 1
+                    border.color: Theme.outline
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        spacing: 6
+
+                        // Volume Row
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            Rectangle {
+                                width: 24; height: 24; radius: 12
+                                color: muteHov.containsMouse ? Theme.bgHover : "transparent"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: root.isMuted ? "volume_off" : (root.volRatio <= 0.01 ? "volume_mute" : (root.volRatio < 0.5 ? "volume_down" : "volume_up"))
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: 15
+                                    color: root.isMuted ? Theme.fgDim : Theme.accent
+                                }
+                                MouseArea {
+                                    id: muteHov
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (root.audioSink && root.audioSink.audio) {
+                                            root.audioSink.audio.muted = !root.audioSink.audio.muted
+                                        }
+                                    }
+                                }
+                            }
+
+                            Item {
+                                id: volTrack
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 18
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: 9
+                                    color: Qt.rgba(1, 1, 1, 0.10)
+                                }
+                                Rectangle {
+                                    height: parent.height
+                                    width: Math.max(0, Math.min(parent.width, parent.width * (root.isMuted ? 0 : root.volRatio)))
+                                    radius: 9
+                                    color: root.isMuted ? Theme.fgFaint : Theme.accent
+                                    Behavior on width {
+                                        enabled: !volArea.pressed
+                                        NumberAnimation { duration: 100 }
+                                    }
+                                }
+                                MouseArea {
+                                    id: volArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    function updateVol(mx) {
+                                        var r = Math.max(0, Math.min(1.0, mx / volTrack.width))
+                                        if (root.audioSink && root.audioSink.audio) {
+                                            root.audioSink.audio.volume = r
+                                            if (root.audioSink.audio.muted && r > 0) root.audioSink.audio.muted = false
+                                        }
+                                    }
+                                    onPressed: mouse => updateVol(mouse.x)
+                                    onPositionChanged: mouse => { if (pressed) updateVol(mouse.x) }
+                                }
+                                WheelHandler {
+                                    target: volTrack
+                                    onWheel: (event) => {
+                                        var step = event.angleDelta.y > 0 ? 0.03 : -0.03
+                                        if (root.audioSink && root.audioSink.audio) {
+                                            root.audioSink.audio.volume = Math.max(0, Math.min(1.0, root.volRatio + step))
+                                            if (root.audioSink.audio.muted && step > 0) root.audioSink.audio.muted = false
+                                        }
+                                    }
+                                }
+                            }
 
                             Text {
-                                text: root.editingEventId.length > 0 ? "Edit Event" : "New Event"
+                                Layout.preferredWidth: 28
+                                horizontalAlignment: Text.AlignRight
+                                text: Math.round((root.isMuted ? 0 : root.volRatio) * 100) + "%"
                                 font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: Theme.fontPx(11)
+                                font.pixelSize: Theme.fontPx(8)
                                 font.weight: Font.Bold
-                                color: Theme.accentLit
+                                color: Theme.fgDim
                             }
+                        }
+
+                        // Brightness Row
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
 
                             Rectangle {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 28
-                                radius: 6
-                                color: Theme.bgAlt
-                                border.color: formTitleInput.activeFocus ? Theme.accent : Theme.outline
-                                border.width: 1
+                                width: 24; height: 24; radius: 12
+                                color: "transparent"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "brightness_6"
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: 15
+                                    color: Theme.accentLit
+                                }
+                            }
 
-                                TextInput {
-                                    id: formTitleInput
+                            Item {
+                                id: brightTrack
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 18
+
+                                Rectangle {
                                     anchors.fill: parent
-                                    anchors.leftMargin: 8
-                                    anchors.rightMargin: 8
-                                    verticalAlignment: Text.AlignVCenter
-                                    font.family: "JetBrainsMono Nerd Font"
-                                    font.pixelSize: Theme.fontPx(11)
-                                    color: Theme.fg
-                                    clip: true
-                                    Text {
-                                        text: "Event title…"
-                                        color: Theme.fgFaint
-                                        font.family: "JetBrainsMono Nerd Font"
-                                        font.pixelSize: Theme.fontPx(11)
-                                        anchors.fill: parent
-                                        verticalAlignment: Text.AlignVCenter
-                                        visible: !formTitleInput.text && !formTitleInput.activeFocus
+                                    radius: 9
+                                    color: Qt.rgba(1, 1, 1, 0.10)
+                                }
+                                Rectangle {
+                                    height: parent.height
+                                    width: Math.max(0, Math.min(parent.width, parent.width * root.brightRatio))
+                                    radius: 9
+                                    color: Theme.accentLit
+                                    Behavior on width {
+                                        enabled: !brightArea.pressed
+                                        NumberAnimation { duration: 100 }
+                                    }
+                                }
+                                MouseArea {
+                                    id: brightArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    function updateBright(mx) {
+                                        var r = Math.max(0.01, Math.min(1.0, mx / brightTrack.width))
+                                        root.setBrightness(r)
+                                    }
+                                    onPressed: mouse => updateBright(mouse.x)
+                                    onPositionChanged: mouse => { if (pressed) updateBright(mouse.x) }
+                                }
+                                WheelHandler {
+                                    target: brightTrack
+                                    onWheel: (event) => {
+                                        var step = event.angleDelta.y > 0 ? 0.03 : -0.03
+                                        root.setBrightness(root.brightRatio + step)
                                     }
                                 }
                             }
 
-                            Rectangle {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 28
-                                radius: 6
-                                color: Theme.bgAlt
-                                border.color: formTimeInput.activeFocus ? Theme.accent : Theme.outline
-                                border.width: 1
+                            Text {
+                                Layout.preferredWidth: 28
+                                horizontalAlignment: Text.AlignRight
+                                text: Math.round(root.brightRatio * 100) + "%"
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(8)
+                                font.weight: Font.Bold
+                                color: Theme.fgDim
+                            }
+                        }
+                    }
+                }
+            }
 
-                                TextInput {
-                                    id: formTimeInput
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 8
-                                    anchors.rightMargin: 8
-                                    verticalAlignment: Text.AlignVCenter
+            /* ========================================================= */
+            /* 2. CENTER COLUMN: HUB (NOTIFICATIONS & CALENDAR) (~286px)*/
+            /* ========================================================= */
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 6
+
+                // 2A. Header Tab Bar (Notifs & Calendar)
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 26
+                    spacing: 6
+
+                    // Notifications Tab Pill
+                    Rectangle {
+                        Layout.preferredHeight: 24
+                        Layout.preferredWidth: notifTabRow.implicitWidth + 16
+                        radius: 12
+                        color: root.centerTab === 0 ? Theme.accent : (notifTabHov.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.06))
+                        border.width: 1
+                        border.color: root.centerTab === 0 ? Theme.accentLit : Theme.outline
+
+                        RowLayout {
+                            id: notifTabRow
+                            anchors.centerIn: parent
+                            spacing: 4
+                            Text {
+                                text: "notifications"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: 13
+                                color: root.centerTab === 0 ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                            }
+                            Text {
+                                text: "Notifs"
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(8.5)
+                                font.weight: Font.Bold
+                                color: root.centerTab === 0 ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                            }
+                            Rectangle {
+                                visible: root.notifCount > 0
+                                Layout.preferredHeight: 14
+                                Layout.preferredWidth: cntTxt.implicitWidth + 6
+                                radius: 7
+                                color: root.centerTab === 0 ? (Theme.isDark ? Qt.rgba(0,0,0,0.3) : Qt.rgba(1,1,1,0.4)) : Theme.accent
+                                Text {
+                                    id: cntTxt
+                                    anchors.centerIn: parent
+                                    text: String(root.notifCount)
                                     font.family: "JetBrainsMono Nerd Font"
-                                    font.pixelSize: Theme.fontPx(11)
-                                    color: Theme.fg
-                                    clip: true
-                                    Text {
-                                        text: "Time (e.g. 15:30 or All day)…"
-                                        color: Theme.fgFaint
-                                        font.family: "JetBrainsMono Nerd Font"
-                                        font.pixelSize: Theme.fontPx(11)
-                                        anchors.fill: parent
-                                        verticalAlignment: Text.AlignVCenter
-                                        visible: !formTimeInput.text && !formTimeInput.activeFocus
-                                    }
+                                    font.pixelSize: Theme.fontPx(7)
+                                    font.weight: Font.Bold
+                                    color: root.centerTab === 0 ? (Theme.isDark ? "#ffffff" : "#101116") : (Theme.isDark ? "#101116" : "#ffffff")
                                 }
                             }
+                        }
+                        MouseArea {
+                            id: notifTabHov
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.centerTab = 0
+                        }
+                    }
 
-                            RowLayout {
-                                Layout.fillWidth: true
+                    // Calendar Tab Pill
+                    Rectangle {
+                        Layout.preferredHeight: 24
+                        Layout.preferredWidth: calTabRow.implicitWidth + 16
+                        radius: 12
+                        color: root.centerTab === 1 ? Theme.accent : (calTabHov.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.06))
+                        border.width: 1
+                        border.color: root.centerTab === 1 ? Theme.accentLit : Theme.outline
+
+                        RowLayout {
+                            id: calTabRow
+                            anchors.centerIn: parent
+                            spacing: 4
+                            Text {
+                                text: "calendar_month"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: 13
+                                color: root.centerTab === 1 ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                            }
+                            Text {
+                                text: "Calendar"
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(8.5)
+                                font.weight: Font.Bold
+                                color: root.centerTab === 1 ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                            }
+                        }
+                        MouseArea {
+                            id: calTabHov
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.centerTab = 1
+                        }
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    // Clear All Notifications (Visible when in notifs tab and notifCount > 0)
+                    Rectangle {
+                        visible: root.centerTab === 0 && root.notifCount > 0
+                        Layout.preferredHeight: 22
+                        Layout.preferredWidth: clearRow.implicitWidth + 10
+                        radius: 11
+                        color: clearMH.containsMouse ? Theme.bgHover : "transparent"
+                        border.width: 1
+                        border.color: clearMH.containsMouse ? Theme.accent : Theme.outline
+
+                        Row {
+                            id: clearRow
+                            anchors.centerIn: parent
+                            spacing: 4
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "delete_sweep"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: 13
+                                color: clearMH.containsMouse ? Theme.accent : Theme.fgDim
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Clear"
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(7.5)
+                                font.weight: Font.Medium
+                                color: clearMH.containsMouse ? Theme.accent : Theme.fgDim
+                            }
+                        }
+                        MouseArea {
+                            id: clearMH
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.dismissAllNotifs()
+                        }
+                    }
+                }
+
+                // 2B. Tab Content Container
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    // ── View A: Notifications List ──
+                    Item {
+                        anchors.fill: parent
+                        visible: root.centerTab === 0
+
+                        // Empty State
+                        Item {
+                            anchors.fill: parent
+                            visible: root.notifCount === 0
+
+                            ColumnLayout {
+                                anchors.centerIn: parent
+                                spacing: 4
+                                Text {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    text: "notifications"
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: 26
+                                    color: Theme.fgFaint
+                                }
+                                Text {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    text: "No notifications"
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(9)
+                                    font.weight: Font.Bold
+                                    color: Theme.fgDim
+                                }
+                                Text {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    text: "You're all caught up"
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(7.5)
+                                    color: Theme.fgFaint
+                                }
+                            }
+                        }
+
+                        // Scrollable Notifications List
+                        Flickable {
+                            anchors.fill: parent
+                            contentHeight: notifCol.implicitHeight
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            visible: root.notifCount > 0
+
+                            ColumnLayout {
+                                id: notifCol
+                                width: parent.width
                                 spacing: 6
 
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: 26
-                                    radius: 6
-                                    color: Theme.bgAlt
-                                    border.color: Theme.outline
-                                    border.width: 1
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "Cancel"
-                                        font.family: "JetBrainsMono Nerd Font"
-                                        font.pixelSize: Theme.fontPx(10)
-                                        color: Theme.fgDim
-                                    }
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            root.eventFormMode = false
-                                            root.editingEventId = ""
-                                        }
-                                    }
-                                }
+                                Repeater {
+                                    model: root.notifItems
+                                    delegate: Rectangle {
+                                        id: notifCard
+                                        required property var modelData
+                                        required property int index
 
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: 26
-                                    radius: 6
-                                    color: Theme.accent
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "Save"
-                                        font.family: "JetBrainsMono Nerd Font"
-                                        font.pixelSize: Theme.fontPx(10)
-                                        font.weight: Font.Bold
-                                        color: Theme.isDark ? "#0E0E12" : "#ffffff"
-                                    }
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            root.addOrSaveEvent(formTitleInput.text, formTimeInput.text)
-                                        }
-                                    }
-                                }
-                            }
-
-                            Item { Layout.fillHeight: true }
-                        }
-
-                        /* Event List */
-                        ListView {
-                            id: eventListView
-                            anchors.fill: parent
-                            visible: !root.eventFormMode
-                            clip: true
-                            spacing: 5
-                            model: root.getEventsForDay(root.selectedDay)
-
-                            ScrollBar.vertical: ScrollBar {
-                                policy: ScrollBar.AsNeeded
-                                width: 4
-                            }
-
-                            delegate: Rectangle {
-                                width: eventListView.width - 4
-                                height: 38
-                                radius: 8
-                                color: Theme.bgAlt
-                                border.color: modelData.type === "festival" ? Qt.rgba(1, 0.72, 0.42, 0.35) : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25)
-                                border.width: 1
-
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 6
-                                    anchors.rightMargin: 6
-                                    spacing: 6
-
-                                    Text {
-                                        text: modelData.icon || (modelData.type === "festival" ? "🪔" : "📌")
-                                        font.pixelSize: Theme.fontPx(12)
-                                    }
-
-                                    Column {
                                         Layout.fillWidth: true
-                                        spacing: 1
-
-                                        Text {
-                                            width: parent.width
-                                            text: modelData.title
-                                            font.family: "JetBrainsMono Nerd Font"
-                                            font.pixelSize: Theme.fontPx(10)
-                                            font.weight: Font.DemiBold
-                                            color: modelData.type === "festival" ? "#ffb86c" : Theme.fg
-                                            elide: Text.ElideRight
-                                        }
-
-                                        Text {
-                                            width: parent.width
-                                            text: modelData.type === "festival" ? (modelData.category === "national" ? "National Holiday" : "Indian Festival") : (modelData.time || "All day")
-                                            font.family: "JetBrainsMono Nerd Font"
-                                            font.pixelSize: Theme.fontPx(8)
-                                            color: Theme.fgDim
-                                            elide: Text.ElideRight
-                                        }
-                                    }
-
-                                    /* Edit & Delete actions for user events */
-                                    Row {
-                                        spacing: 4
-                                        visible: modelData.is_user === true
-
-                                        Rectangle {
-                                            width: 18
-                                            height: 18
-                                            radius: 4
-                                            color: editEvHov.containsMouse ? Theme.bgHover : "transparent"
-                                            Text {
-                                                anchors.centerIn: parent
-                                                text: "✎"
-                                                font.pixelSize: Theme.fontPx(10)
-                                                color: Theme.accentLit
-                                            }
-                                            MouseArea {
-                                                id: editEvHov
-                                                anchors.fill: parent
-                                                hoverEnabled: true
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: {
-                                                    root.editingEventId = modelData.id
-                                                    formTitleInput.text = modelData.title
-                                                    formTimeInput.text = modelData.time || ""
-                                                    root.eventFormMode = true
-                                                    Qt.callLater(() => formTitleInput.forceActiveFocus())
-                                                }
-                                            }
-                                        }
-
-                                        Rectangle {
-                                            width: 18
-                                            height: 18
-                                            radius: 4
-                                            color: delEvHov.containsMouse ? Qt.rgba(1, 0.3, 0.3, 0.25) : "transparent"
-                                            Text {
-                                                anchors.centerIn: parent
-                                                text: "✕"
-                                                font.pixelSize: Theme.fontPx(9)
-                                                color: delEvHov.containsMouse ? "#ff6b6b" : Theme.fgDim
-                                            }
-                                            MouseArea {
-                                                id: delEvHov
-                                                anchors.fill: parent
-                                                hoverEnabled: true
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: root.deleteEvent(modelData.id)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            /* Empty state */
-                            Item {
-                                anchors.centerIn: parent
-                                width: parent.width
-                                height: 110
-                                visible: eventListView.count === 0 && !root.eventFormMode
-
-                                Column {
-                                    anchors.centerIn: parent
-                                    spacing: 6
-
-                                    Text {
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: "calendar_today"
-                                        font.family: Theme.fontIcon
-                                        font.pixelSize: 22
-                                        color: Theme.fgFaint
-                                    }
-
-                                    Text {
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: "No events on this day"
-                                        font.family: "JetBrainsMono Nerd Font"
-                                        font.pixelSize: Theme.fontPx(10)
-                                        color: Theme.fgDim
-                                    }
-
-                                    Rectangle {
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        width: 80
-                                        height: 22
-                                        radius: 6
-                                        color: addEmptyHov.containsMouse ? Theme.accent : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.2)
-                                        border.color: Theme.accent
+                                        Layout.preferredHeight: Math.max(50, nCol.implicitHeight + 12)
+                                        radius: 10
+                                        color: nCardMH.containsMouse ? Theme.bgHover : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.70)
                                         border.width: 1
-
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "+ Add Event"
-                                            font.family: "JetBrainsMono Nerd Font"
-                                            font.pixelSize: Theme.fontPx(9)
-                                            font.weight: Font.Bold
-                                            color: addEmptyHov.containsMouse ? (Theme.isDark ? "#0E0E12" : "#ffffff") : Theme.accentLit
-                                        }
+                                        border.color: nCardMH.containsMouse ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.35) : Theme.outline
 
                                         MouseArea {
-                                            id: addEmptyHov
+                                            id: nCardMH
                                             anchors.fill: parent
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: {
-                                                root.editingEventId = ""
-                                                formTitleInput.text = ""
-                                                formTimeInput.text = ""
-                                                root.eventFormMode = true
-                                                Qt.callLater(() => formTitleInput.forceActiveFocus())
+                                                if (modelData.actions && modelData.actions.length > 0) {
+                                                    NotificationService.invokeAction(modelData, modelData.actions[0])
+                                                }
+                                            }
+                                        }
+
+                                        ColumnLayout {
+                                            id: nCol
+                                            anchors.fill: parent
+                                            anchors.margins: 6
+                                            spacing: 2
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 4
+
+                                                Rectangle {
+                                                    width: 14; height: 14; radius: 7
+                                                    color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.2)
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: "notifications"
+                                                        font.family: Theme.fontIcon
+                                                        font.pixelSize: 9
+                                                        color: Theme.accent
+                                                    }
+                                                }
+
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    text: modelData.appName || "System"
+                                                    font.family: "JetBrainsMono Nerd Font"
+                                                    font.pixelSize: Theme.fontPx(7.5)
+                                                    font.weight: Font.Bold
+                                                    color: Theme.fgDim
+                                                    elide: Text.ElideRight
+                                                }
+
+                                                Text {
+                                                    text: modelData.timeStr || ""
+                                                    font.family: "JetBrainsMono Nerd Font"
+                                                    font.pixelSize: Theme.fontPx(6.5)
+                                                    color: Theme.fgFaint
+                                                    visible: text.length > 0
+                                                }
+
+                                                // Dismiss Button
+                                                Rectangle {
+                                                    width: 16; height: 16; radius: 8
+                                                    color: dismissMH.containsMouse ? Qt.rgba(1, 0.2, 0.2, 0.2) : "transparent"
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: "close"
+                                                        font.family: Theme.fontIcon
+                                                        font.pixelSize: 10
+                                                        color: dismissMH.containsMouse ? "#ff4444" : Theme.fgFaint
+                                                    }
+                                                    MouseArea {
+                                                        id: dismissMH
+                                                        anchors.fill: parent
+                                                        hoverEnabled: true
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        onClicked: {
+                                                            if (modelData.id !== undefined) NotificationService.dismiss(modelData.id)
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: modelData.summary || ""
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: Theme.fontPx(8)
+                                                font.weight: Font.Bold
+                                                color: Theme.fg
+                                                elide: Text.ElideRight
+                                                visible: text.length > 0
+                                            }
+
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: modelData.body || ""
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: Theme.fontPx(7)
+                                                color: Theme.fgDim
+                                                elide: Text.ElideRight
+                                                maximumLineCount: 2
+                                                wrapMode: Text.Wrap
+                                                visible: text.length > 0
                                             }
                                         }
                                     }
@@ -1055,1006 +1261,452 @@ Item {
                             }
                         }
                     }
-                }
-            }
 
-            /* Vertical Divider 1 */
-            Rectangle {
-                visible: !root.minimalCalendarOnly
-                Layout.preferredWidth: 1.5
-                Layout.fillHeight: true
-                color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.16)
-            }
-
-            /* ========================================================= */
-            /* 2. CENTER COLUMN: SOLAR SYSTEM ORBIT WITH 3D WATCH OCCLUSION */
-            /* ========================================================= */
-            Item {
-                id: centerCol
-                visible: !root.minimalCalendarOnly
-                Layout.fillWidth: !root.minimalCalendarOnly
-                Layout.fillHeight: true
-
-                readonly property real cx: centerCol.width / 2
-                readonly property real cy: centerCol.height / 2
-                readonly property real orbitRadiusX: 155 * centerCol.orbitBreath
-                readonly property real orbitRadiusY: 60 * centerCol.orbitBreath
-                readonly property real orbitTiltDeg: -13
-                readonly property real orbitTiltRad: orbitTiltDeg * Math.PI / 180
-                readonly property real cosTilt: Math.cos(orbitTiltRad)
-                readonly property real sinTilt: Math.sin(orbitTiltRad)
-
-                // Organic levitation & breathing from imperative-dots
-                property real levitation: 0
-                property alias levAnim: levAnimItem
-                SequentialAnimation {
-                    id: levAnimItem
-                    loops: Animation.Infinite
-                    running: true
-                    paused: !(root.open && root.visible)
-                    NumberAnimation { target: centerCol; property: "levitation"; from: 0; to: -5; duration: 4000; easing.type: Easing.InOutSine }
-                    NumberAnimation { target: centerCol; property: "levitation"; from: -5; to: 0; duration: 4000; easing.type: Easing.InOutSine }
-                }
-
-                property real orbitBreath: 1.0
-                property alias breathAnim: breathAnimItem
-                SequentialAnimation {
-                    id: breathAnimItem
-                    loops: Animation.Infinite
-                    running: true
-                    paused: !(root.open && root.visible)
-                    NumberAnimation { target: centerCol; property: "orbitBreath"; from: 1.0; to: 1.025; duration: 3500; easing.type: Easing.InOutSine }
-                    NumberAnimation { target: centerCol; property: "orbitBreath"; from: 1.025; to: 1.0; duration: 3500; easing.type: Easing.InOutSine }
-                }
-
-                // Real clock seconds revolution: takes exactly 60 seconds (1 minute) for 1 full 360° revolution
-                // 00 seconds sits at 12 o'clock (270° in standard Cartesian coordinates)
-                readonly property bool userDragging: false
-                property real clockAngle: 270
-
-                function syncClockAngle() {
-                    let d = new Date()
-                    let sec = d.getSeconds() + (d.getMilliseconds() / 1000.0)
-                    clockAngle = (270 + sec * 6) % 360
-                }
-
-                readonly property real orbitAngle: clockAngle
-                readonly property string displayedSecStr: root.secStr
-
-                readonly property real rad: centerCol.orbitAngle * Math.PI / 180
-                readonly property real ex: orbitRadiusX * Math.cos(rad)
-                readonly property real ey: orbitRadiusY * Math.sin(rad)
-                readonly property real posX: cx + ex * cosTilt - ey * sinTilt
-                readonly property real posY: cy + ex * sinTilt + ey * cosTilt
-                readonly property real zDepth: Math.sin(rad)
-
-                readonly property real tangentAngle: {
-                    var dx = -orbitRadiusX * Math.sin(rad) * cosTilt - orbitRadiusY * Math.cos(rad) * sinTilt
-                    var dy = -orbitRadiusX * Math.sin(rad) * sinTilt + orbitRadiusY * Math.cos(rad) * cosTilt
-                    return Math.atan2(dy, dx) * 180 / Math.PI
-                }
-
-                /* ── Canvas: Tilted Dashed Ellipse Orbit Track (z: 4) ──────── */
-                Canvas {
-                    id: orbitCanvas
-                    anchors.fill: parent
-                    z: 4
-
-                    onPaint: {
-                        var ctx = getContext("2d")
-                        ctx.reset()
-                        ctx.clearRect(0, 0, width, height)
-
-                        var cx = centerCol.cx
-                        var cy = centerCol.cy
-                        var a = centerCol.orbitRadiusX
-                        var b = centerCol.orbitRadiusY
-                        var cosT = centerCol.cosTilt
-                        var sinT = centerCol.sinTilt
-
-                        ctx.beginPath()
-                        var steps = 120
-                        for (var i = 0; i <= steps; i++) {
-                            var theta = (i / steps) * 2 * Math.PI
-                            var ex = a * Math.cos(theta)
-                            var ey = b * Math.sin(theta)
-                            var px = cx + ex * cosT - ey * sinT
-                            var py = cy + ex * sinT + ey * cosT
-                            if (i === 0) ctx.moveTo(px, py)
-                            else ctx.lineTo(px, py)
-                        }
-                        ctx.strokeStyle = Theme.isDark ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.35) : "#000000"
-                        ctx.lineWidth = Theme.isDark ? 1.3 : 1.5
-                        ctx.setLineDash([4, 5])
-                        ctx.stroke()
-                    }
-                    Component.onCompleted: requestPaint()
-                    Connections {
-                        target: centerCol
-                        function onWidthChanged() { orbitCanvas.requestPaint() }
-                        function onHeightChanged() { orbitCanvas.requestPaint() }
-                    }
-                    Connections {
-                        target: Theme
-                        function onFgChanged() { orbitCanvas.requestPaint() }
-                        function onAccentChanged() { orbitCanvas.requestPaint() }
-                        function onIsDarkChanged() { orbitCanvas.requestPaint() }
-                    }
-                }
-
-                /* ── Big Digital Clock & Subtitle (z: 6) ─────────────────── */
-                Column {
-                    anchors.centerIn: parent
-                    spacing: 3
-                    z: 6
-                    transform: Translate { y: centerCol.levitation }
-
-                    Row {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 4
-
-                        Text {
-                            text: root.hourStr
-                            font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: Theme.fontPx(42)
-                            font.weight: Font.Bold
-                            color: Theme.fg
-                        }
-
-                        // Circular colon dots
-                        Column {
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.verticalCenterOffset: -1
-                            spacing: 7
-                            Rectangle { width: 5; height: 5; radius: 2.5; color: Theme.fg }
-                            Rectangle { width: 5; height: 5; radius: 2.5; color: Theme.fg }
-                        }
-
-                        Text {
-                            text: root.minStr
-                            font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: Theme.fontPx(42)
-                            font.weight: Font.Bold
-                            color: Theme.fg
-                        }
-                    }
-
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: root.fullDateStr
-                        font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: Theme.fontPx(9)
-                        font.weight: Font.DemiBold
-                        font.letterSpacing: 1.0
-                        color: Theme.fgDim
-                    }
-                }
-
-                /* ── Seconds Satellite Capsule (z: 10 in front, z: 2 when behind) ──── */
-                Item {
-                    id: capsuleAnchor
-                    x: centerCol.posX
-                    y: centerCol.posY
-                    z: centerCol.zDepth >= 0 ? 10 : 2
-                    scale: 0.88 + 0.16 * ((centerCol.zDepth + 1.0) / 2.0)
-
-                    Rectangle {
-                        id: secondCapsule
-                        width: 32
-                        height: 42
-                        radius: 16
-                        anchors.centerIn: parent
-                        color: Theme.isDark ? Theme.accentLit : Theme.accent
-                        border.color: Theme.isDark ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.40) : "#000000"
-                        border.width: Theme.isDark ? 1 : 1.2
-
-                        // Rotates tangentially along the planetary ellipse
-                        rotation: centerCol.tangentAngle + 90
-
-                        // Content remains upright
-                        Column {
-                            anchors.centerIn: parent
-                            spacing: 0
-                            rotation: -secondCapsule.rotation
-
-                            Text {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: centerCol.displayedSecStr
-                                font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: Theme.fontPx(13)
-                                font.weight: Font.Black
-                                color: Theme.isDark ? "#121118" : "#ffffff"
-                            }
-
-                            Text {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: "SEC"
-                                font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: Theme.fontPx(6)
-                                font.weight: Font.Bold
-                                font.letterSpacing: 0.8
-                                 color: Theme.isDark ? Qt.rgba(0.07, 0.06, 0.10, 0.60) : Qt.rgba(1, 1, 1, 0.65)
-                            }
-                        }
-                    }
-                }
-            }
-
-            /* Vertical Divider 2 */
-            Rectangle {
-                visible: !root.minimalCalendarOnly
-                Layout.preferredWidth: 1.5
-                Layout.fillHeight: true
-                color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.16)
-            }
-
-            /* ========================================================= */
-            /* 3. RIGHT COLUMN: WEATHER OVERVIEW OR SYNCED LYRICS VIEW  */
-            /* ========================================================= */
-            Item {
-                id: rightCol
-                visible: !root.minimalCalendarOnly
-                Layout.preferredWidth: 235
-                Layout.fillHeight: true
-
-                property string viewMode: "lyrics" // "lyrics"
-
-                function cycleView(delta) {
-                    if (delta < 0 && rightCol.viewMode !== "lyrics") {
-                        rightCol.viewMode = "lyrics"
-                    } else if (delta > 0 && rightCol.viewMode !== "weather") {
-                        rightCol.viewMode = "weather"
-                    }
-                }
-
-                WheelHandler {
-                    target: null
-                    orientation: Qt.Vertical
-                    onWheel: (event) => rightCol.cycleView(event.angleDelta.y)
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    acceptedButtons: Qt.NoButton
-                    z: -1
-                    onWheel: (wheel) => rightCol.cycleView(wheel.angleDelta.y)
-                }
-
-                /* View A: Weather Overview & Compact Music Overlay */
-                Item {
-                    id: weatherView
-                    anchors.fill: parent
-                    visible: opacity > 0.001
-                    opacity: rightCol.viewMode === "weather" ? 1.0 : 0.0
-                    scale: rightCol.viewMode === "weather" ? 1.0 : 0.95
-                    enabled: rightCol.viewMode === "weather"
-                    Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutQuad } }
-                    Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutQuad } }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        acceptedButtons: Qt.NoButton
-                        z: -1
-                        onWheel: (wheel) => rightCol.cycleView(wheel.angleDelta.y)
-                    }
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        spacing: 8
-
-                    /* Top: Weather Overview */
+                    // ── View B: Calendar Month Grid ──
                     Item {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 76
+                        anchors.fill: parent
+                        visible: root.centerTab === 1
 
                         ColumnLayout {
                             anchors.fill: parent
-                            spacing: 2
+                            spacing: 4
 
+                            // Calendar Header: < Month Year >
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 4
 
                                 Rectangle {
-                                    width: 18
-                                    height: 18
-                                    radius: 9
-                                    opacity: root.weatherDayIndex > 0 ? 1.0 : 0.3
-                                    color: prevDayM.containsMouse && root.weatherDayIndex > 0 ? Theme.bgHover : "transparent"
+                                    width: 20; height: 20; radius: 10
+                                    color: prevMH.containsMouse ? Theme.bgHover : "transparent"
                                     Text {
                                         anchors.centerIn: parent
                                         text: "‹"
                                         font.pixelSize: Theme.fontPx(13)
                                         font.weight: Font.Bold
-                                        color: prevDayM.containsMouse && root.weatherDayIndex > 0 ? Theme.fg : Theme.fgDim
+                                        color: prevMH.containsMouse ? Theme.fg : Theme.fgDim
                                     }
                                     MouseArea {
-                                        id: prevDayM
+                                        id: prevMH
                                         anchors.fill: parent
-                                        hoverEnabled: root.weatherDayIndex > 0
-                                        cursorShape: root.weatherDayIndex > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                        onClicked: root.prevWeatherDay()
-                                        onWheel: (wheel) => rightCol.cycleView(wheel.angleDelta.y)
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.prevMonth()
                                     }
                                 }
 
                                 Text {
                                     Layout.fillWidth: true
-                                    text: root.weatherDayTitle
+                                    text: root.monthNames[root.calMonth] + " " + root.calYear
                                     font.family: "JetBrainsMono Nerd Font"
-                                    font.pixelSize: Theme.fontPx(10)
+                                    font.pixelSize: Theme.fontPx(9.5)
                                     font.weight: Font.Bold
-                                    font.letterSpacing: 1.2
                                     color: Theme.fg
                                     horizontalAlignment: Text.AlignHCenter
                                 }
 
                                 Rectangle {
-                                    width: 18
-                                    height: 18
-                                    radius: 9
-                                    opacity: (WeatherService.forecast && root.weatherDayIndex < WeatherService.forecast.length - 1) ? 1.0 : 0.3
-                                    color: nextDayM.containsMouse && (WeatherService.forecast && root.weatherDayIndex < WeatherService.forecast.length - 1) ? Theme.bgHover : "transparent"
+                                    width: 20; height: 20; radius: 10
+                                    color: nextMH.containsMouse ? Theme.bgHover : "transparent"
                                     Text {
                                         anchors.centerIn: parent
                                         text: "›"
                                         font.pixelSize: Theme.fontPx(13)
                                         font.weight: Font.Bold
-                                        color: nextDayM.containsMouse ? Theme.fg : Theme.fgDim
+                                        color: nextMH.containsMouse ? Theme.fg : Theme.fgDim
                                     }
                                     MouseArea {
-                                        id: nextDayM
+                                        id: nextMH
                                         anchors.fill: parent
-                                        hoverEnabled: (WeatherService.forecast && root.weatherDayIndex < WeatherService.forecast.length - 1)
-                                        cursorShape: (WeatherService.forecast && root.weatherDayIndex < WeatherService.forecast.length - 1) ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                        onClicked: root.nextWeatherDay()
-                                        onWheel: (wheel) => rightCol.cycleView(wheel.angleDelta.y)
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.nextMonth()
                                     }
                                 }
                             }
 
-                            /* Weather overview: Icon beside Temperature */
-                            RowLayout {
+                            // Weekday Abbreviations
+                            Row {
                                 Layout.fillWidth: true
-                                Layout.topMargin: 2
-                                spacing: 8
-
-                                Text {
-                                    text: root.weatherIcon || "cloud"
-                                    font.family: Theme.fontIcon
-                                    font.pixelSize: 32
-                                    color: Theme.accentLit
-                                    Layout.alignment: Qt.AlignVCenter
-                                }
-
-                                Column {
-                                    Layout.fillWidth: true
-                                    spacing: 1
-                                    Layout.alignment: Qt.AlignVCenter
-
-                                    Text {
-                                        text: root.weatherTemp
+                                spacing: (parent.width - 7 * 24) / 6
+                                Repeater {
+                                    model: root.weekdayShortNames
+                                    delegate: Text {
+                                        width: 24
+                                        horizontalAlignment: Text.AlignHCenter
+                                        text: modelData
                                         font.family: "JetBrainsMono Nerd Font"
-                                        font.pixelSize: Theme.fontPx(28)
+                                        font.pixelSize: Theme.fontPx(7)
                                         font.weight: Font.Bold
-                                        color: Theme.fg
-                                        lineHeight: 0.95
-                                    }
-
-                                    Row {
-                                        spacing: 4
-                                        Text {
-                                            text: root.weatherCond
-                                            font.family: "JetBrainsMono Nerd Font"
-                                            font.pixelSize: Theme.fontPx(10)
-                                            font.weight: Font.Medium
-                                            color: Theme.fgDim
-                                        }
-                                        Text {
-                                            visible: WeatherService.city.length > 0
-                                            text: "• " + WeatherService.city
-                                            font.family: "JetBrainsMono Nerd Font"
-                                            font.pixelSize: Theme.fontPx(10)
-                                            color: Theme.fgFaint
-                                            elide: Text.ElideRight
-                                            width: 80
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    /* Bottom: ONEUI-STYLED MUSIC OVERLAY WITH WAVY VISUALIZER */
-                    Rectangle {
-                        id: compactMusicBox
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 144
-                        Layout.maximumHeight: 148
-                        radius: 14
-                        color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.94)
-                        border.color: Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.28)
-                        border.width: 1
-                        clip: true
-
-                        MouseArea {
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            acceptedButtons: Qt.NoButton
-                            z: -1
-                            onWheel: (wheel) => rightCol.cycleView(wheel.angleDelta.y)
-                        }
-
-                        /* Ambient dimmed album art background */
-                        Image {
-                            anchors.fill: parent
-                            source: root.musicArtUrl
-                            sourceSize: Qt.size(240, 200)
-                            asynchronous: true
-                            cache: true
-                            fillMode: Image.PreserveAspectCrop
-                            opacity: (status === Image.Ready) ? 0.12 : 0.0
-                            visible: root.hasMusicTrack && root.musicArtUrl.length > 0 && status === Image.Ready
-                            Behavior on opacity { NumberAnimation { duration: 150 } }
-                        }
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: 8
-                            spacing: 4
-
-                            /* 1. Header: Output Device / Spotify Badge */
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 5
-
-                                Text {
-                                    text: "music_note"
-                                    font.family: Theme.fontIcon
-                                    font.pixelSize: 12
-                                    color: Theme.accentLit
-                                }
-
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: (Pipewire.defaultAudioSink && Pipewire.defaultAudioSink.description && Pipewire.defaultAudioSink.description.length > 0)
-                                        ? Pipewire.defaultAudioSink.description
-                                        : (root.mprisPlayer && root.mprisPlayer.identity ? root.mprisPlayer.identity : "Audio Output")
-                                    font.family: "JetBrainsMono Nerd Font"
-                                    font.pixelSize: Theme.fontPx(9)
-                                    font.weight: Font.DemiBold
-                                    color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.75)
-                                    elide: Text.ElideRight
-                                }
-                            }
-
-                            /* 2. Track Info & Album Art Thumbnail */
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 6
-
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 1
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: root.hasMusicTrack ? root.musicTitle : "No Media Playing"
-                                        font.family: "JetBrainsMono Nerd Font"
-                                        font.pixelSize: Theme.fontPx(11)
-                                        font.weight: Font.Bold
-                                        color: Theme.fg
-                                        elide: Text.ElideRight
-                                    }
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: root.hasMusicTrack ? (root.musicArtist || "Unknown Artist") : "Waiting for playback..."
-                                        font.family: "JetBrainsMono Nerd Font"
-                                        font.pixelSize: Theme.fontPx(8)
-                                        font.weight: Font.Normal
-                                        color: Theme.accent
-                                        elide: Text.ElideRight
-                                    }
-                                }
-
-                                Rectangle {
-                                    Layout.preferredWidth: 28
-                                    Layout.preferredHeight: 28
-                                    radius: 6
-                                    color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.90)
-                                    border.color: Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.35)
-                                    border.width: 1
-                                    clip: true
-
-                                    Image {
-                                        anchors.fill: parent
-                                        source: root.musicArtUrl
-                                        sourceSize: Qt.size(64, 64)
-                                        asynchronous: true
-                                        cache: true
-                                        visible: root.hasMusicTrack && root.musicArtUrl.length > 0 && status === Image.Ready
-                                        fillMode: Image.PreserveAspectCrop
-                                    }
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "music_note"
-                                        font.family: Theme.fontIcon
-                                        font.pixelSize: 14
-                                        color: root.isMusicPlaying ? Theme.accentLit : Theme.fgDim
-                                        visible: !root.hasMusicTrack || root.musicArtUrl.length === 0
-                                    }
-
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            if (root.mprisPlayer) root.mprisPlayer.togglePlaying()
-                                        }
-                                        onWheel: (wheel) => rightCol.cycleView(wheel.angleDelta.y)
+                                        color: Theme.fgFaint
                                     }
                                 }
                             }
 
-                            /* 3. Wavy Visualizer & Interactive Seek Bar */
-                            WavySeekBar {
+                            // 42-day (6x7) Calendar Grid
+                            GridLayout {
                                 Layout.fillWidth: true
-                                currentPosition: root.musicPosition
-                                totalLength: root.musicLength
-                                isPlaying: root.isMusicPlaying
-                                waveHeight: 14
-                                barHeight: 7
-                                timeLabelSize: 7
-                                accentColor: Theme.accent
-                                accentLitColor: Theme.accentLit
-                                onSeekRequested: (frac) => {
-                                    if (root.mprisPlayer && root.musicLength > 0) {
-                                        root.mprisPlayer.position = frac * root.musicLength
-                                    }
-                                }
-                            }
+                                Layout.fillHeight: true
+                                columns: 7
+                                rowSpacing: 2
+                                columnSpacing: (parent.width - 7 * 24) / 6
 
-                            /* 4. Transport Controls (Shuffle, Prev, Play/Pause, Next, Loop) */
-                            RowLayout {
-                                Layout.fillWidth: true
-                                Layout.alignment: Qt.AlignHCenter
+                                Repeater {
+                                    model: 42
+                                    delegate: Item {
+                                        required property int index
+                                        width: 24; height: 20
 
-                                Item { Layout.fillWidth: true }
+                                        readonly property int firstDay: root.firstDayWeekday(root.calYear, root.calMonth)
+                                        readonly property int totalDays: root.daysInMonth(root.calYear, root.calMonth)
+                                        readonly property int dayNum: index - firstDay + 1
+                                        readonly property bool isCurrentMonth: dayNum >= 1 && dayNum <= totalDays
+                                        readonly property bool isToday: isCurrentMonth && (dayNum === root.currentDate.getDate()) && (root.calMonth === root.currentDate.getMonth()) && (root.calYear === root.currentDate.getFullYear())
+                                        readonly property bool isSelected: isCurrentMonth && (dayNum === root.selectedDay)
 
-                                // Shuffle
-                                Rectangle {
-                                    Layout.preferredWidth: 20
-                                    Layout.preferredHeight: 20
-                                    radius: 10
-                                    color: shufCM.containsMouse ? Theme.bgHover : "transparent"
+                                        Rectangle {
+                                            anchors.centerIn: parent
+                                            width: 20; height: 20
+                                            radius: 10
+                                            color: isToday ? Theme.accent : (isSelected ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25) : (dayMH.containsMouse ? Theme.bgHover : "transparent"))
+                                            border.width: isSelected && !isToday ? 1 : 0
+                                            border.color: Theme.accentLit
 
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "shuffle"
-                                        font.family: Theme.fontIcon
-                                        font.pixelSize: 12
-                                        color: shufCM.containsMouse ? Theme.accentLit : Theme.fgDim
-                                    }
-
-                                    MouseArea {
-                                        id: shufCM
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: Quickshell.execDetached(["playerctl", "shuffle", "Toggle"])
-                                        onWheel: (wheel) => rightCol.cycleView(wheel.angleDelta.y)
-                                    }
-                                }
-
-                                Item { Layout.preferredWidth: 6 }
-
-                                // Previous
-                                Rectangle {
-                                    Layout.preferredWidth: 22
-                                    Layout.preferredHeight: 22
-                                    radius: 11
-                                    color: prevCM.containsMouse ? Theme.bgHover : "transparent"
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "skip_previous"
-                                        font.family: Theme.fontIcon
-                                        font.pixelSize: 14
-                                        color: prevCM.containsMouse ? Theme.accentLit : Theme.fg
-                                    }
-
-                                    MouseArea {
-                                        id: prevCM
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            if (root.mprisPlayer) root.mprisPlayer.previous()
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: isCurrentMonth ? String(dayNum) : ""
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: Theme.fontPx(7.5)
+                                                font.weight: isToday ? Font.Bold : Font.Normal
+                                                color: isToday ? (Theme.isDark ? "#101116" : "#ffffff") : (isCurrentMonth ? Theme.fg : Theme.fgFaint)
+                                            }
                                         }
-                                        onWheel: (wheel) => rightCol.cycleView(wheel.angleDelta.y)
-                                    }
-                                }
 
-                                Item { Layout.preferredWidth: 6 }
-
-                                // Play / Pause
-                                Rectangle {
-                                    Layout.preferredWidth: 26
-                                    Layout.preferredHeight: 26
-                                    radius: 13
-                                    color: playCM.containsMouse ? Theme.accentLit : Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.25)
-                                    border.color: Theme.accentLit
-                                    border.width: 1
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: root.isMusicPlaying ? "pause" : "play_arrow"
-                                        font.family: Theme.fontIcon
-                                        font.pixelSize: 14
-                                        color: playCM.containsMouse ? (Theme.isDark ? "#121118" : "#ffffff") : Theme.fg
-                                    }
-
-                                    MouseArea {
-                                        id: playCM
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            if (root.mprisPlayer) root.mprisPlayer.togglePlaying()
+                                        MouseArea {
+                                            id: dayMH
+                                            anchors.fill: parent
+                                            hoverEnabled: isCurrentMonth
+                                            cursorShape: isCurrentMonth ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                            onClicked: {
+                                                if (isCurrentMonth) root.selectedDay = dayNum
+                                            }
                                         }
-                                        onWheel: (wheel) => rightCol.cycleView(wheel.angleDelta.y)
                                     }
                                 }
-
-                                Item { Layout.preferredWidth: 6 }
-
-                                // Next
-                                Rectangle {
-                                    Layout.preferredWidth: 22
-                                    Layout.preferredHeight: 22
-                                    radius: 11
-                                    color: nextCM.containsMouse ? Theme.bgHover : "transparent"
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "skip_next"
-                                        font.family: Theme.fontIcon
-                                        font.pixelSize: 14
-                                        color: nextCM.containsMouse ? Theme.accentLit : Theme.fg
-                                    }
-
-                                    MouseArea {
-                                        id: nextCM
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            if (root.mprisPlayer) root.mprisPlayer.next()
-                                        }
-                                        onWheel: (wheel) => rightCol.cycleView(wheel.angleDelta.y)
-                                    }
-                                }
-
-                                Item { Layout.preferredWidth: 6 }
-
-                                // Loop
-                                Rectangle {
-                                    Layout.preferredWidth: 20
-                                    Layout.preferredHeight: 20
-                                    radius: 10
-                                    color: loopCM.containsMouse ? Theme.bgHover : "transparent"
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "repeat"
-                                        font.family: Theme.fontIcon
-                                        font.pixelSize: 12
-                                        color: loopCM.containsMouse ? Theme.accentLit : Theme.fgDim
-                                    }
-
-                                    MouseArea {
-                                        id: loopCM
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: Quickshell.execDetached(["playerctl", "loop", "Track"])
-                                        onWheel: (wheel) => rightCol.cycleView(wheel.angleDelta.y)
-                                    }
-                                }
-
-                                Item { Layout.fillWidth: true }
                             }
                         }
                     }
                 }
             }
 
-                /* View B: Full Synced Lyrics Display */
-                Item {
-                    id: lyricsView
-                    anchors.fill: parent
-                    visible: opacity > 0.001
-                    opacity: rightCol.viewMode === "lyrics" ? 1.0 : 0.0
-                    scale: rightCol.viewMode === "lyrics" ? 1.0 : 0.95
-                    enabled: rightCol.viewMode === "lyrics"
-                    Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutQuad } }
-                    Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutQuad } }
+            /* ========================================================= */
+            /* 3. RIGHT COLUMN: MEDIA PLAYER & WEATHER (~268px)         */
+            /* ========================================================= */
+            ColumnLayout {
+                Layout.preferredWidth: 268
+                Layout.fillHeight: true
+                spacing: 8
 
-                    Item {
-                        anchors.fill: parent
-                        clip: true
+                // 3A. Live Header (Clock, Date & Weather Capsule)
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 26
+                    spacing: 6
 
-                        MouseArea {
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            acceptedButtons: Qt.NoButton
-                            z: -1
-                            onWheel: (wheel) => rightCol.cycleView(wheel.angleDelta.y)
+                    // Clock & Date
+                    RowLayout {
+                        spacing: 4
+                        Text {
+                            text: root.timeStr
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(11)
+                            font.weight: Font.Bold
+                            color: Theme.fg
                         }
+                        Text {
+                            text: "· " + root.dateStr
+                            font.family: "JetBrainsMono Nerd Font"
+                            font.pixelSize: Theme.fontPx(8)
+                            font.weight: Font.Medium
+                            color: Theme.fgDim
+                        }
+                    }
 
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: 8
+                    Item { Layout.fillWidth: true }
+
+                    // Weather Capsule
+                    Rectangle {
+                        Layout.preferredHeight: 24
+                        Layout.preferredWidth: weatherRow.implicitWidth + 12
+                        radius: 12
+                        color: Qt.rgba(1, 1, 1, 0.06)
+                        border.width: 1
+                        border.color: Theme.outline
+
+                        RowLayout {
+                            id: weatherRow
+                            anchors.centerIn: parent
                             spacing: 4
 
-                            /* Top Bar: Title + Switch back to Weather */
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 4
+                            Text {
+                                text: WeatherService.icon.length > 0 ? WeatherService.icon : "cloud"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: 13
+                                color: Theme.accentLit
+                            }
+                            Text {
+                                text: WeatherService.temp.length > 0 ? WeatherService.temp : "--°"
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(8)
+                                font.weight: Font.Bold
+                                color: Theme.fg
+                            }
+                            Text {
+                                visible: WeatherService.city.length > 0
+                                text: "• " + WeatherService.city
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(7.5)
+                                color: Theme.fgDim
+                                elide: Text.ElideRight
+                                Layout.maximumWidth: 60
+                            }
+                        }
+                    }
+                }
 
-                                Text {
-                                    text: "music_note"
-                                    font.family: Theme.fontIcon
-                                    font.pixelSize: 12
-                                    color: Theme.accent
+                // 3B. Rich Media Player Card
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    radius: 14
+                    color: Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65)
+                    border.width: 1
+                    border.color: Theme.outline
+                    clip: true
+
+                    // Ambient blurred art background
+                    Image {
+                        anchors.fill: parent
+                        source: root.musicArtUrl
+                        sourceSize: Qt.size(200, 200)
+                        fillMode: Image.PreserveAspectCrop
+                        opacity: (status === Image.Ready && root.hasMusicTrack) ? 0.12 : 0.0
+                        Behavior on opacity { NumberAnimation { duration: 200 } }
+                    }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        spacing: 8
+
+                        // Track Art & Metadata Row
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+
+                            // Album Art / Vinyl Disc
+                            Rectangle {
+                                width: 50; height: 50
+                                radius: 10
+                                color: Theme.bg
+                                border.width: 1
+                                border.color: root.hasMusicTrack ? Theme.accent : Theme.outline
+                                clip: true
+
+                                Image {
+                                    id: artImg
+                                    anchors.fill: parent
+                                    source: root.musicArtUrl
+                                    sourceSize: Qt.size(100, 100)
+                                    fillMode: Image.PreserveAspectCrop
+                                    visible: root.hasMusicTrack && root.musicArtUrl.length > 0 && status === Image.Ready
                                 }
+
+                                Item {
+                                    anchors.fill: parent
+                                    visible: !root.hasMusicTrack || root.musicArtUrl.length === 0 || artImg.status !== Image.Ready
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "music_note"
+                                        font.family: Theme.fontIcon
+                                        font.pixelSize: 22
+                                        color: Theme.accent
+                                    }
+                                }
+                            }
+
+                            // Track Title & Artist
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
 
                                 Text {
                                     Layout.fillWidth: true
-                                    text: LyricsService.hasTrack ? LyricsService.trackTitle : "Lyrics"
+                                    text: root.musicTitle
                                     font.family: "JetBrainsMono Nerd Font"
-                                    font.pixelSize: Theme.fontPx(9)
+                                    font.pixelSize: Theme.fontPx(9.5)
                                     font.weight: Font.Bold
                                     color: Theme.fg
                                     elide: Text.ElideRight
                                 }
 
                                 Text {
-                                    visible: LyricsService.hasTrack && LyricsService.trackArtist.length > 0
-                                    text: LyricsService.trackArtist
+                                    Layout.fillWidth: true
+                                    text: root.musicArtist
                                     font.family: "JetBrainsMono Nerd Font"
                                     font.pixelSize: Theme.fontPx(8)
+                                    font.weight: Font.Medium
                                     color: Theme.fgDim
                                     elide: Text.ElideRight
-                                    Layout.maximumWidth: 80
+                                }
+
+                                Text {
+                                    text: (root.mprisPlayer && root.mprisPlayer.identity) ? root.mprisPlayer.identity : "Media"
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(7)
+                                    color: Theme.fgFaint
                                 }
                             }
+                        }
 
-                            /* Divider */
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 1
-                                color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08)
-                            }
+                        // Seekable Progress Slider
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
 
-                            /* Lyrics Content Area */
                             Item {
+                                id: seekTrack
                                 Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                clip: true
+                                Layout.preferredHeight: 14
 
-                                // 1. Lyrics Available
-                                ColumnLayout {
+                                Rectangle {
                                     anchors.centerIn: parent
-                                    width: parent.width
-                                    spacing: 6
-                                    visible: LyricsService.hasTrack && LyricsService.hasLyrics
+                                    width: parent.width; height: 4
+                                    radius: 2
+                                    color: Qt.rgba(1, 1, 1, 0.12)
+                                }
 
-                                    // Previous line
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: LyricsService.prevLine || ""
-                                        font.family: "JetBrainsMono Nerd Font"
-                                        font.pixelSize: Theme.fontPx(8)
-                                        font.weight: Font.Normal
-                                        color: Qt.alpha(Theme.fg, 0.35)
-                                        horizontalAlignment: Text.AlignHCenter
-                                        wrapMode: Text.Wrap
-                                        elide: Text.ElideRight
-                                        maximumLineCount: 2
-                                        visible: text.length > 0
-                                    }
+                                Rectangle {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    x: 0
+                                    width: Math.max(0, Math.min(seekTrack.width, seekTrack.width * root.musicProgress))
+                                    height: 4
+                                    radius: 2
+                                    color: Theme.accent
+                                }
 
-                                    // Current line (Highlighted)
-                                    Item {
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: curLineTxt.contentHeight + 8
-
-                                        Text {
-                                            id: curLineTxt
-                                            anchors.centerIn: parent
-                                            width: parent.width - 10
-                                            text: LyricsService.currentLine || "♪ ♫ ♪"
-                                            font.family: "JetBrainsMono Nerd Font"
-                                            font.pixelSize: Theme.fontPx(11)
-                                            font.weight: Font.Bold
-                                            color: Theme.accentLit
-                                            horizontalAlignment: Text.AlignHCenter
-                                            wrapMode: Text.Wrap
-                                            elide: Text.ElideRight
-                                            maximumLineCount: 3
+                                // Interactive Seek Area
+                                MouseArea {
+                                    id: seekMA
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: root.hasMusicTrack ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                    onClicked: mouse => {
+                                        if (root.hasMusicTrack && seekTrack.width > 0) {
+                                            root.seekRatio(mouse.x / seekTrack.width)
                                         }
                                     }
-
-                                    // Next line
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: LyricsService.nextLine || ""
-                                        font.family: "JetBrainsMono Nerd Font"
-                                        font.pixelSize: Theme.fontPx(8)
-                                        font.weight: Font.Normal
-                                        color: Qt.alpha(Theme.fg, 0.40)
-                                        horizontalAlignment: Text.AlignHCenter
-                                        wrapMode: Text.Wrap
-                                        elide: Text.ElideRight
-                                        maximumLineCount: 2
-                                        visible: text.length > 0
-                                    }
-                                }
-
-                                // 2. Track playing but no lyrics found
-                                ColumnLayout {
-                                    anchors.centerIn: parent
-                                    width: parent.width
-                                    spacing: 4
-                                    visible: LyricsService.hasTrack && !LyricsService.hasLyrics
-
-                                    Text {
-                                        Layout.alignment: Qt.AlignHCenter
-                                        text: "headphones"
-                                        font.family: Theme.fontIcon
-                                        font.pixelSize: 22
-                                        color: Qt.alpha(Theme.fg, 0.3)
-                                    }
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: LyricsService.trackTitle
-                                        font.family: "JetBrainsMono Nerd Font"
-                                        font.pixelSize: Theme.fontPx(9)
-                                        font.weight: Font.Bold
-                                        color: Theme.fg
-                                        horizontalAlignment: Text.AlignHCenter
-                                        elide: Text.ElideRight
-                                    }
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: "No synced lyrics available"
-                                        font.family: "JetBrainsMono Nerd Font"
-                                        font.pixelSize: Theme.fontPx(8)
-                                        color: Theme.fgDim
-                                        horizontalAlignment: Text.AlignHCenter
-                                    }
-                                }
-
-                                // 3. Nothing playing
-                                ColumnLayout {
-                                    anchors.centerIn: parent
-                                    width: parent.width
-                                    spacing: 4
-                                    visible: !LyricsService.hasTrack
-
-                                    Text {
-                                        Layout.alignment: Qt.AlignHCenter
-                                        text: "music_note"
-                                        font.family: Theme.fontIcon
-                                        font.pixelSize: 22
-                                        color: Qt.alpha(Theme.fg, 0.25)
-                                    }
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: "Nothing Playing"
-                                        font.family: "JetBrainsMono Nerd Font"
-                                        font.pixelSize: Theme.fontPx(9)
-                                        font.weight: Font.Bold
-                                        color: Theme.fgDim
-                                        horizontalAlignment: Text.AlignHCenter
-                                    }
                                 }
                             }
 
-                            /* Bottom Mini Playback Controls */
+                            // Time Labels (Elapsed / Total)
                             RowLayout {
                                 Layout.fillWidth: true
-                                spacing: 4
-                                visible: LyricsService.hasTrack
-
-                                Rectangle {
-                                    width: 16
-                                    height: 16
-                                    radius: 8
-                                    color: lyrPrevM.containsMouse ? Theme.bgHover : "transparent"
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "skip_previous"
-                                        font.family: Theme.fontIcon
-                                        font.pixelSize: 11
-                                        color: Theme.fgDim
-                                    }
-                                    MouseArea {
-                                        id: lyrPrevM
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: { if (LyricsService.activePlayer) LyricsService.activePlayer.previous() }
-                                        onWheel: (wheel) => rightCol.cycleView(wheel.angleDelta.y)
-                                    }
+                                Text {
+                                    text: root.formatTime(root.musicPosition)
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(7)
+                                    color: Theme.fgDim
                                 }
-
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    height: 2.5
-                                    radius: 1.25
-                                    color: Qt.alpha(Theme.fg, 0.15)
-                                    Rectangle {
-                                        anchors.left: parent.left
-                                        anchors.top: parent.top
-                                        anchors.bottom: parent.bottom
-                                        width: parent.width * (LyricsService.totalLength > 0 ? Math.min(1.0, LyricsService.currentPosition / LyricsService.totalLength) : 0)
-                                        radius: 1.25
-                                        color: Theme.accent
-                                    }
+                                Item { Layout.fillWidth: true }
+                                Text {
+                                    text: root.formatTime(root.musicLength)
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(7)
+                                    color: Theme.fgDim
                                 }
+                            }
+                        }
 
-                                Rectangle {
-                                    width: 18
-                                    height: 18
-                                    radius: 9
-                                    color: Theme.accent
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: LyricsService.isPlaying ? "pause" : "play_arrow"
-                                        font.family: Theme.fontIcon
-                                        font.pixelSize: 12
-                                        color: Theme.isDark ? "#121118" : "#ffffff"
-                                    }
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: { if (LyricsService.activePlayer) LyricsService.activePlayer.togglePlaying() }
-                                        onWheel: (wheel) => rightCol.cycleView(wheel.angleDelta.y)
-                                    }
+                        // Playback Controls Row (Prev, Play/Pause, Next)
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignHCenter
+                            spacing: 16
+
+                            Item { Layout.fillWidth: true }
+
+                            // Previous
+                            Rectangle {
+                                width: 28; height: 28; radius: 14
+                                color: prevBtnMH.containsMouse ? Theme.bgHover : "transparent"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "skip_previous"
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: 18
+                                    color: prevBtnMH.containsMouse ? Theme.accent : Theme.fg
                                 }
-
-                                Rectangle {
-                                    width: 16
-                                    height: 16
-                                    radius: 8
-                                    color: lyrNextM.containsMouse ? Theme.bgHover : "transparent"
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "skip_next"
-                                        font.family: Theme.fontIcon
-                                        font.pixelSize: 11
-                                        color: Theme.fgDim
-                                    }
-                                    MouseArea {
-                                        id: lyrNextM
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: { if (LyricsService.activePlayer) LyricsService.activePlayer.next() }
-                                        onWheel: (wheel) => rightCol.cycleView(wheel.angleDelta.y)
+                                MouseArea {
+                                    id: prevBtnMH
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (root.mprisPlayer) root.mprisPlayer.previous()
                                     }
                                 }
                             }
+
+                            // Play / Pause (Accent Circle)
+                            Rectangle {
+                                width: 36; height: 36; radius: 18
+                                color: playBtnMH.containsMouse ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 1.0) : Theme.accent
+                                border.width: 1
+                                border.color: Qt.rgba(1, 1, 1, 0.2)
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: root.isMusicPlaying ? "pause" : "play_arrow"
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: 20
+                                    color: Theme.isDark ? "#101116" : "#ffffff"
+                                }
+                                MouseArea {
+                                    id: playBtnMH
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (root.mprisPlayer) root.mprisPlayer.togglePlaying()
+                                    }
+                                }
+                            }
+
+                            // Next
+                            Rectangle {
+                                width: 28; height: 28; radius: 14
+                                color: nextBtnMH.containsMouse ? Theme.bgHover : "transparent"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "skip_next"
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: 18
+                                    color: nextBtnMH.containsMouse ? Theme.accent : Theme.fg
+                                }
+                                MouseArea {
+                                    id: nextBtnMH
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (root.mprisPlayer) root.mprisPlayer.next()
+                                    }
+                                }
+                            }
+
+                            Item { Layout.fillWidth: true }
                         }
                     }
                 }
