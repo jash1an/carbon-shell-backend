@@ -20,7 +20,7 @@ os.environ["GSK_RENDERER"] = "cairo"
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Gtk, Adw, Gio, GLib, Gdk
+from gi.repository import Gtk, Adw, Gio, GLib, Gdk, Pango
 import time
 
 try:
@@ -738,8 +738,8 @@ class CarbonConfigApp(Adw.Application):
 class ConfigEditorWindow(Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title="Settings")
-        self.set_default_size(880, 580)
-        self.set_size_request(600, 440)
+        self.set_default_size(980, 620)
+        self.set_size_request(740, 480)
 
         # Theme & Accent
         theme = read_json(THEME_PATH, {})
@@ -892,6 +892,8 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             border-radius: 18px;
             padding: 24px 20px;
             margin-bottom: 16px;
+            min-width: 0;
+            box-sizing: border-box;
         }}
         .hero-icon-circle {{
             background-color: rgba(244, 167, 181, 0.12);
@@ -916,10 +918,13 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             border-radius: 18px;
             padding: 16px 20px;
             margin-bottom: 16px;
+            min-width: 0;
+            box-sizing: border-box;
         }}
         .settings-row {{
             padding: 8px 0px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            min-width: 0;
         }}
         .settings-row:last-child {{
             border-bottom: none;
@@ -1079,7 +1084,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
 
         # Scrolled Stack for Category Pages
         scrolled_content = Gtk.ScrolledWindow()
-        scrolled_content.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scrolled_content.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scrolled_content.set_vexpand(True)
         content_frame.append(scrolled_content)
 
@@ -1227,11 +1232,16 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         t_lbl = Gtk.Label(label=title)
         t_lbl.add_css_class("hero-title")
         t_lbl.set_halign(Gtk.Align.CENTER)
+        t_lbl.set_wrap(True)
+        t_lbl.set_wrap_mode(Pango.WrapMode.WORD)
         hero.append(t_lbl)
 
         s_lbl = Gtk.Label(label=subtitle)
         s_lbl.add_css_class("hero-subtitle")
         s_lbl.set_halign(Gtk.Align.CENTER)
+        s_lbl.set_justify(Gtk.Justification.CENTER)
+        s_lbl.set_wrap(True)
+        s_lbl.set_wrap_mode(Pango.WrapMode.WORD)
         hero.append(s_lbl)
 
         box.append(hero)
@@ -1240,28 +1250,35 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
     def create_settings_card(self):
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         card.add_css_class("settings-card")
+        card.set_hexpand(True)
         return card
 
     def add_switch_row(self, card, title, subtitle, is_active, on_toggle):
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         row.add_css_class("settings-row")
+        row.set_hexpand(True)
 
         label_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         label_box.set_hexpand(True)
         lbl_t = Gtk.Label(label=title)
         lbl_t.set_halign(Gtk.Align.START)
+        lbl_t.set_wrap(True)
+        lbl_t.set_wrap_mode(Pango.WrapMode.WORD)
         lbl_t.add_css_class("row-title")
         label_box.append(lbl_t)
 
         if subtitle:
             lbl_s = Gtk.Label(label=subtitle)
             lbl_s.set_halign(Gtk.Align.START)
+            lbl_s.set_wrap(True)
+            lbl_s.set_wrap_mode(Pango.WrapMode.WORD)
             lbl_s.add_css_class("row-subtitle")
             label_box.append(lbl_s)
         row.append(label_box)
 
         sw = Gtk.Switch()
         sw.set_valign(Gtk.Align.CENTER)
+        sw.set_halign(Gtk.Align.END)
         sw.set_active(bool(is_active))
         if on_toggle:
             sw.connect("notify::active", lambda s, p: on_toggle(s.get_active()))
@@ -1273,23 +1290,29 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
     def add_slider_row(self, card, title, subtitle, min_val, max_val, step, cur_val, unit="ms", on_change=None):
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         row.add_css_class("settings-row")
+        row.set_hexpand(True)
 
         label_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         label_box.set_hexpand(True)
         lbl_t = Gtk.Label(label=title)
         lbl_t.set_halign(Gtk.Align.START)
+        lbl_t.set_wrap(True)
+        lbl_t.set_wrap_mode(Pango.WrapMode.WORD)
         lbl_t.add_css_class("row-title")
         label_box.append(lbl_t)
 
         if subtitle:
             lbl_s = Gtk.Label(label=subtitle)
             lbl_s.set_halign(Gtk.Align.START)
+            lbl_s.set_wrap(True)
+            lbl_s.set_wrap_mode(Pango.WrapMode.WORD)
             lbl_s.add_css_class("row-subtitle")
             label_box.append(lbl_s)
         row.append(label_box)
 
         scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, min_val, max_val, step)
         scale.set_value(cur_val)
+        scale.set_size_request(160, -1)
         scale.set_hexpand(True)
         scale.set_draw_value(False)
         scale.set_valign(Gtk.Align.CENTER)
@@ -1321,17 +1344,22 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
     def add_combo_row(self, card, title, subtitle, options, cur_idx, on_change=None):
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         row.add_css_class("settings-row")
+        row.set_hexpand(True)
 
         label_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         label_box.set_hexpand(True)
         lbl_t = Gtk.Label(label=title)
         lbl_t.set_halign(Gtk.Align.START)
+        lbl_t.set_wrap(True)
+        lbl_t.set_wrap_mode(Pango.WrapMode.WORD)
         lbl_t.add_css_class("row-title")
         label_box.append(lbl_t)
 
         if subtitle:
             lbl_s = Gtk.Label(label=subtitle)
             lbl_s.set_halign(Gtk.Align.START)
+            lbl_s.set_wrap(True)
+            lbl_s.set_wrap_mode(Pango.WrapMode.WORD)
             lbl_s.add_css_class("row-subtitle")
             label_box.append(lbl_s)
         row.append(label_box)
@@ -1339,6 +1367,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         dropdown = Gtk.DropDown.new_from_strings(options)
         dropdown.set_selected(cur_idx if 0 <= cur_idx < len(options) else 0)
         dropdown.set_valign(Gtk.Align.CENTER)
+        dropdown.set_halign(Gtk.Align.END)
         if on_change:
             dropdown.connect("notify::selected", lambda d, p: on_change(d.get_selected()))
         row.append(dropdown)
@@ -1349,31 +1378,32 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
     def add_entry_row(self, card, title, subtitle, cur_val, placeholder="", on_change=None):
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         row.add_css_class("settings-row")
+        row.set_hexpand(True)
 
         label_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         label_box.set_hexpand(True)
         lbl_t = Gtk.Label(label=title)
         lbl_t.set_halign(Gtk.Align.START)
+        lbl_t.set_wrap(True)
+        lbl_t.set_wrap_mode(Pango.WrapMode.WORD)
         lbl_t.add_css_class("row-title")
         label_box.append(lbl_t)
 
         if subtitle:
             lbl_s = Gtk.Label(label=subtitle)
             lbl_s.set_halign(Gtk.Align.START)
+            lbl_s.set_wrap(True)
+            lbl_s.set_wrap_mode(Pango.WrapMode.WORD)
             lbl_s.add_css_class("row-subtitle")
             label_box.append(lbl_s)
         row.append(label_box)
 
         entry = Gtk.Entry()
-        entry.set_text(cur_val or "")
-        if placeholder:
-            entry.set_placeholder_text(placeholder)
+        entry.set_text(str(cur_val))
+        entry.set_placeholder_text(placeholder)
         entry.set_valign(Gtk.Align.CENTER)
-        entry.set_size_request(220, -1)
-        if on_change:
-            entry.connect("changed", lambda e: on_change(e.get_text()))
-        row.append(entry)
-
+        entry.set_halign(Gtk.Align.END)
+        entry.set_size_request(160, -1)
         card.append(row)
         return entry
 
@@ -2214,13 +2244,90 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
     # ── Category 7: Launcher ───────────────────────────────────────────────
     def build_launcher_page(self, icon, title, subtitle):
         page = self.create_page_container(icon, title, subtitle)
+
+        # ── Card 1: Default Launcher Interface Toggle ──
+        mode_card = self.create_settings_card()
+
+        lbl_head = Gtk.Label(label="Launcher Interface")
+        lbl_head.set_halign(Gtk.Align.START)
+        lbl_head.add_css_class("accent-label")
+        mode_card.append(lbl_head)
+
+        cur_style = self.launcher_cfg.get("launcherStyle", self.launcher_cfg.get("defaultLauncher", "spotlight"))
+        if cur_style not in ("spotlight", "launcher"):
+            cur_style = "spotlight"
+
+        sw_spotlight = None
+        sw_drawer = None
+        updating_switches = False
+
+        def on_toggle_spotlight(active):
+            nonlocal updating_switches
+            if updating_switches:
+                return
+            updating_switches = True
+            if active:
+                self.launcher_cfg["launcherStyle"] = "spotlight"
+                self.launcher_cfg["defaultLauncher"] = "spotlight"
+                if sw_drawer:
+                    sw_drawer.set_active(False)
+            else:
+                self.launcher_cfg["launcherStyle"] = "launcher"
+                self.launcher_cfg["defaultLauncher"] = "launcher"
+                if sw_drawer:
+                    sw_drawer.set_active(True)
+            self.mark_dirty()
+            updating_switches = False
+
+        def on_toggle_drawer(active):
+            nonlocal updating_switches
+            if updating_switches:
+                return
+            updating_switches = True
+            if active:
+                self.launcher_cfg["launcherStyle"] = "launcher"
+                self.launcher_cfg["defaultLauncher"] = "launcher"
+                if sw_spotlight:
+                    sw_spotlight.set_active(False)
+            else:
+                self.launcher_cfg["launcherStyle"] = "spotlight"
+                self.launcher_cfg["defaultLauncher"] = "spotlight"
+                if sw_spotlight:
+                    sw_spotlight.set_active(True)
+            self.mark_dirty()
+            updating_switches = False
+
+        sw_spotlight = self.add_switch_row(
+            mode_card,
+            "Spotlight Command Palette",
+            "Modern keyboard-driven search bar for fast app launching, commands, and calculations",
+            cur_style == "spotlight",
+            on_toggle_spotlight
+        )
+
+        sw_drawer = self.add_switch_row(
+            mode_card,
+            "App Launcher Drawer",
+            "Classic categorized application menu with Niagara alphabet wave and recent apps",
+            cur_style == "launcher",
+            on_toggle_drawer
+        )
+
+        page.append(mode_card)
+
+        # ── Card 2: Launcher Preferences ──
         card = self.create_settings_card()
+
+        lbl_head2 = Gtk.Label(label="Preferences & Animation")
+        lbl_head2.set_halign(Gtk.Align.START)
+        lbl_head2.add_css_class("accent-label")
+        card.append(lbl_head2)
 
         speed = int(self.launcher_cfg.get("animationSpeed", 170))
         def on_speed(v):
             self.launcher_cfg["animationSpeed"] = v
             self.mark_dirty()
-        self.add_slider_row(card, "Spotlight Speed", "Duration of opening spring animation", 100, 400, 10, speed, "ms", on_speed)
+        self.add_slider_row(card, "Animation Speed", "Duration of opening spring animation", 100, 400, 10, speed, "ms", on_speed)
 
         rec_act = bool(self.launcher_cfg.get("showRecents", True))
         def on_rec(act):
@@ -2232,7 +2339,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         def on_clip(act):
             self.launcher_cfg["clipboardHistory"] = act
             self.mark_dirty()
-        self.add_switch_row(card, "Clipboard History Tab", "Enable clipboard manager in Spotlight", clip_act, on_clip)
+        self.add_switch_row(card, "Clipboard History Tab", "Enable clipboard manager in Command Palette", clip_act, on_clip)
 
         max_r = int(self.launcher_cfg.get("maxResults", 8))
         def on_max(v):
@@ -2757,6 +2864,9 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         write_json(CLOCK_STYLE_PATH, self.clock_cfg)
         write_json(MOTION_CONFIG_PATH, self.motion_cfg)
         write_json(LAUNCHER_CONFIG_PATH, self.launcher_cfg)
+        hypr_launcher = os.path.expanduser("~/.config/hypr/carbon-launcher.json")
+        if hypr_launcher != LAUNCHER_CONFIG_PATH:
+            write_json(hypr_launcher, self.launcher_cfg)
         write_json(NOTIF_CONFIG_PATH, self.notif_cfg)
         write_json(CONTROL_CONFIG_PATH, self.control_cfg)
         write_json(LOCKSCREEN_CONFIG_PATH, self.lock_cfg)

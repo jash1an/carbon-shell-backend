@@ -36,6 +36,7 @@ ShellRoot {
     property bool spotlightOpen: false
     function openSpotlight() {
         root.closeAllPopupsExcept("spotlight")
+        root.launcherOpen = false
         root.spotlightOpen = true
     }
     function closeSpotlight() {
@@ -46,8 +47,54 @@ ShellRoot {
         else root.openSpotlight()
     }
 
+    /* Launcher style configuration: "spotlight" (Spotlight Command Palette) vs "launcher" (App Launcher Drawer) */
+    property string launcherStyle: "spotlight"
+
+    FileView {
+        id: launcherConfigFile
+        path: root.carbonConfigDir + "/carbon-launcher.json"
+        watchChanges: true
+        blockLoading: true
+        printErrors: false
+        onLoaded: root.reloadLauncherConfig()
+        onFileChanged: root.reloadLauncherConfig()
+    }
+
+    FileView {
+        id: hyprLauncherConfigFile
+        path: root.home + "/.config/hypr/carbon-launcher.json"
+        watchChanges: true
+        blockLoading: true
+        printErrors: false
+        onLoaded: root.reloadLauncherConfig()
+        onFileChanged: root.reloadLauncherConfig()
+    }
+
+    function reloadLauncherConfig() {
+        try {
+            var txt = launcherConfigFile.text()
+            if (!txt || txt.trim().length === 0) txt = hyprLauncherConfigFile.text()
+            if (!txt || txt.trim().length === 0) return
+            var d = JSON.parse(txt)
+            if (d && (d.launcherStyle || d.defaultLauncher)) {
+                root.launcherStyle = d.launcherStyle || d.defaultLauncher
+            }
+        } catch (e) {
+            console.log("Error loading launcher config: " + e)
+        }
+    }
+
+    function toggleDefaultLauncher() {
+        if (root.launcherStyle === "launcher") {
+            root.toggleLauncher()
+        } else {
+            root.toggleSpotlight()
+        }
+    }
+
     function closeAllPopupsExcept(keep) {
         if (keep !== "spotlight") { root.spotlightOpen = false }
+        if (keep !== "launcher") { root.launcherOpen = false }
         if (keep !== "mixer") { root.mixerOpen = false; root.mixerPinned = false }
         if (keep !== "brightness") { root.brightnessOpen = false; root.brightnessPinned = false }
         if (keep !== "battery") { root.batteryOpen = false; root.batteryPinned = false }
@@ -540,6 +587,8 @@ ShellRoot {
     }
 
     function openLauncher() {
+        root.closeAllPopupsExcept("launcher")
+        root.spotlightOpen = false
         root.closeWallpaperPicker()
         root.launcherOpen = true
     }
@@ -1083,8 +1132,7 @@ ShellRoot {
                                 if (root.nucleusHubItem) root.nucleusHubItem.toggleLauncher()
                             }
                         } else {
-                            if (cmd === "launcher") root.openLauncher()
-                            else root.toggleLauncher()
+                            root.toggleDefaultLauncher()
                         }
                     }
                     else if (cmd === "close-launcher") {
@@ -1092,18 +1140,20 @@ ShellRoot {
                             if (root.nucleusHubItem) root.nucleusHubItem.close()
                         } else {
                             root.closeLauncher()
+                            root.closeSpotlight()
                         }
                     }
                     else if (cmd === "spotlight" || cmd === "toggle-spotlight") {
                         if (root.barMode !== "nucleus") {
-                            root.toggleSpotlight()
+                            root.toggleDefaultLauncher()
                         }
                     }
                     else if (cmd === "open-spotlight") {
                         if (root.barMode === "nucleus") {
                             if (root.nucleusHubItem) root.nucleusHubItem.open()
                         } else {
-                            root.openSpotlight()
+                            if (root.launcherStyle === "launcher") root.openLauncher()
+                            else root.openSpotlight()
                         }
                     }
                     else if (cmd === "close-spotlight") {
@@ -1111,6 +1161,7 @@ ShellRoot {
                             if (root.nucleusHubItem) root.nucleusHubItem.close()
                         } else {
                             root.closeSpotlight()
+                            root.closeLauncher()
                         }
                     }
                     else if (cmd.startsWith("focus-lobe ")) {
@@ -1209,6 +1260,7 @@ ShellRoot {
                         root.applyBarPos(barPosFile.text())
                         root.reloadBarMode()
                         Theme.reloadShellOpacity()
+                        root.reloadLauncherConfig()
                     }
                     else if (cmd === "controls-mode-todo") {
                         root.controlsPinned = true
@@ -1750,7 +1802,7 @@ ShellRoot {
                             anchors.verticalCenter: parent.verticalCenter
                             showBackground: false
                             vertical: false
-                            onOpenLauncher: root.openLauncher()
+                            onOpenLauncher: root.toggleDefaultLauncher()
                         }
 
                         /* Center: Clock, Rotating Vinyl Disc, Equalizer & Music Island */
@@ -2055,7 +2107,7 @@ ShellRoot {
                 onCurrentPageChanged: {
                     if (root.islandPage !== currentPage) root.islandPage = currentPage
                 }
-                onOpenLauncher: root.openLauncher()
+                onOpenLauncher: root.toggleDefaultLauncher()
                 onToggleControls: root.toggleControls()
                 onOpenMixer: root.openMixer()
                 onCloseMixer: mixerLeaveTimer.restart()
@@ -2090,8 +2142,8 @@ ShellRoot {
                 onSwitchIslandStyle: (s) => root.switchIslandStyle(s)
                 onConvertToPill: root.switchBarMode("pill")
                 onConvertToNotch: root.switchBarMode("notch")
-                onToggleSpotlight: root.toggleSpotlight()
-                onOpenSpotlight: root.openSpotlight()
+                onToggleSpotlight: root.toggleDefaultLauncher()
+                onOpenSpotlight: root.toggleDefaultLauncher()
             }
         }
     }
@@ -2292,8 +2344,8 @@ ShellRoot {
                 anchors.left: parent.left
                 leftFillet: false
                 rightFillet: true
-                onToggleSpotlight: root.toggleSpotlight()
-                onOpenSpotlight: root.toggleSpotlight()
+                onToggleSpotlight: root.toggleDefaultLauncher()
+                onOpenSpotlight: root.toggleDefaultLauncher()
             }
 
             NotchBarCenter {
