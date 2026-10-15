@@ -213,6 +213,7 @@ Item {
     property string btName: ""
     property bool wifiPopupOpen: false
     property bool btPopupOpen: false
+    property bool audioPopupOpen: false
 
     Timer {
         id: settleTimer
@@ -257,6 +258,7 @@ Item {
     }
     function openBtDetails() {
         root.wifiPopupOpen = false
+        root.audioPopupOpen = false
         root.btPopupOpen = true
         if (vanishPicker) vanishPicker.openBluetooth()
     }
@@ -283,8 +285,15 @@ Item {
     }
     function openWifiDetails() {
         root.btPopupOpen = false
+        root.audioPopupOpen = false
         root.wifiPopupOpen = true
         if (vanishPicker) vanishPicker.openWifi()
+    }
+    function openAudioDetails() {
+        root.wifiPopupOpen = false
+        root.btPopupOpen = false
+        root.audioPopupOpen = true
+        if (audioPicker) audioPicker.refreshAll()
     }
 
     /* Microphone */
@@ -507,6 +516,7 @@ Item {
         } else {
             root.wifiPopupOpen = false
             root.btPopupOpen = false
+            root.audioPopupOpen = false
             if (vanishPicker) vanishPicker.resetPicker()
         }
     }
@@ -783,9 +793,9 @@ Item {
                 height: 30
                 radius: 15
                 color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.06)
-                opacity: (root.wifiPopupOpen || root.btPopupOpen) ? 0.0 : 1.0
+                opacity: (root.wifiPopupOpen || root.btPopupOpen || root.audioPopupOpen) ? 0.0 : 1.0
                 visible: opacity > 0.0
-                enabled: !root.wifiPopupOpen && !root.btPopupOpen
+                enabled: !root.wifiPopupOpen && !root.btPopupOpen && !root.audioPopupOpen
                 Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
 
                 RowLayout {
@@ -847,9 +857,9 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: root.paneH
                 clip: true
-                opacity: (root.wifiPopupOpen || root.btPopupOpen) ? 0.0 : 1.0
+                opacity: (root.wifiPopupOpen || root.btPopupOpen || root.audioPopupOpen) ? 0.0 : 1.0
                 visible: opacity > 0.0
-                enabled: !root.wifiPopupOpen && !root.btPopupOpen
+                enabled: !root.wifiPopupOpen && !root.btPopupOpen && !root.audioPopupOpen
                 Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
 
                 /* ==== Mode 0: Swift Options ==== */
@@ -1334,7 +1344,7 @@ Item {
                         /* ── Part 2: Hardware Sliders (Volume, Brightness & Night Light Warmth) ── */
                         Rectangle {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 110
+                            Layout.preferredHeight: 124
                             radius: 16
                             color: Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65)
                             border.width: 1
@@ -1343,101 +1353,151 @@ Item {
                             ColumnLayout {
                                 anchors.fill: parent
                                 anchors.margins: 8
-                                spacing: 6
+                                spacing: 4
 
-                                // 1. Volume Slider Row
-                                RowLayout {
+                                // 1. Volume Slider Row & Output Device Switcher
+                                ColumnLayout {
                                     Layout.fillWidth: true
-                                    spacing: 8
-
-                                    Rectangle {
-                                        width: 22
-                                        height: 22
-                                        radius: 11
-                                        color: "transparent"
-                                        border.width: 1
-                                        border.color: muteHov.containsMouse ? Theme.accent : "transparent"
-                                        Behavior on border.color { ColorAnimation { duration: 120 } }
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: root.isMuted ? "volume_off" : (root.volRatio <= 0.01 ? "volume_mute" : (root.volRatio < 0.5 ? "volume_down" : "volume_up"))
-                                            font.family: Theme.fontIcon
-                                            font.pixelSize: 15
-                                            color: root.isMuted ? Theme.fgDim : Theme.accent
-                                        }
-                                        MouseArea {
-                                            id: muteHov
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
-                                                if (root.audioSink && root.audioSink.audio) {
-                                                    root.audioSink.audio.muted = !root.audioSink.audio.muted
-                                                }
-                                            }
-                                        }
-                                    }
+                                    spacing: 2
 
                                     Item {
-                                        id: volTrack
                                         Layout.fillWidth: true
-                                        Layout.preferredHeight: 16
+                                        Layout.preferredHeight: 14
 
-                                        Rectangle {
+                                        RowLayout {
                                             anchors.fill: parent
-                                            radius: 8
-                                            color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.10)
-                                        }
+                                            spacing: 4
 
-                                        Rectangle {
-                                            height: parent.height
-                                            width: Math.max(0, Math.min(parent.width, parent.width * (root.isMuted ? 0 : root.volRatio)))
-                                            radius: 8
-                                            color: root.isMuted ? Theme.fgFaint : Theme.accent
-                                            Behavior on width {
-                                                enabled: !volArea.pressed
-                                                NumberAnimation { duration: 100 }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: {
+                                                    if (!root.audioSink) return "Audio Output"
+                                                    return String(root.audioSink.description || root.audioSink.name || "Default Output")
+                                                }
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: Theme.fontPx(7.5)
+                                                font.weight: Font.DemiBold
+                                                color: devChipHov.containsMouse ? Theme.accent : Theme.fgDim
+                                                elide: Text.ElideRight
+                                            }
+
+                                            Text {
+                                                text: "Devices & Ports"
+                                                font.family: "JetBrainsMono Nerd Font"
+                                                font.pixelSize: Theme.fontPx(7.0)
+                                                color: devChipHov.containsMouse ? Theme.accent : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.7)
+                                            }
+
+                                            Text {
+                                                text: "chevron_right"
+                                                font.family: Theme.fontIcon
+                                                font.pixelSize: 12
+                                                color: devChipHov.containsMouse ? Theme.accent : Theme.fgDim
                                             }
                                         }
 
                                         MouseArea {
-                                            id: volArea
+                                            id: devChipHov
                                             anchors.fill: parent
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
-
-                                            function updateVol(mx) {
-                                                var r = Math.max(0, Math.min(1.0, mx / volTrack.width))
-                                                if (root.audioSink && root.audioSink.audio) {
-                                                    root.audioSink.audio.volume = r
-                                                    if (root.audioSink.audio.muted && r > 0) root.audioSink.audio.muted = false
-                                                }
-                                            }
-
-                                            onPressed: mouse => updateVol(mouse.x)
-                                            onPositionChanged: mouse => { if (pressed) updateVol(mouse.x) }
-                                        }
-
-                                        WheelHandler {
-                                            target: volTrack
-                                            onWheel: (event) => {
-                                                var step = event.angleDelta.y > 0 ? 0.03 : -0.03
-                                                if (root.audioSink && root.audioSink.audio) {
-                                                    root.audioSink.audio.volume = Math.max(0, Math.min(1.0, root.volRatio + step))
-                                                    if (root.audioSink.audio.muted && step > 0) root.audioSink.audio.muted = false
-                                                }
-                                            }
+                                            onClicked: root.openAudioDetails()
                                         }
                                     }
 
-                                    Text {
-                                        Layout.preferredWidth: 28
-                                        horizontalAlignment: Text.AlignRight
-                                        text: Math.round((root.isMuted ? 0 : root.volRatio) * 100) + "%"
-                                        font.family: "JetBrainsMono Nerd Font"
-                                        font.pixelSize: Theme.fontPx(7.5)
-                                        font.weight: Font.Bold
-                                        color: Theme.fgDim
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 8
+
+                                        Rectangle {
+                                            width: 22
+                                            height: 22
+                                            radius: 11
+                                            color: "transparent"
+                                            border.width: 1
+                                            border.color: muteHov.containsMouse ? Theme.accent : "transparent"
+                                            Behavior on border.color { ColorAnimation { duration: 120 } }
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: root.isMuted ? "volume_off" : (root.volRatio <= 0.01 ? "volume_mute" : (root.volRatio < 0.5 ? "volume_down" : "volume_up"))
+                                                font.family: Theme.fontIcon
+                                                font.pixelSize: 15
+                                                color: root.isMuted ? Theme.fgDim : Theme.accent
+                                            }
+                                            MouseArea {
+                                                id: muteHov
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    if (root.audioSink && root.audioSink.audio) {
+                                                        root.audioSink.audio.muted = !root.audioSink.audio.muted
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Item {
+                                            id: volTrack
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 16
+
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                radius: 8
+                                                color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.10)
+                                            }
+
+                                            Rectangle {
+                                                height: parent.height
+                                                width: Math.max(0, Math.min(parent.width, parent.width * (root.isMuted ? 0 : root.volRatio)))
+                                                radius: 8
+                                                color: root.isMuted ? Theme.fgFaint : Theme.accent
+                                                Behavior on width {
+                                                    enabled: !volArea.pressed
+                                                    NumberAnimation { duration: 100 }
+                                                }
+                                            }
+
+                                            MouseArea {
+                                                id: volArea
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+
+                                                function updateVol(mx) {
+                                                    var r = Math.max(0, Math.min(1.0, mx / volTrack.width))
+                                                    if (root.audioSink && root.audioSink.audio) {
+                                                        root.audioSink.audio.volume = r
+                                                        if (root.audioSink.audio.muted && r > 0) root.audioSink.audio.muted = false
+                                                    }
+                                                }
+
+                                                onPressed: mouse => updateVol(mouse.x)
+                                                onPositionChanged: mouse => { if (pressed) updateVol(mouse.x) }
+                                            }
+
+                                            WheelHandler {
+                                                target: volTrack
+                                                onWheel: (event) => {
+                                                    var step = event.angleDelta.y > 0 ? 0.03 : -0.03
+                                                    if (root.audioSink && root.audioSink.audio) {
+                                                        root.audioSink.audio.volume = Math.max(0, Math.min(1.0, root.volRatio + step))
+                                                        if (root.audioSink.audio.muted && step > 0) root.audioSink.audio.muted = false
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Text {
+                                            Layout.preferredWidth: 28
+                                            horizontalAlignment: Text.AlignRight
+                                            text: Math.round((root.isMuted ? 0 : root.volRatio) * 100) + "%"
+                                            font.family: "JetBrainsMono Nerd Font"
+                                            font.pixelSize: Theme.fontPx(7.5)
+                                            font.weight: Font.Bold
+                                            color: Theme.fgDim
+                                        }
                                     }
                                 }
 
@@ -2830,15 +2890,15 @@ Item {
             }
         }
 
-        /* Detail overlay: Dedicated Vanish Mode Orbit Picker for Wi-Fi & Bluetooth */
+        /* Detail overlay: Dedicated Orbit Picker for Wi-Fi & Bluetooth, and Audio Device Picker */
         Item {
             id: detailContainer
             anchors.fill: parent
             anchors.margins: 4
             clip: true
             z: 100
-            visible: root.wifiPopupOpen || root.btPopupOpen || vanishPicker.isOpen || (vanishPicker.transitionProgress > 0.001)
-            opacity: (root.wifiPopupOpen || root.btPopupOpen) ? 1.0 : 0.0
+            visible: root.wifiPopupOpen || root.btPopupOpen || root.audioPopupOpen || vanishPicker.isOpen || (vanishPicker.transitionProgress > 0.001)
+            opacity: (root.wifiPopupOpen || root.btPopupOpen || root.audioPopupOpen) ? 1.0 : 0.0
             Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
             // Backdrop glass
@@ -2853,11 +2913,22 @@ Item {
             ConnectivityOrbitPicker {
                 id: vanishPicker
                 standaloneMode: true
+                visible: (root.wifiPopupOpen || root.btPopupOpen) && !root.audioPopupOpen
                 anchors.centerIn: parent
                 anchors.verticalCenterOffset: 16
                 onBackRequested: {
                     root.wifiPopupOpen = false
                     root.btPopupOpen = false
+                }
+            }
+
+            AudioDevicePicker {
+                id: audioPicker
+                visible: root.audioPopupOpen
+                anchors.fill: parent
+                anchors.margins: 6
+                onBackRequested: {
+                    root.audioPopupOpen = false
                 }
             }
         }
