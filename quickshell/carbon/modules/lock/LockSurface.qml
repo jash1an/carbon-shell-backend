@@ -100,7 +100,7 @@ WlSessionLockSurface {
     }
 
     Component.onCompleted: {
-        pwdCard.revealed = true
+        pwdCard.revealed = false
         pwdCard.forceActiveFocus()
     }
 
@@ -124,8 +124,6 @@ WlSessionLockSurface {
     MouseArea {
         anchors.fill: parent
         onClicked: {
-            pwdCard.revealed = true
-            pwdCard.restartIdleTimer(3000)
             pwdCard.forceActiveFocus()
         }
     }
@@ -368,7 +366,7 @@ WlSessionLockSurface {
         y: root.centerY + 126
         z: 2
         logoComponent: logoMark
-        revealed: root.phase === "locked" || (root.phase === "locking" && root.t >= 550.0)
+        revealed: false
         onUnlocked: root.startUnlock()
     }
 

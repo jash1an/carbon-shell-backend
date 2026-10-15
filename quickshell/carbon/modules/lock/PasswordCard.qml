@@ -85,8 +85,8 @@ Item {
     implicitHeight: 50
     width: {
         if (LockTransition.reducedMotion) return 312.0
-        if (LockTransition.phase === "locking") {
-            return 46.0 + 266.0 * cardRoot.easeOutBack(cardRoot.openProgress)
+        if (cardRoot.revealProgress < 0.999) {
+            return 46.0 + 266.0 * cardRoot.easeOutBack(cardRoot.revealProgress)
         }
         if ((LockTransition.phase === "unlocking" || LockTransition.phase === "post_unlock") && cardRoot.collapseProgress > 0.001) {
             return Math.max(46.0, 312.0 - 266.0 * cardRoot.easeInOutCubic(cardRoot.collapseProgress))
@@ -96,27 +96,32 @@ Item {
     height: 50
 
     property bool revealed: false
-    opacity: {
-        if (LockTransition.reducedMotion) return (LockTransition.phase === "locked" ? 1.0 : 0.0)
-        if (LockTransition.phase === "locking") {
-            if (LockTransition.t < 550.0) return 0.0
-            return Math.min(1.0, (LockTransition.t - 550.0) / 250.0)
+    property real revealProgress: revealed ? 1.0 : 0.0
+    Behavior on revealProgress {
+        NumberAnimation {
+            duration: 320
+            easing.type: Easing.OutCubic
         }
-        if (LockTransition.phase === "unlocking" || LockTransition.phase === "post_unlock") {
-            if (LockTransition.u < 520.0) return 1.0
-            return Math.max(0.0, 1.0 - (LockTransition.u - 520.0) / 500.0)
-        }
-        return cardRoot.revealed ? 1.0 : 0.0
     }
-    scale: 1.0
+
+    opacity: {
+        if (LockTransition.reducedMotion) return (cardRoot.revealed ? 1.0 : 0.0)
+        if (LockTransition.phase === "unlocking" || LockTransition.phase === "post_unlock") {
+            if (LockTransition.u < 520.0) return cardRoot.revealProgress
+            return Math.max(0.0, (1.0 - (LockTransition.u - 520.0) / 500.0) * cardRoot.revealProgress)
+        }
+        return cardRoot.revealProgress
+    }
+    scale: 0.92 + 0.08 * cardRoot.revealProgress
+    visible: opacity > 0.005
 
     transform: [
         Translate {
             x: cardRoot.xOffset
             y: {
                 if (LockTransition.reducedMotion) return 0.0
-                if (LockTransition.phase === "locking") {
-                    return 16.0 * (1.0 - cardRoot.easeOutBack(cardRoot.openProgress))
+                if (cardRoot.revealProgress < 0.999) {
+                    return 10.0 * (1.0 - cardRoot.easeOutBack(cardRoot.revealProgress))
                 }
                 if ((LockTransition.phase === "unlocking" || LockTransition.phase === "post_unlock") && cardRoot.collapseProgress > 0.001) {
                     return -6.0 * cardRoot.collapseProgress
@@ -127,16 +132,12 @@ Item {
     ]
 
     readonly property real innerContentOpacity: {
-        if (LockTransition.reducedMotion) return (LockTransition.phase === "locked" ? 1.0 : 0.0)
-        if (LockTransition.phase === "locking") {
-            if (LockTransition.t < 780.0) return 0.0
-            return Math.min(1.0, (LockTransition.t - 780.0) / 220.0)
-        }
+        if (LockTransition.reducedMotion) return (cardRoot.revealed ? 1.0 : 0.0)
         if (LockTransition.phase === "unlocking" || LockTransition.phase === "post_unlock") {
-            if (LockTransition.u >= 520.0) return Math.max(0.0, 1.0 - (LockTransition.u - 520.0) / 200.0)
-            return 1.0
+            if (LockTransition.u >= 520.0) return Math.max(0.0, (1.0 - (LockTransition.u - 520.0) / 200.0) * cardRoot.revealProgress)
+            return cardRoot.revealProgress
         }
-        return 1.0
+        return cardRoot.revealProgress
     }
 
     onRevealedChanged: {
@@ -317,7 +318,8 @@ Item {
     Connections {
         target: LockTransition
         function onPhaseChanged() {
-            if (LockTransition.phase === "idle") {
+            if (LockTransition.phase === "idle" || LockTransition.phase === "locking") {
+                cardRoot.revealed = false
                 cardRoot.buffer = ""
                 cardRoot.isSuccess = false
                 cardRoot.isError = false
