@@ -280,9 +280,17 @@ Item {
     function startCrossTypeTransition(newPath, newType, oldType) {
         root.isAnimating = true
 
+        if (newType === "video" && oldType === "video") {
+            root.startVideo(newPath)
+            root.currentWpPath = newPath
+            root.pendingNewPath = ""
+            root.isAnimating = false
+            return
+        }
+
         if (newType === "video") {
             root.startVideo(newPath)
-            crossFadeAnim.targetIn = videoOutput
+            crossFadeAnim.targetIn = videoLoader
         } else if (newType === "gif") {
             gifPlayer.source = "file://" + newPath
             gifPlayer.visible = true
@@ -302,7 +310,7 @@ Item {
         }
 
         // Outgoing target
-        if (oldType === "video") crossFadeAnim.targetOut = videoOutput
+        if (oldType === "video") crossFadeAnim.targetOut = videoLoader
         else if (oldType === "gif") crossFadeAnim.targetOut = gifPlayer
         else if (oldType === "carbon-live") crossFadeAnim.targetOut = carbonLiveBg
         else crossFadeAnim.targetOut = imageContainer
@@ -398,7 +406,7 @@ Item {
         onFinished: {
             if (crossFadeAnim.targetOut) {
                 crossFadeAnim.targetOut.visible = false
-                if (crossFadeAnim.targetOut === videoOutput) {
+                if (crossFadeAnim.targetOut === videoLoader) {
                     root.stopVideo()
                 } else if (crossFadeAnim.targetOut === gifPlayer) {
                     gifPlayer.source = ""
@@ -487,16 +495,26 @@ Item {
     property string pendingVideoPath: ""
 
     function startVideo(path) {
+        if (!path) return
+        var clean = path.trim()
+        if (clean.startsWith("file://")) clean = clean.substring(7)
+        var url = "file://" + clean
+
+        videoLoader.visible = true
+        videoLoader.opacity = 1.0
+
         if (!videoLoader.item) {
-            root.pendingVideoPath = path
+            root.pendingVideoPath = url
             videoLoader.active = true
             return
         }
         root.pendingVideoPath = ""
-        videoLoader.item.player.source = "file://" + path
+        videoLoader.item.player.source = url
         videoLoader.item.player.play()
-        videoLoader.item.output.opacity = 1.0
-        videoLoader.item.output.visible = true
+        if (videoLoader.item.output) {
+            videoLoader.item.output.opacity = 1.0
+            videoLoader.item.output.visible = true
+        }
     }
 
     function stopVideo() {
@@ -504,13 +522,16 @@ Item {
             videoLoader.item.player.stop()
             videoLoader.item.player.source = ""
         }
+        videoLoader.visible = false
     }
 
     Loader {
         id: videoLoader
         anchors.fill: parent
-        active: false
+        active: true
         source: "VideoWallpaper.qml"
+        visible: root.currentType === "video"
+        opacity: root.currentType === "video" ? 1.0 : 0.0
         onLoaded: {
             if (root.pendingVideoPath) root.startVideo(root.pendingVideoPath)
         }

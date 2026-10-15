@@ -53,9 +53,9 @@ Singleton {
     //    timeStr: string,
     //    timestamp: number,
     //    urgency: int (0: Low, 1: Normal, 2: Critical),
-    //    category: string ("chat" | "system" | "other"),
+    //    category: string ("chat" | "system"),
     //    unread: bool,
-    //    actions: array of { key: string, text: string, rawAction: var },
+    //    actions: array of { key: string, text: string, rawAction: var, invoke: function() },
     //    expireTimeout: int
     // }]
     property var list: []
@@ -70,53 +70,63 @@ Singleton {
     // Signal emitted when notifications are cleared
     signal allCleared()
 
-    function classifyCategory(appName, summary, body, hints) {
-        var str = ((appName || "") + " " + (summary || "") + " " + (body || "")).toLowerCase()
-        
-        // Check chat / messaging keywords & apps
-        var chatKeywords = [
-            "chat", "im", "message", "telegram", "discord", "slack", "signal",
-            "whatsapp", "element", "matrix", "wechat", "viber", "skype", "teams",
-            "messenger", "sms", "irc", "zulip", "revolt"
-        ]
-        for (var i = 0; i < chatKeywords.length; i++) {
-            if (str.indexOf(chatKeywords[i]) !== -1) return "chat"
-        }
+    function classifyCategory(notif) {
+        if (!notif) return "system"
+        var appName = String(notif.appName || "")
+        var desktopEntry = String(notif.desktopEntry || "")
+        var hints = notif.hints || {}
+        var hintCat = String(hints["category"] || hints.category || "")
 
-        // Check system keywords & apps
-        var systemKeywords = [
-            "system", "update", "battery", "power", "network", "wifi", "bluetooth",
-            "disk", "device", "usb", "audio", "volume", "brightness", "security",
-            "hyprland", "quickshell", "kernel", "package", "pacman", "dnf", "apt"
-        ]
-        for (var j = 0; j < systemKeywords.length; j++) {
-            if (str.indexOf(systemKeywords[j]) !== -1) return "system"
+        var chatRegex = /discord|vesktop|telegram|signal|element|matrix|slack|whatsapp|thunderbird|hexchat/i
+        if (chatRegex.test(appName) || chatRegex.test(desktopEntry) || hintCat === "im.received") {
+            return "chat"
         }
-
-        return "other"
+        return "system"
     }
 
-    function formatTime(date) {
-        var now = new Date()
-        var diffMs = now.getTime() - date.getTime()
+    function formatRelativeTime(ts) {
+        var diffMs = Date.now() - ts
         var diffSec = Math.floor(diffMs / 1000)
         var diffMin = Math.floor(diffSec / 60)
         var diffHour = Math.floor(diffMin / 60)
+        var diffDay = Math.floor(diffHour / 24)
 
-        if (diffSec < 60) return "Just now"
-        if (diffMin < 60) return diffMin + "m ago"
-        if (diffHour < 24) return diffHour + "h ago"
-        
-        var h = date.getHours()
-        var m = date.getMinutes()
-        var mStr = m < 10 ? ("0" + m) : m
-        return h + ":" + mStr
+        if (diffSec < 45) return "now"
+        if (diffMin < 60) return diffMin + "m"
+        if (diffHour < 24) return diffHour + "h"
+        return diffDay + "d"
+    }
+
+    Timer {
+        id: relativeTimeTimer
+        interval: 30000
+        running: root.list.length > 0
+        repeat: true
+        onTriggered: {
+            var updated = []
+            for (var i = 0; i < root.list.length; i++) {
+                var it = root.list[i]
+                var newTimeStr = root.formatRelativeTime(it.timestamp)
+                if (newTimeStr !== it.timeStr) {
+                    updated.push(Object.assign({}, it, { timeStr: newTimeStr }))
+                } else {
+                    updated.push(it)
+                }
+            }
+            root.list = updated
+        }
+    }
+
+    function cleanBody(raw) {
+        if (!raw) return ""
+        return String(raw).replace(/<[^>]*>/g, "").trim()
     }
 
     function addNotification(notif) {
         if (!notif) return
+        console.log("[NotificationService] addNotification appName:", notif.appName, "summary:", notif.summary, "body:", notif.body, "desktopEntry:", notif.desktopEntry)
 
-        // Extract actions
+        // Extract actions safely
         var parsedActions = []
         if (notif.actions) {
             var actCount = notif.actions.length !== undefined ? notif.actions.length : (notif.actions.count || 0)
@@ -126,33 +136,38 @@ Singleton {
                     parsedActions.push({
                         key: act.identifier || act.key || ("action_" + a),
                         text: act.text || act.name || "Action",
-                        rawAction: act
+                        rawAction: act,
+                        invoke: function() {
+                            if (this.rawAction && typeof this.rawAction.invoke === "function") {
+                                try { this.rawAction.invoke() } catch(e) {}
+                            }
+                        }
                     })
                 }
             }
         }
 
-        var now = new Date()
-        var h = now.getHours()
-        var m = now.getMinutes()
-        var timeLabel = (h < 10 ? "0" + h : h) + ":" + (m < 10 ? "0" + m : m)
-
-        var app = notif.appName || "Application"
-        var sum = notif.summary || ""
-        var bod = notif.body || ""
-        var iconStr = notif.appIcon || ""
+        var now = Date.now()
+        var app = (notif.appName && notif.appName.length > 0)
+            ? notif.appName
+            : ((notif.desktopEntry && notif.desktopEntry.length > 0) ? notif.desktopEntry : "System")
+        var sum = (notif.summary && notif.summary.length > 0)
+            ? notif.summary
+            : ((notif.title && notif.title.length > 0) ? notif.title : "Notification")
+        var bod = root.cleanBody(notif.body)
+        var iconStr = notif.appIcon || notif.image || ""
 
         var item = {
-            id: notif.id !== undefined ? notif.id : ("notif_" + Date.now() + "_" + Math.random()),
+            id: notif.id !== undefined ? notif.id : ("notif_" + now + "_" + Math.floor(Math.random() * 10000)),
             rawNotification: notif,
             appName: app,
             summary: sum,
             body: bod,
             appIcon: iconStr,
-            timeStr: timeLabel,
-            timestamp: now.getTime(),
+            timeStr: root.formatRelativeTime(now),
+            timestamp: now,
             urgency: notif.urgency !== undefined ? notif.urgency : 1,
-            category: classifyCategory(app, sum, bod, notif.hints),
+            category: root.classifyCategory(notif),
             unread: true,
             actions: parsedActions,
             expireTimeout: notif.expireTimeout !== undefined ? notif.expireTimeout : -1
@@ -237,34 +252,47 @@ Singleton {
             } catch(e) {
                 console.warn("[NotificationService] Error invoking rawAction:", e)
             }
+        } else if (typeof actionObj.invoke === "function") {
+            try {
+                actionObj.invoke()
+            } catch(e) {
+                console.warn("[NotificationService] Error invoking actionObj:", e)
+            }
         }
 
         root.markRead(item.id)
     }
 
-    function clearAll() {
+    function clearCategory(cat) {
+        var normalizedCat = String(cat || "all").toLowerCase()
+        var toDismiss = []
+        var remaining = []
         for (var i = 0; i < root.list.length; i++) {
             var it = root.list[i]
-            if (it.rawNotification && typeof it.rawNotification.dismiss === "function") {
+            if (normalizedCat === "all" || it.category === normalizedCat) {
+                toDismiss.push(it)
+            } else {
+                remaining.push(it)
+            }
+        }
+
+        for (var j = 0; j < toDismiss.length; j++) {
+            var item = toDismiss[j]
+            if (item.rawNotification && typeof item.rawNotification.dismiss === "function") {
                 try {
-                    it.rawNotification.dismiss()
+                    item.rawNotification.dismiss()
                 } catch(e) {}
             }
         }
-        root.list = []
-        root.unreadCount = 0
+
+        root.list = remaining
+        root.recalculateUnread()
         root.allCleared()
     }
 
-    // Connect to Quickshell NotificationServer
-    Connections {
-        target: root.server
-        ignoreUnknownSignals: true
-
-        function onNotification(notification) {
-            if (!notification) return
-            notification.tracked = true
-            root.addNotification(notification)
-        }
+    function clearAll() {
+        root.clearCategory("all")
     }
+
+
 }

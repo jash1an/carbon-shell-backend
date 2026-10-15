@@ -2368,7 +2368,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
 
         btn = Gtk.Button(label="Restart")
         btn.set_valign(Gtk.Align.CENTER)
-        btn.connect("clicked", lambda b: subprocess.run(["systemctl", "--user", "restart", "carbon-quickshell.service"], check=False))
+        btn.connect("clicked", self.on_reload_shell)
         row.append(btn)
         card.append(row)
 
@@ -2396,6 +2396,14 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
 
         page.append(card)
         return page
+
+    # ── Reload Shell ───────────────────────────────────────────────────────
+    def on_reload_shell(self, btn=None):
+        try:
+            subprocess.run(["systemctl", "--user", "restart", "carbon-quickshell.service"], check=False)
+            subprocess.run(["hyprctl", "reload"], check=False)
+        except Exception as e:
+            print(f"Error restarting shell: {e}", file=sys.stderr)
 
     # ── Updates Management ────────────────────────────────────────────────
     def on_check_updates_clicked(self, btn):
