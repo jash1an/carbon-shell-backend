@@ -471,15 +471,46 @@ ShellRoot {
     property bool wifiHidden: true
 
     function openWifi() {
-        root.closeAllPopupsExcept("wifi")
-        if (!wifiProbe.running) wifiProbe.running = true
-        if (!wifiNameProbe.running) wifiNameProbe.running = true
-        root.wifiOpen = true
+        if (root.barMode === "pill") {
+            root.closeAllPopupsExcept("controls")
+            root.controlsPinned = true
+            root.controlsVisible = true
+            if (controlsItem) {
+                controlsItem.mode = 0
+                controlsItem.openWifiDetails()
+            }
+        } else {
+            root.closeAllPopupsExcept("wifi")
+            if (!wifiProbe.running) wifiProbe.running = true
+            if (!wifiNameProbe.running) wifiNameProbe.running = true
+            root.wifiOpen = true
+        }
     }
-    function closeWifi() { root.wifiOpen = false; root.wifiPinned = false }
+    function closeWifi() {
+        if (root.barMode === "pill") {
+            root.closeControls()
+        } else {
+            root.wifiOpen = false
+            root.wifiPinned = false
+        }
+    }
     function toggleWifi() {
-        if (root.wifiOpen) { root.closeWifi() }
-        else { root.closeAllPopupsExcept("wifi"); root.wifiPinned = true; root.wifiOpen = true }
+        if (root.barMode === "pill") {
+            if (root.controlsVisible && controlsItem && controlsItem.wifiPopupOpen) {
+                root.closeControls()
+            } else {
+                root.closeAllPopupsExcept("controls")
+                root.controlsPinned = true
+                root.controlsVisible = true
+                if (controlsItem) {
+                    controlsItem.mode = 0
+                    controlsItem.openWifiDetails()
+                }
+            }
+        } else {
+            if (root.wifiOpen) { root.closeWifi() }
+            else { root.closeAllPopupsExcept("wifi"); root.wifiPinned = true; root.wifiOpen = true }
+        }
     }
 
     onWifiOpenChanged: {
@@ -3408,7 +3439,7 @@ ShellRoot {
             right: true
         }
 
-        visible: (root.batteryOpen || batteryItem.animatingOut) && root.mainBarEdge !== "left"
+        visible: (root.batteryOpen || batteryItem.animatingOut) && root.mainBarEdge !== "left" && root.barMode !== "pill"
 
         Item {
             anchors.fill: parent
@@ -3471,7 +3502,7 @@ ShellRoot {
             right: true
         }
 
-        visible: (root.wifiOpen || wifiItem.animatingOut) && root.mainBarEdge !== "left"
+        visible: (root.wifiOpen || wifiItem.animatingOut) && root.mainBarEdge !== "left" && root.barMode !== "pill"
 
         Item {
             anchors.fill: parent
