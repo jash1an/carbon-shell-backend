@@ -923,7 +923,7 @@ ShellRoot {
 
     readonly property int popupRightMargin: {
         if (root.barMode === "notch") return 12
-        if (root.barMode === "pill") return 12
+        if (root.barMode === "pill") return Math.max(12, Math.round(((Quickshell.screens[0] ? Quickshell.screens[0].width : 1920) - 1000) / 2))
         return 0
     }
 
@@ -3930,13 +3930,15 @@ ShellRoot {
                 id: controlsItem
                 x: (root.barMode === "minimal")
                    ? Math.round(((parent.width > 0 ? parent.width : (controlsWindow.screen ? controlsWindow.screen.width : 1920)) - width) / 2)
+                   : (root.barMode === "pill")
+                   ? Math.round(((parent.width > 0 ? parent.width : (controlsWindow.screen ? controlsWindow.screen.width : 1920)) + 1000) / 2 - width)
                    : (root.controlsCorner.endsWith("left") ? 14 : ((parent.width > 0 ? parent.width : (controlsWindow.screen ? controlsWindow.screen.width : 1920)) - width - 14))
                 y: root.controlsCorner.startsWith("top")
                    ? (root.popupTopMargin > 0 ? root.popupTopMargin + 6 : 14)
                    : (parent.height - height - (root.popupBottomMargin > 0 ? root.popupBottomMargin + 6 : 14))
                 corner: (root.barMode === "minimal")
                         ? (root.mainBarEdge === "bottom" ? "bottom_center" : "top_center")
-                        : root.controlsCorner
+                        : (root.barMode === "pill" ? "top_right" : root.controlsCorner)
                 width: controlsItem.implicitWidth
                 height: controlsItem.implicitHeight
                 open: root.controlsVisible

@@ -19,10 +19,12 @@
         "battery"
     ],
     "clock": {
-        "format": "{:%H}"
+        "format": "{:%H}",
+        "on-click": "/home/zily/.config/carbon/scripts/carbon-ipc.sh dashboard"
     },
     "clock#right": {
-        "format": "{:%M}"
+        "format": "{:%M}",
+        "on-click": "/home/zily/.config/carbon/scripts/carbon-ipc.sh dashboard"
     },
     "hyprland/workspaces": {
         "format": "{icon}",
@@ -53,10 +55,11 @@
         "tooltip-format-ethernet": "{ifname} ",
         "tooltip-format-disconnected": "Disconnected",
         "max-length": 50,
-        "on-click": "kitty -e nmtui"
+        "on-click": "/home/zily/.config/carbon/scripts/carbon-ipc.sh wifi",
+        "on-click-right": "kitty -e nmtui"
     },
     "battery": {
-        "interval": 60,
+        "interval": 10,
         "format": " {icon} {capacity}%",
         "format-icons": {
             "default": [
@@ -85,7 +88,8 @@
                 "󰂋",
                 "󰂅"
             ]
-        }
+        },
+        "on-click": "/home/zily/.config/carbon/scripts/carbon-ipc.sh battery"
     },
     "pulseaudio": {
         "format": "{icon} {volume}%",
@@ -105,7 +109,8 @@
             ]
         },
         "scroll-step": 1,
-        "on-click": "pavucontrol"
+        "on-click": "/home/zily/.config/carbon/scripts/carbon-ipc.sh mixer",
+        "on-click-right": "pavucontrol"
     },
     "cava": {
         // "cava_config": "$XDG_CONFIG_HOME/cava/cava.conf",
@@ -153,6 +158,7 @@
             "paused": "⏸"
         },
         "max-length": 30,
-        "interval": 1
+        "interval": 1,
+        "on-click": "/home/zily/.config/carbon/scripts/carbon-ipc.sh small-music"
     }
 }

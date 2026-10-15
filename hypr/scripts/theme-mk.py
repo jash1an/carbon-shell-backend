@@ -256,6 +256,43 @@ def update_gtk_theme(accent_hex, on_accent_hex):
             pass
 
 
+def update_waybar_theme(accent_hex, accent_lit_hex, on_accent_hex, bg_hex, bg_alt_hex, fg_hex, outline_hex, warn_hex):
+    def hex_to_rgb(h):
+        h = h.lstrip("#")
+        if len(h) == 6:
+            return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        return 25, 20, 16
+
+    bg_r, bg_g, bg_b = hex_to_rgb(bg_hex)
+    bga_r, bga_g, bga_b = hex_to_rgb(bg_alt_hex)
+    out_r, out_g, out_b = hex_to_rgb(outline_hex)
+    acc_r, acc_g, acc_b = hex_to_rgb(accent_hex)
+
+    css_content = f"""@define-color background rgba({bg_r}, {bg_g}, {bg_b}, 0.88);
+@define-color surface rgba({bga_r}, {bga_g}, {bga_b}, 0.75);
+@define-color surface-container rgba({bga_r}, {bga_g}, {bga_b}, 0.90);
+@define-color text {fg_hex};
+@define-color primary {accent_hex};
+@define-color secondary {accent_lit_hex};
+@define-color tertiary {warn_hex};
+@define-color primary-container rgba({acc_r}, {acc_g}, {acc_b}, 0.25);
+@define-color on-primary {on_accent_hex};
+@define-color border rgba({out_r}, {out_g}, {out_b}, 0.45);
+@define-color shadow rgba(0, 0, 0, 0.4);
+"""
+    for wb_dir in [os.path.expanduser("~/.config/waybar"), os.path.expanduser("~/carbon-shell/waybar")]:
+        os.makedirs(wb_dir, exist_ok=True)
+        colors_file = os.path.join(wb_dir, "colors.css")
+        try:
+            with open(colors_file, "w", encoding="utf-8") as f:
+                f.write(css_content)
+        except Exception:
+            pass
+
+    subprocess.run(["pkill", "-SIGUSR2", "-x", "waybar-bin"], capture_output=True)
+    subprocess.run(["pkill", "-SIGUSR2", "-x", "waybar"], capture_output=True)
+
+
 def main():
     src_wp = resolve_source_wallpaper()
     if not src_wp or not os.path.exists(src_wp):
@@ -366,7 +403,10 @@ def main():
         f"rgba({h_acc}ee) rgba({h_lit}aa) 45deg"
     ], capture_output=True)
 
-    # 5. Notify Carbon Quickshell to reload Theme singleton immediately
+    # 5. Update Waybar CSS theme
+    update_waybar_theme(accent_hex, accent_lit_hex, on_accent_hex, bg_hex, bg_alt_hex, fg_hex, outline_hex, WARN)
+
+    # 6. Notify Carbon Quickshell to reload Theme singleton immediately
     try:
         ipc_path = os.path.join(CARBON_CONFIG_DIR, "scripts", "carbon-ipc.sh")
         if not os.path.isfile(ipc_path):

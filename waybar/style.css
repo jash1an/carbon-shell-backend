@@ -3,13 +3,14 @@
 /* Universal reset */
 * {
     all: unset;
-    font-family: "Iosevka Nerd Font Propo", monospace;
+    font-family: "Rubik", "Google Sans Flex", "JetBrainsMono Nerd Font", "Iosevka Nerd Font Propo", monospace;
 }
 
-/* Main bar container pill using background variable */
+/* Main bar container pill using dynamic background and border */
 window#waybar {
     background-color: @background;
-    border-radius: 10px;
+    border: 1px solid @border;
+    border-radius: 99px;
 }
 
 /* Base text/icon colors for primary modules */
@@ -23,11 +24,11 @@ label {
 
 /* Module margins */
 .modules-left {
-    margin-left: 12px;
+    margin-left: 14px;
 }
 
 .modules-right {
-    margin-right: 12px;
+    margin-right: 14px;
 }
 
 /* Workspaces */
@@ -35,7 +36,7 @@ label {
     min-width: 100px;
     font-size: 0.2rem;
     padding: 2px 4px;
-    margin: 11px 0;
+    margin: 10px 0;
     border-radius: 99px;
 }
 
@@ -44,27 +45,32 @@ label {
     color: transparent;
     padding: 0px 5px;
     border-radius: 99px;
-    margin: 0 2px;
+    margin: 0 3px;
     min-width: 4px;
+    transition: all 0.2s ease;
 }
 
 #workspaces button.active {
     background-color: @primary;
     min-width: 1.4rem;
-    transition: none;
+    transition: all 0.25s cubic-bezier(0.05, 0.7, 0.1, 1.0);
 }
 
-/* Clock - ALWAYS WHITE */
+#workspaces button:hover {
+    background-color: @primary-container;
+}
+
+/* Clock - ALWAYS BRIGHT / CRISP ON-SURFACE */
 #clock,
 #clock#right,
 #clock label {
-    color: #ffffff;
-    margin: 0 15px;
+    color: @text;
+    margin: 0 14px;
     font-size: 1.12rem;
     font-weight: 700;
 }
 
-/* Music Player - Secondary Color */
+/* Music Player - Secondary Theme Color */
 #mpris,
 #mpris label {
     color: @secondary;
@@ -78,17 +84,27 @@ label {
     color: @border;
 }
 
-/* Volume, WiFi, and Battery - TERTIARY COLOR */
+/* Volume, WiFi, and Battery - PRIMARY ACCENT COLOR */
 #pulseaudio,
 #pulseaudio label,
 #network,
 #network label,
 #battery,
 #battery label {
-    color: @tertiary;
+    color: @primary;
     font-size: 0.9rem;
     font-weight: 500;
     margin: 0 8px;
+    transition: opacity 0.2s ease;
+}
+
+#pulseaudio:hover,
+#network:hover,
+#battery:hover,
+#clock:hover,
+#clock#right:hover,
+#mpris:hover {
+    opacity: 0.75;
 }
 
 /* Cava Visualizer */
