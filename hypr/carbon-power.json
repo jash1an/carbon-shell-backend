@@ -1,6 +1,6 @@
 {
   "profile": "balanced",
-  "powerButtonAction": "poweroff",
+  "powerButtonAction": "ignore",
   "sleepButtonAction": "suspend",
   "lidActionBattery": "suspend",
   "lidActionAC": "suspend",
@@ -10,5 +10,5 @@
   "dimTimeout": 180,
   "dimBrightnessPercent": 20,
   "screenOffTimeout": 300,
-  "autoSuspendTimeout": 1800
+  "autoSuspendTimeout": 900
 }

@@ -3928,17 +3928,12 @@ ShellRoot {
 
             QuickSettings {
                 id: controlsItem
-                anchors {
-                    top: root.controlsCorner.startsWith("top") ? parent.top : undefined
-                    bottom: root.controlsCorner.startsWith("bottom") ? parent.bottom : undefined
-                    left: (root.barMode === "minimal") ? undefined : (root.controlsCorner.endsWith("left") ? parent.left : undefined)
-                    right: (root.barMode === "minimal") ? undefined : (root.controlsCorner.endsWith("right") ? parent.right : undefined)
-                    horizontalCenter: (root.barMode === "minimal") ? parent.horizontalCenter : undefined
-                    topMargin: root.controlsCorner.startsWith("top") ? (root.popupTopMargin > 0 ? root.popupTopMargin + 6 : 14) : 0
-                    bottomMargin: root.controlsCorner.startsWith("bottom") ? (root.popupBottomMargin > 0 ? root.popupBottomMargin + 6 : 14) : 0
-                    leftMargin: (root.barMode === "minimal") ? 0 : (root.controlsCorner.endsWith("left") ? 14 : 0)
-                    rightMargin: (root.barMode === "minimal") ? 0 : (root.controlsCorner.endsWith("right") ? 14 : 0)
-                }
+                x: (root.barMode === "minimal")
+                   ? Math.round(((parent.width > 0 ? parent.width : (controlsWindow.screen ? controlsWindow.screen.width : 1920)) - width) / 2)
+                   : (root.controlsCorner.endsWith("left") ? 14 : ((parent.width > 0 ? parent.width : (controlsWindow.screen ? controlsWindow.screen.width : 1920)) - width - 14))
+                y: root.controlsCorner.startsWith("top")
+                   ? (root.popupTopMargin > 0 ? root.popupTopMargin + 6 : 14)
+                   : (parent.height - height - (root.popupBottomMargin > 0 ? root.popupBottomMargin + 6 : 14))
                 corner: (root.barMode === "minimal")
                         ? (root.mainBarEdge === "bottom" ? "bottom_center" : "top_center")
                         : root.controlsCorner
