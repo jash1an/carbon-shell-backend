@@ -28,7 +28,7 @@ Item {
     property bool initialized: false
 
     // Theme tokens identical to NucleusHub central nucleus
-    readonly property color colAccent: Theme.accent || "#5eead4"
+    readonly property color colAccent: Theme.accent || "#e1b68e"
     readonly property color colWhite: "#FFFFFF"
     readonly property color colTextDark: "#0b0e14"
 

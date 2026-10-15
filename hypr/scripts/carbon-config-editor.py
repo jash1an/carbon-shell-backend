@@ -820,6 +820,12 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         self.history_index = -1
         self.is_navigating = False
 
+        # Search Index & Highlighting
+        self.search_index = []
+        self.current_cat_id = None
+        self._active_highlight_widget = None
+        self._highlight_timer_id = 0
+
         self.apply_css()
         self.build_ui()
 
@@ -831,6 +837,19 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         self.dirty = False
         self.lbl_status.set_text("")
         self.apply_btn.set_sensitive(False)
+
+    def accent_rgba(self, alpha=1.0):
+        h = self.accent_hex.lstrip("#")
+        try:
+            if len(h) == 6:
+                r, g, b = tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+                return f"rgba({r}, {g}, {b}, {alpha})"
+            elif len(h) == 8:
+                r, g, b = tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+                return f"rgba({r}, {g}, {b}, {alpha})"
+        except Exception:
+            pass
+        return f"rgba(225, 182, 142, {alpha})"
 
     def mark_dirty(self):
         if self.is_building_ui:
@@ -893,10 +912,9 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             padding: 24px 20px;
             margin-bottom: 16px;
             min-width: 0;
-            box-sizing: border-box;
         }}
         .hero-icon-circle {{
-            background-color: rgba(244, 167, 181, 0.12);
+            background-color: {self.accent_rgba(0.14)};
             border-radius: 28px;
             min-width: 54px;
             min-height: 54px;
@@ -919,15 +937,48 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             padding: 16px 20px;
             margin-bottom: 16px;
             min-width: 0;
-            box-sizing: border-box;
         }}
         .settings-row {{
             padding: 8px 0px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.04);
             min-width: 0;
+            border-radius: 12px;
+            transition: all 250ms ease;
         }}
         .settings-row:last-child {{
             border-bottom: none;
+        }}
+        .highlight-setting-row {{
+            background-color: {self.accent_rgba(0.20)};
+            border: 1.5px solid {self.accent_hex};
+            padding: 8px 12px;
+        }}
+        .search-sub-item-btn {{
+            background-color: transparent;
+            border: none;
+            border-radius: 8px;
+            padding: 4px 8px;
+            margin: 1px 0px;
+            transition: all 120ms ease;
+        }}
+        .search-sub-item-btn:hover {{
+            background-color: rgba(255, 255, 255, 0.08);
+        }}
+        .sub-arrow-lbl {{
+            font-size: 11px;
+            color: {self.accent_hex};
+        }}
+        .sub-title-lbl {{
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.75);
+        }}
+        .match-count-badge {{
+            background-color: {self.accent_rgba(0.20)};
+            color: {self.accent_hex};
+            font-size: 10px;
+            font-weight: 700;
+            border-radius: 10px;
+            padding: 2px 6px;
         }}
         .row-title {{
             font-size: 13px;
@@ -997,13 +1048,12 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             background-color: #111116;
             border: 1px solid rgba(255, 255, 255, 0.12);
             border-radius: 14px;
-            overflow: hidden;
         }}
         .blank-tile-preview picture, .blank-tile-preview image {{
             border-radius: 14px;
         }}
         .accent-label {{
-            color: #5eead4;
+            color: {self.accent_hex};
             font-weight: 600;
         }}
         """
@@ -1044,6 +1094,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         self.search_entry.set_placeholder_text("Search Settings")
         self.search_entry.add_css_class("search-entry")
         self.search_entry.connect("search-changed", self.on_search_changed)
+        self.search_entry.connect("activate", self.on_search_activated)
         sidebar_box.append(self.search_entry)
 
         # Category List
@@ -1055,6 +1106,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         self.nav_list = Gtk.ListBox()
         self.nav_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self.nav_list.connect("row-selected", self.on_category_selected)
+        self.nav_list.connect("row-activated", self.on_category_activated)
         scrolled_nav.set_child(self.nav_list)
 
         # ── Content Pane ───────────────────────────────────────────────────
@@ -1083,15 +1135,15 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         top_nav_bar.append(self.btn_forward)
 
         # Scrolled Stack for Category Pages
-        scrolled_content = Gtk.ScrolledWindow()
-        scrolled_content.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scrolled_content.set_vexpand(True)
-        content_frame.append(scrolled_content)
+        self.scrolled_content = Gtk.ScrolledWindow()
+        self.scrolled_content.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.scrolled_content.set_vexpand(True)
+        content_frame.append(self.scrolled_content)
 
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         self.stack.set_transition_duration(180)
-        scrolled_content.set_child(self.stack)
+        self.scrolled_content.set_child(self.stack)
 
         # Bottom Action Bar (Apply button relocated to bottom right)
         bottom_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
@@ -1132,10 +1184,13 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             row = Gtk.ListBoxRow()
             row.cat_id = cat_id
             row.title_text = title
+            row.matched_items = []
             row.add_css_class("nav-item-row")
 
-            row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-            
+            row_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+
+            header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+
             icon_badge = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
             icon_badge.add_css_class("nav-icon-badge")
             icon_badge.set_halign(Gtk.Align.CENTER)
@@ -1143,31 +1198,109 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             img = Gtk.Image.new_from_icon_name(icon_name)
             img.set_pixel_size(16)
             icon_badge.append(img)
-            row_box.append(icon_badge)
+            header_box.append(icon_badge)
 
             lbl = Gtk.Label(label=title)
             lbl.set_halign(Gtk.Align.START)
-            row_box.append(lbl)
+            lbl.set_hexpand(True)
+            header_box.append(lbl)
+
+            badge = Gtk.Label(label="")
+            badge.add_css_class("match-count-badge")
+            badge.set_visible(False)
+            header_box.append(badge)
+            row.match_badge = badge
+
+            row_box.append(header_box)
+
+            sub_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            sub_box.set_margin_start(34)
+            sub_box.set_visible(False)
+            row_box.append(sub_box)
+            row.sub_box = sub_box
 
             row.set_child(row_box)
             self.nav_list.append(row)
             self.nav_rows[cat_id] = row
 
+            self.current_cat_id = cat_id
             page_widget = builder_func(icon_name, hero_title, hero_sub)
             self.stack.add_named(page_widget, cat_id)
+        self.current_cat_id = None
 
         # Default to Look & Feel or Motion page
         initial_cat = "looknfeel"
         if initial_cat in self.nav_rows:
             self.nav_list.select_row(self.nav_rows[initial_cat])
             self.stack.set_visible_child_name(initial_cat)
-            GLib.idle_add(lambda: (scrolled_content.get_vadjustment().set_value(0), False)[1])
+            GLib.idle_add(lambda: (self.scrolled_content.get_vadjustment().set_value(0), False)[1])
 
-    # ── Navigation & Search ────────────────────────────────────────────────
-    def on_category_selected(self, listbox, row):
-        if not row:
+    @staticmethod
+    def disable_scale_scroll(scale):
+        try:
+            controllers = scale.observe_controllers()
+            to_remove = []
+            for i in range(controllers.get_n_items()):
+                c = controllers.get_item(i)
+                if isinstance(c, Gtk.EventControllerScroll):
+                    to_remove.append(c)
+            for c in to_remove:
+                scale.remove_controller(c)
+        except Exception as e:
+            print("[Scale] Error disabling scroll:", e)
+
+    def register_search_item(self, cat_id, title, subtitle, widget):
+        if not cat_id or not widget or not title:
             return
-        cat_id = row.cat_id
+        cat_title = ""
+        for cid, ctitle, *_ in self.categories:
+            if cid == cat_id:
+                cat_title = ctitle
+                break
+        keywords = f"{title} {subtitle or ''} {cat_title}".lower()
+        self.search_index.append({
+            "cat_id": cat_id,
+            "cat_title": cat_title,
+            "title": title,
+            "subtitle": subtitle or "",
+            "keywords": keywords,
+            "widget": widget,
+        })
+
+    def highlight_widget(self, target_widget):
+        if hasattr(self, "_active_highlight_widget") and self._active_highlight_widget:
+            try:
+                self._active_highlight_widget.remove_css_class("highlight-setting-row")
+            except Exception:
+                pass
+            self._active_highlight_widget = None
+
+        if hasattr(self, "_highlight_timer_id") and self._highlight_timer_id:
+            GLib.source_remove(self._highlight_timer_id)
+            self._highlight_timer_id = 0
+
+        self._active_highlight_widget = target_widget
+        target_widget.add_css_class("highlight-setting-row")
+
+        def _clear_highlight():
+            if self._active_highlight_widget == target_widget:
+                try:
+                    target_widget.remove_css_class("highlight-setting-row")
+                except Exception:
+                    pass
+                self._active_highlight_widget = None
+            self._highlight_timer_id = 0
+            return False
+
+        self._highlight_timer_id = GLib.timeout_add(3000, _clear_highlight)
+
+    def navigate_to_setting(self, cat_id, target_widget):
+        row = self.nav_rows.get(cat_id)
+        if row:
+            self.is_navigating = True
+            self.nav_list.select_row(row)
+            self.is_navigating = False
+
         if not self.is_navigating:
             if self.history_index < len(self.nav_history) - 1:
                 self.nav_history = self.nav_history[:self.history_index + 1]
@@ -1176,6 +1309,59 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             self.update_nav_buttons()
 
         self.stack.set_visible_child_name(cat_id)
+
+        def _do_scroll_highlight(attempts=0):
+            page = self.stack.get_child_by_name(cat_id)
+            if not page or not target_widget:
+                return False
+            try:
+                res, bounds = target_widget.compute_bounds(page)
+                if res and bounds.get_height() > 0:
+                    y = bounds.get_y()
+                    v_adj = self.scrolled_content.get_vadjustment()
+                    if v_adj:
+                        v_adj.set_value(max(0, y - 50))
+                    self.highlight_widget(target_widget)
+                    return False
+            except Exception as e:
+                pass
+            if attempts < 3:
+                GLib.timeout_add(100, lambda: _do_scroll_highlight(attempts + 1))
+            else:
+                self.highlight_widget(target_widget)
+            return False
+
+        GLib.timeout_add(100, lambda: _do_scroll_highlight(0))
+
+    # ── Navigation & Search ────────────────────────────────────────────────
+    def on_category_selected(self, listbox, row):
+        if not row:
+            return
+        cat_id = getattr(row, "cat_id", None)
+        if not cat_id:
+            return
+
+        if self.stack.get_visible_child_name() != cat_id:
+            if not self.is_navigating:
+                if self.history_index < len(self.nav_history) - 1:
+                    self.nav_history = self.nav_history[:self.history_index + 1]
+                self.nav_history.append(cat_id)
+                self.history_index += 1
+                self.update_nav_buttons()
+            self.stack.set_visible_child_name(cat_id)
+
+        matched_items = getattr(row, "matched_items", None)
+        if matched_items:
+            target_widget = matched_items[0].get("widget")
+            if target_widget:
+                self.navigate_to_setting(cat_id, target_widget)
+        else:
+            v_adj = self.scrolled_content.get_vadjustment()
+            if v_adj:
+                GLib.idle_add(lambda: (v_adj.set_value(0), False)[1])
+
+    def on_category_activated(self, listbox, row):
+        self.on_category_selected(listbox, row)
 
     def on_go_back(self, btn):
         if self.history_index > 0:
@@ -1201,11 +1387,77 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
 
     def on_search_changed(self, entry):
         query = entry.get_text().strip().lower()
+
+        cat_matches = {cat_id: [] for cat_id in self.nav_rows.keys()}
+        if query:
+            for item in self.search_index:
+                if query in item["keywords"]:
+                    cat_matches[item["cat_id"]].append(item)
+
         for cat_id, row in self.nav_rows.items():
-            if not query or query in row.title_text.lower():
-                row.set_visible(True)
+            matches = cat_matches.get(cat_id, [])
+            cat_title_match = False
+            for cid, ctitle, *_ in self.categories:
+                if cid == cat_id and query in ctitle.lower():
+                    cat_title_match = True
+                    break
+
+            is_visible = bool(not query or matches or cat_title_match)
+            row.set_visible(is_visible)
+            row.matched_items = matches
+
+            # Clear previous sub-items
+            while True:
+                child = row.sub_box.get_first_child()
+                if not child:
+                    break
+                row.sub_box.remove(child)
+
+            if query and matches:
+                row.match_badge.set_text(str(len(matches)))
+                row.match_badge.set_visible(True)
+
+                for item in matches[:5]:
+                    sub_btn = Gtk.Button()
+                    sub_btn.add_css_class("search-sub-item-btn")
+
+                    btn_content = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+                    arrow_lbl = Gtk.Label(label="↳")
+                    arrow_lbl.add_css_class("sub-arrow-lbl")
+                    btn_content.append(arrow_lbl)
+
+                    title_lbl = Gtk.Label(label=item["title"])
+                    title_lbl.set_halign(Gtk.Align.START)
+                    title_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+                    title_lbl.add_css_class("sub-title-lbl")
+                    btn_content.append(title_lbl)
+
+                    sub_btn.set_child(btn_content)
+
+                    def _on_sub_click(btn, c_id=cat_id, w=item["widget"]):
+                        self.navigate_to_setting(c_id, w)
+                    sub_btn.connect("clicked", _on_sub_click)
+                    row.sub_box.append(sub_btn)
+
+                row.sub_box.set_visible(True)
             else:
-                row.set_visible(False)
+                row.match_badge.set_visible(False)
+                row.sub_box.set_visible(False)
+
+    def on_search_activated(self, entry):
+        query = entry.get_text().strip().lower()
+        if not query:
+            return
+        for item in self.search_index:
+            if query in item["keywords"]:
+                self.navigate_to_setting(item["cat_id"], item["widget"])
+                return
+        for cat_id, title, *_ in self.categories:
+            if query in title.lower():
+                row = self.nav_rows.get(cat_id)
+                if row:
+                    self.on_category_selected(self.nav_list, row)
+                return
 
     # ── UI Builder Helpers ─────────────────────────────────────────────────
     def create_page_container(self, icon_name, title, subtitle):
@@ -1285,6 +1537,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         row.append(sw)
 
         card.append(row)
+        self.register_search_item(self.current_cat_id, title, subtitle, row)
         return sw
 
     def add_slider_row(self, card, title, subtitle, min_val, max_val, step, cur_val, unit="ms", on_change=None):
@@ -1311,6 +1564,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         row.append(label_box)
 
         scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, min_val, max_val, step)
+        self.disable_scale_scroll(scale)
         scale.set_value(cur_val)
         scale.set_size_request(160, -1)
         scale.set_hexpand(True)
@@ -1339,6 +1593,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
 
         scale.connect("value-changed", on_slider_val_changed)
         card.append(row)
+        self.register_search_item(self.current_cat_id, title, subtitle, row)
         return scale
 
     def add_combo_row(self, card, title, subtitle, options, cur_idx, on_change=None):
@@ -1373,6 +1628,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         row.append(dropdown)
 
         card.append(row)
+        self.register_search_item(self.current_cat_id, title, subtitle, row)
         return dropdown
 
     def add_entry_row(self, card, title, subtitle, cur_val, placeholder="", on_change=None):
@@ -1405,6 +1661,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         entry.set_halign(Gtk.Align.END)
         entry.set_size_request(160, -1)
         card.append(row)
+        self.register_search_item(self.current_cat_id, title, subtitle, row)
         return entry
 
     # ── Category 1: Bar & Island ───────────────────────────────────────────
@@ -1509,6 +1766,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         btn_act.connect("clicked", on_switch_vanish)
         row_mode.append(btn_act)
         card1.append(row_mode)
+        self.register_search_item(self.current_cat_id, "Activate Vanish Mode", "Switch desktop to barless orbital nucleus", row_mode)
 
         nuc_cfg = self.bar_mode.get("nucleus", {})
         trans_act = bool(nuc_cfg.get("transition", True))
@@ -1579,6 +1837,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         btn_prev.connect("clicked", on_play_prev)
         row_prev.append(btn_prev)
         card1.append(row_prev)
+        self.register_search_item(self.current_cat_id, "Test Transition Animation", "Play the transition overlay right now", row_prev)
 
         page.append(card1)
 
@@ -1618,6 +1877,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             lbl_key.set_valign(Gtk.Align.CENTER)
             row_s.append(lbl_key)
             card3.append(row_s)
+            self.register_search_item(self.current_cat_id, s_info.get("title", s_id), s_info.get("desc", ""), row_s)
 
         row_rst = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         row_rst.add_css_class("settings-row")
@@ -1636,6 +1896,8 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             self.mark_dirty()
         btn_rst.connect("clicked", on_reset_vanish_keys)
         row_rst.append(btn_rst)
+        card3.append(row_rst)
+        self.register_search_item(self.current_cat_id, "Reset Vanish Shortcuts", "Reset default vanish triggers", row_rst)
         page.append(card3)
 
         # ── Card 4: Launcher Blank Tile ──
@@ -1659,6 +1921,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         btn_goto_bt.connect("clicked", lambda b: self.nav_list.select_row(self.nav_rows["blank_tile"]))
         row_bt.append(btn_goto_bt)
         card4.append(row_bt)
+        self.register_search_item(self.current_cat_id, "Launcher Blank Tile Customization", "Customize image background and crop region for top idle tile", row_bt)
         page.append(card4)
 
         return page
@@ -1708,6 +1971,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         btn_choose.connect("clicked", self.on_choose_tile_image)
         row_img.append(btn_choose)
         card_config.append(row_img)
+        self.register_search_item(self.current_cat_id, "Source Image", "Select background image for blank tile", row_img)
 
         # Row: Crop & Region Selection
         row_crop = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
@@ -1733,6 +1997,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         self.btn_crop.set_sensitive(bool(self.tile_cfg.get("imagePath") and os.path.exists(self.tile_cfg.get("imagePath"))))
         row_crop.append(self.btn_crop)
         card_config.append(row_crop)
+        self.register_search_item(self.current_cat_id, "Selected Region", "Select region of image for blank tile crop", row_crop)
 
         # Slider: Image Opacity
         cur_op = int(float(self.tile_cfg.get("opacity", 1.0)) * 100)
@@ -1780,6 +2045,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         btn_rst.connect("clicked", on_reset_tile)
         row_rst.append(btn_rst)
         card_config.append(row_rst)
+        self.register_search_item(self.current_cat_id, "Reset to Default Blank Tile", "Revert to original clean dark container", row_rst)
 
         page.append(card_config)
 
@@ -2162,6 +2428,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         btn_add_exc.connect("clicked", on_open_picker)
         exc_header_row.append(btn_add_exc)
         card_blur.append(exc_header_row)
+        self.register_search_item(self.current_cat_id, "Blur & Opacity App Exceptions", "Exclude specific apps from window blur and transparency", exc_header_row)
 
         self.exceptions_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.exceptions_box.set_margin_start(4)
@@ -2250,7 +2517,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
 
         lbl_head = Gtk.Label(label="Launcher Interface")
         lbl_head.set_halign(Gtk.Align.START)
-        lbl_head.add_css_class("accent-label")
+        lbl_head.add_css_class("heading")
         mode_card.append(lbl_head)
 
         cur_style = self.launcher_cfg.get("launcherStyle", self.launcher_cfg.get("defaultLauncher", "spotlight"))
@@ -2299,7 +2566,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
 
         sw_spotlight = self.add_switch_row(
             mode_card,
-            "Spotlight Command Palette",
+            "Spotlight Search",
             "Modern keyboard-driven search bar for fast app launching, commands, and calculations",
             cur_style == "spotlight",
             on_toggle_spotlight
@@ -2320,7 +2587,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
 
         lbl_head2 = Gtk.Label(label="Preferences & Animation")
         lbl_head2.set_halign(Gtk.Align.START)
-        lbl_head2.add_css_class("accent-label")
+        lbl_head2.add_css_class("heading")
         card.append(lbl_head2)
 
         speed = int(self.launcher_cfg.get("animationSpeed", 170))
@@ -2339,7 +2606,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         def on_clip(act):
             self.launcher_cfg["clipboardHistory"] = act
             self.mark_dirty()
-        self.add_switch_row(card, "Clipboard History Tab", "Enable clipboard manager in Command Palette", clip_act, on_clip)
+        self.add_switch_row(card, "Clipboard History Tab", "Enable clipboard manager in Spotlight search", clip_act, on_clip)
 
         max_r = int(self.launcher_cfg.get("maxResults", 8))
         def on_max(v):
@@ -2456,6 +2723,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         self.btn_check_update.connect("clicked", self.on_check_updates_clicked)
         row_up.append(self.btn_check_update)
         card.append(row_up)
+        self.register_search_item(self.current_cat_id, "Check for Updates", "Check GitHub for new Carbon Shell releases and improvements", row_up)
 
         # Actions Row: Restart Carbon Shell
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
@@ -2478,6 +2746,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         btn.connect("clicked", self.on_reload_shell)
         row.append(btn)
         card.append(row)
+        self.register_search_item(self.current_cat_id, "Restart Carbon Shell", "Reload quickshell daemon and apply visual updates", row)
 
         # Reload Hyprland Row
         row_hl = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
@@ -2500,6 +2769,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         btn_hl.connect("clicked", lambda b: subprocess.run(["hyprctl", "reload"], check=False))
         row_hl.append(btn_hl)
         card.append(row_hl)
+        self.register_search_item(self.current_cat_id, "Reload Hyprland", "Reload compositor rules, keybinds, and variables", row_hl)
 
         page.append(card)
         return page
