@@ -84,14 +84,14 @@ label {
     color: @border;
 }
 
-/* Volume, WiFi, and Battery - PRIMARY ACCENT COLOR */
+/* Volume, WiFi, and Battery - TERTIARY COLOR */
 #pulseaudio,
 #pulseaudio label,
 #network,
 #network label,
 #battery,
 #battery label {
-    color: @primary;
+    color: @tertiary;
     font-size: 0.9rem;
     font-weight: 500;
     margin: 0 8px;
