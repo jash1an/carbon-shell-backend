@@ -124,7 +124,6 @@ Item {
         if (!dndProbe.running) dndProbe.running = true
         if (!brightProbe.running) brightProbe.running = true
         if (!recProbe.running) recProbe.running = true
-        if (!sysProbe.running) sysProbe.running = true
     }
 
     onOpenChanged: {
@@ -673,56 +672,7 @@ Item {
         Quickshell.execDetached(["playerctl", "position", targetSec.toFixed(2)])
     }
 
-    /* ── System Telemetry (CPU & RAM) ────────────────────────────────── */
-    property int cpuUsage: 0
-    property string ramUsageGB: "0.0"
-    property int ramPct: 0
-    property real lastCpuTotal: 0
-    property real lastCpuIdle: 0
 
-    Process {
-        id: sysProbe
-        command: ["awk", "/^cpu / {print $2+$3+$4+$5+$6+$7+$8, $5+$6} /^MemTotal:/ {tot=$2} /^MemAvailable:/ {avail=$2} END {print tot, avail}", "/proc/stat", "/proc/meminfo"]
-        stdout: StdioCollector {
-            id: sysOut
-            waitForEnd: true
-        }
-        onExited: {
-            var raw = sysOut.text.trim().split("\n")
-            if (raw.length >= 2) {
-                var cpuParts = raw[0].trim().split(/\s+/)
-                if (cpuParts.length >= 2) {
-                    var total = parseFloat(cpuParts[0])
-                    var idle = parseFloat(cpuParts[1])
-                    if (root.lastCpuTotal > 0 && total > root.lastCpuTotal) {
-                        var dTotal = total - root.lastCpuTotal
-                        var dIdle = idle - root.lastCpuIdle
-                        root.cpuUsage = Math.max(0, Math.min(100, Math.round((1.0 - (dIdle / dTotal)) * 100)))
-                    }
-                    root.lastCpuTotal = total
-                    root.lastCpuIdle = idle
-                }
-
-                var memParts = raw[1].trim().split(/\s+/)
-                if (memParts.length >= 2) {
-                    var totKb = parseFloat(memParts[0])
-                    var availKb = parseFloat(memParts[1])
-                    if (totKb > 0) {
-                        var usedKb = Math.max(0, totKb - availKb)
-                        root.ramUsageGB = (usedKb / (1024 * 1024)).toFixed(1)
-                        root.ramPct = Math.round((usedKb / totKb) * 100)
-                    }
-                }
-            }
-        }
-    }
-
-    Timer {
-        interval: 3000
-        repeat: true
-        running: root.open
-        onTriggered: sysProbe.running = true
-    }
 
     Component.onCompleted: {
         root.refreshStates()
@@ -947,6 +897,7 @@ Item {
                     }
 
                     // 2x2 Quick Toggles Grid (Wi-Fi, Bluetooth, Night Light, DND)
+                    // 2x2 Quick Toggles Grid (Wi-Fi, Bluetooth, Night Light, DND)
                     GridLayout {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 96
@@ -958,10 +909,11 @@ Item {
                         Rectangle {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 45
-                            radius: 12
-                            color: root.wifiOn ? Theme.accent : (wifiTileHov.containsMouse ? Theme.bgHover : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65))
+                            radius: 10
+                            color: root.wifiOn ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
+                                               : (wifiTileHov.containsMouse ? Theme.bgHover : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65))
                             border.width: 1
-                            border.color: root.wifiOn ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.60) : Theme.outline
+                            border.color: root.wifiOn ? Theme.accent : (wifiTileHov.containsMouse ? Theme.accentLit : Theme.outline)
 
                             RowLayout {
                                 anchors.fill: parent
@@ -978,14 +930,14 @@ Item {
                                         spacing: 6
 
                                         Rectangle {
-                                            width: 28; height: 28; radius: 14
-                                            color: root.wifiOn ? (Theme.isDark ? Qt.rgba(0,0,0,0.2) : Qt.rgba(1,1,1,0.3)) : Qt.rgba(1, 1, 1, 0.08)
+                                            width: 26; height: 26; radius: 8
+                                            color: root.wifiOn ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.28) : Qt.rgba(1, 1, 1, 0.08)
                                             Text {
                                                 anchors.centerIn: parent
                                                 text: "wifi"
                                                 font.family: Theme.fontIcon
-                                                font.pixelSize: 15
-                                                color: root.wifiOn ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                                                font.pixelSize: 14
+                                                color: root.wifiOn ? Theme.accentLit : Theme.fgDim
                                             }
                                         }
 
@@ -997,14 +949,14 @@ Item {
                                                 font.family: "JetBrainsMono Nerd Font"
                                                 font.pixelSize: Theme.fontPx(8.5)
                                                 font.weight: Font.Bold
-                                                color: root.wifiOn ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                                                color: root.wifiOn ? Theme.accentLit : Theme.fg
                                             }
                                             Text {
                                                 Layout.fillWidth: true
                                                 text: root.wifiOn ? (root.wifiName.length > 0 ? root.wifiName : "Connected") : "Off"
                                                 font.family: "JetBrainsMono Nerd Font"
                                                 font.pixelSize: Theme.fontPx(7)
-                                                color: root.wifiOn ? (Theme.isDark ? Qt.rgba(0.06,0.07,0.09,0.8) : Qt.rgba(1,1,1,0.85)) : Theme.fgDim
+                                                color: root.wifiOn ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.75) : Theme.fgDim
                                                 elide: Text.ElideRight
                                             }
                                         }
@@ -1021,17 +973,17 @@ Item {
 
                                 // Arrow button to open Wi-Fi menu
                                 Rectangle {
-                                    width: 24
-                                    height: 24
+                                    width: 22
+                                    height: 22
                                     radius: 6
-                                    color: wifiArrowMA.containsMouse ? (root.wifiOn ? (Theme.isDark ? Qt.rgba(0,0,0,0.15) : Qt.rgba(1,1,1,0.25)) : Theme.bgHover) : "transparent"
+                                    color: wifiArrowMA.containsMouse ? (root.wifiOn ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25) : Theme.bgHover) : "transparent"
 
                                     Text {
                                         anchors.centerIn: parent
                                         text: "keyboard_arrow_right"
                                         font.family: Theme.fontIcon
-                                        font.pixelSize: 16
-                                        color: root.wifiOn ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                                        font.pixelSize: 15
+                                        color: root.wifiOn ? Theme.accentLit : Theme.fgDim
                                     }
 
                                     MouseArea {
@@ -1052,10 +1004,11 @@ Item {
                         Rectangle {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 45
-                            radius: 12
-                            color: root.btOn ? Theme.accent : (btTileHov.containsMouse ? Theme.bgHover : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65))
+                            radius: 10
+                            color: root.btOn ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
+                                             : (btTileHov.containsMouse ? Theme.bgHover : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65))
                             border.width: 1
-                            border.color: root.btOn ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.60) : Theme.outline
+                            border.color: root.btOn ? Theme.accent : (btTileHov.containsMouse ? Theme.accentLit : Theme.outline)
 
                             RowLayout {
                                 anchors.fill: parent
@@ -1071,14 +1024,14 @@ Item {
                                         spacing: 6
 
                                         Rectangle {
-                                            width: 28; height: 28; radius: 14
-                                            color: root.btOn ? (Theme.isDark ? Qt.rgba(0,0,0,0.2) : Qt.rgba(1,1,1,0.3)) : Qt.rgba(1, 1, 1, 0.08)
+                                            width: 26; height: 26; radius: 8
+                                            color: root.btOn ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.28) : Qt.rgba(1, 1, 1, 0.08)
                                             Text {
                                                 anchors.centerIn: parent
                                                 text: "bluetooth"
                                                 font.family: Theme.fontIcon
-                                                font.pixelSize: 15
-                                                color: root.btOn ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                                                font.pixelSize: 14
+                                                color: root.btOn ? Theme.accentLit : Theme.fgDim
                                             }
                                         }
 
@@ -1090,14 +1043,14 @@ Item {
                                                 font.family: "JetBrainsMono Nerd Font"
                                                 font.pixelSize: Theme.fontPx(8.5)
                                                 font.weight: Font.Bold
-                                                color: root.btOn ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                                                color: root.btOn ? Theme.accentLit : Theme.fg
                                             }
                                             Text {
                                                 Layout.fillWidth: true
                                                 text: root.btOn ? (root.btName.length > 0 ? root.btName : "On") : "Off"
                                                 font.family: "JetBrainsMono Nerd Font"
                                                 font.pixelSize: Theme.fontPx(7)
-                                                color: root.btOn ? (Theme.isDark ? Qt.rgba(0.06,0.07,0.09,0.8) : Qt.rgba(1,1,1,0.85)) : Theme.fgDim
+                                                color: root.btOn ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.75) : Theme.fgDim
                                                 elide: Text.ElideRight
                                             }
                                         }
@@ -1114,17 +1067,17 @@ Item {
 
                                 // Arrow button to open Bluetooth menu
                                 Rectangle {
-                                    width: 24
-                                    height: 24
+                                    width: 22
+                                    height: 22
                                     radius: 6
-                                    color: btArrowMA.containsMouse ? (root.btOn ? (Theme.isDark ? Qt.rgba(0,0,0,0.15) : Qt.rgba(1,1,1,0.25)) : Theme.bgHover) : "transparent"
+                                    color: btArrowMA.containsMouse ? (root.btOn ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25) : Theme.bgHover) : "transparent"
 
                                     Text {
                                         anchors.centerIn: parent
                                         text: "keyboard_arrow_right"
                                         font.family: Theme.fontIcon
-                                        font.pixelSize: 16
-                                        color: root.btOn ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                                        font.pixelSize: 15
+                                        color: root.btOn ? Theme.accentLit : Theme.fgDim
                                     }
 
                                     MouseArea {
@@ -1141,14 +1094,15 @@ Item {
                             }
                         }
 
-                        // Tile 3: Night Light (Working!)
+                        // Tile 3: Night Light
                         Rectangle {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 45
-                            radius: 12
-                            color: root.nightOn ? Theme.accent : (nightTileHov.containsMouse ? Theme.bgHover : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65))
+                            radius: 10
+                            color: root.nightOn ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
+                                                : (nightTileHov.containsMouse ? Theme.bgHover : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65))
                             border.width: 1
-                            border.color: root.nightOn ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.60) : Theme.outline
+                            border.color: root.nightOn ? Theme.accent : (nightTileHov.containsMouse ? Theme.accentLit : Theme.outline)
 
                             RowLayout {
                                 anchors.fill: parent
@@ -1156,14 +1110,14 @@ Item {
                                 spacing: 6
 
                                 Rectangle {
-                                    width: 28; height: 28; radius: 14
-                                    color: root.nightOn ? (Theme.isDark ? Qt.rgba(0,0,0,0.2) : Qt.rgba(1,1,1,0.3)) : Qt.rgba(1, 1, 1, 0.08)
+                                    width: 26; height: 26; radius: 8
+                                    color: root.nightOn ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.28) : Qt.rgba(1, 1, 1, 0.08)
                                     Text {
                                         anchors.centerIn: parent
                                         text: "nightlight"
                                         font.family: Theme.fontIcon
-                                        font.pixelSize: 15
-                                        color: root.nightOn ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                                        font.pixelSize: 14
+                                        color: root.nightOn ? Theme.accentLit : Theme.fgDim
                                     }
                                 }
                                 ColumnLayout {
@@ -1174,13 +1128,13 @@ Item {
                                         font.family: "JetBrainsMono Nerd Font"
                                         font.pixelSize: Theme.fontPx(8.5)
                                         font.weight: Font.Bold
-                                        color: root.nightOn ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                                        color: root.nightOn ? Theme.accentLit : Theme.fg
                                     }
                                     Text {
                                         text: root.nightOn ? "On" : "Off"
                                         font.family: "JetBrainsMono Nerd Font"
                                         font.pixelSize: Theme.fontPx(7)
-                                        color: root.nightOn ? (Theme.isDark ? Qt.rgba(0.06,0.07,0.09,0.8) : Qt.rgba(1,1,1,0.85)) : Theme.fgDim
+                                        color: root.nightOn ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.75) : Theme.fgDim
                                     }
                                 }
                             }
@@ -1193,14 +1147,15 @@ Item {
                             }
                         }
 
-                        // Tile 4: Do Not Disturb (DND Synced!)
+                        // Tile 4: Do Not Disturb (DND)
                         Rectangle {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 45
-                            radius: 12
-                            color: root.dndOn ? Theme.accent : (dndTileHov.containsMouse ? Theme.bgHover : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65))
+                            radius: 10
+                            color: root.dndOn ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
+                                              : (dndTileHov.containsMouse ? Theme.bgHover : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65))
                             border.width: 1
-                            border.color: root.dndOn ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.60) : Theme.outline
+                            border.color: root.dndOn ? Theme.accent : (dndTileHov.containsMouse ? Theme.accentLit : Theme.outline)
 
                             RowLayout {
                                 anchors.fill: parent
@@ -1208,14 +1163,14 @@ Item {
                                 spacing: 6
 
                                 Rectangle {
-                                    width: 28; height: 28; radius: 14
-                                    color: root.dndOn ? (Theme.isDark ? Qt.rgba(0,0,0,0.2) : Qt.rgba(1,1,1,0.3)) : Qt.rgba(1, 1, 1, 0.08)
+                                    width: 26; height: 26; radius: 8
+                                    color: root.dndOn ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.28) : Qt.rgba(1, 1, 1, 0.08)
                                     Text {
                                         anchors.centerIn: parent
                                         text: root.dndOn ? "notifications_off" : "notifications"
                                         font.family: Theme.fontIcon
-                                        font.pixelSize: 15
-                                        color: root.dndOn ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                                        font.pixelSize: 14
+                                        color: root.dndOn ? Theme.accentLit : Theme.fgDim
                                     }
                                 }
                                 ColumnLayout {
@@ -1226,13 +1181,13 @@ Item {
                                         font.family: "JetBrainsMono Nerd Font"
                                         font.pixelSize: Theme.fontPx(8.5)
                                         font.weight: Font.Bold
-                                        color: root.dndOn ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                                        color: root.dndOn ? Theme.accentLit : Theme.fg
                                     }
                                     Text {
                                         text: root.dndOn ? "On" : "Off"
                                         font.family: "JetBrainsMono Nerd Font"
                                         font.pixelSize: Theme.fontPx(7)
-                                        color: root.dndOn ? (Theme.isDark ? Qt.rgba(0.06,0.07,0.09,0.8) : Qt.rgba(1,1,1,0.85)) : Theme.fgDim
+                                        color: root.dndOn ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.75) : Theme.fgDim
                                     }
                                 }
                             }
@@ -1250,7 +1205,7 @@ Item {
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        radius: 12
+                        radius: 10
                         color: Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65)
                         border.width: 1
                         border.color: Theme.outline
@@ -1272,8 +1227,8 @@ Item {
                                         anchors.centerIn: parent
                                         text: root.isMuted ? "volume_off" : (root.volRatio > 0.5 ? "volume_up" : (root.volRatio > 0.0 ? "volume_down" : "volume_mute"))
                                         font.family: Theme.fontIcon
-                                        font.pixelSize: 15
-                                        color: root.isMuted ? Theme.fgDim : Theme.accent
+                                        font.pixelSize: 14
+                                        color: root.isMuted ? Theme.err : Theme.accentLit
                                     }
                                     MouseArea {
                                         id: muteHov
@@ -1293,21 +1248,38 @@ Item {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 18
 
+                                    // Track background
                                     Rectangle {
-                                        anchors.fill: parent
-                                        radius: 9
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        height: 6
+                                        radius: 3
                                         color: Qt.rgba(1, 1, 1, 0.10)
                                     }
+                                    // Progress bar
                                     Rectangle {
-                                        height: parent.height
+                                        anchors.left: parent.left
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        height: 6
                                         width: Math.max(0, Math.min(parent.width, parent.width * (root.isMuted ? 0 : root.volRatio)))
-                                        radius: 9
-                                        color: root.isMuted ? Theme.fgFaint : Theme.accent
+                                        radius: 3
+                                        color: root.isMuted ? Theme.fgFaint : Theme.accentLit
                                         Behavior on width {
                                             enabled: !volArea.pressed
                                             NumberAnimation { duration: 100 }
                                         }
                                     }
+                                    // Circular Thumb
+                                    Rectangle {
+                                        width: 12; height: 12; radius: 6
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        x: Math.max(0, Math.min(parent.width - width, (parent.width * (root.isMuted ? 0 : root.volRatio)) - (width / 2)))
+                                        color: root.isMuted ? Theme.fgFaint : Theme.accentLit
+                                        border.width: 1.5
+                                        border.color: Theme.bg
+                                    }
+
                                     MouseArea {
                                         id: volArea
                                         anchors.fill: parent
@@ -1358,7 +1330,7 @@ Item {
                                         anchors.centerIn: parent
                                         text: "brightness_6"
                                         font.family: Theme.fontIcon
-                                        font.pixelSize: 15
+                                        font.pixelSize: 14
                                         color: Theme.accentLit
                                     }
                                 }
@@ -1368,21 +1340,38 @@ Item {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 18
 
+                                    // Track background
                                     Rectangle {
-                                        anchors.fill: parent
-                                        radius: 9
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        height: 6
+                                        radius: 3
                                         color: Qt.rgba(1, 1, 1, 0.10)
                                     }
+                                    // Progress bar
                                     Rectangle {
-                                        height: parent.height
+                                        anchors.left: parent.left
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        height: 6
                                         width: Math.max(0, Math.min(parent.width, parent.width * root.brightRatio))
-                                        radius: 9
+                                        radius: 3
                                         color: Theme.accentLit
                                         Behavior on width {
                                             enabled: !brightArea.pressed
                                             NumberAnimation { duration: 100 }
                                         }
                                     }
+                                    // Circular Thumb
+                                    Rectangle {
+                                        width: 12; height: 12; radius: 6
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        x: Math.max(0, Math.min(parent.width - width, (parent.width * root.brightRatio) - (width / 2)))
+                                        color: Theme.accentLit
+                                        border.width: 1.5
+                                        border.color: Theme.bg
+                                    }
+
                                     MouseArea {
                                         id: brightArea
                                         anchors.fill: parent
@@ -1540,15 +1529,17 @@ Item {
                             }
 
                             Rectangle {
-                                width: 44; height: 24; radius: 6
-                                color: Theme.accent
+                                width: 48; height: 24; radius: 6
+                                color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
+                                border.width: 1
+                                border.color: Theme.accentLit
                                 Text {
                                     anchors.centerIn: parent
                                     text: "Connect"
                                     font.family: "JetBrainsMono Nerd Font"
-                                    font.pixelSize: Theme.fontPx(7)
+                                    font.pixelSize: Theme.fontPx(7.5)
                                     font.weight: Font.Bold
-                                    color: Theme.isDark ? "#101116" : "#ffffff"
+                                    color: Theme.accentLit
                                 }
                                 MouseArea {
                                     anchors.fill: parent
@@ -1620,9 +1611,10 @@ Item {
                                             width: modelData.inUse ? 54 : 46
                                             height: 20
                                             radius: 5
-                                            color: modelData.inUse ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25) : (netRowMA.containsMouse ? Theme.accent : "transparent")
+                                            color: modelData.inUse ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25)
+                                                                   : (netRowMA.containsMouse ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.20) : "transparent")
                                             border.width: 1
-                                            border.color: modelData.inUse ? Theme.accent : Theme.outline
+                                            border.color: (modelData.inUse || netRowMA.containsMouse) ? Theme.accentLit : Theme.outline
 
                                             Text {
                                                 anchors.centerIn: parent
@@ -1630,7 +1622,7 @@ Item {
                                                 font.family: "JetBrainsMono Nerd Font"
                                                 font.pixelSize: Theme.fontPx(6.8)
                                                 font.weight: Font.Bold
-                                                color: modelData.inUse ? Theme.accentLit : (netRowMA.containsMouse ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim)
+                                                color: (modelData.inUse || netRowMA.containsMouse) ? Theme.accentLit : Theme.fgDim
                                             }
                                         }
                                     }
@@ -1774,15 +1766,17 @@ Item {
                                         }
 
                                         Rectangle {
-                                            width: 46; height: 20; radius: 5
-                                            color: Theme.accent
+                                            width: 48; height: 20; radius: 5
+                                            color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
+                                            border.width: 1
+                                            border.color: Theme.accentLit
                                             Text {
                                                 anchors.centerIn: parent
                                                 text: "Pair"
                                                 font.family: "JetBrainsMono Nerd Font"
-                                                font.pixelSize: Theme.fontPx(6.8)
+                                                font.pixelSize: Theme.fontPx(7)
                                                 font.weight: Font.Bold
-                                                color: Theme.isDark ? "#101116" : "#ffffff"
+                                                color: Theme.accentLit
                                             }
                                             MouseArea {
                                                 anchors.fill: parent
@@ -1989,7 +1983,7 @@ Item {
                                     width: Math.max(0, Math.min(parent.width, parent.width * root.musicProgress))
                                     height: 4
                                     radius: 2
-                                    color: Theme.accent
+                                    color: Theme.accentLit
                                 }
 
                                 MouseArea {
@@ -2056,17 +2050,20 @@ Item {
                             // Play / Pause
                             Rectangle {
                                 width: 34; height: 34; radius: 17
-                                color: Theme.accent
+                                color: ppMH.containsMouse ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.28) : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
+                                border.width: 1
+                                border.color: Theme.accentLit
                                 Text {
                                     anchors.centerIn: parent
                                     text: root.isMusicPlaying ? "pause" : "play_arrow"
                                     font.family: Theme.fontIcon
-                                    font.pixelSize: 20
-                                    color: Theme.isDark ? "#101116" : "#ffffff"
+                                    font.pixelSize: 18
+                                    color: Theme.accentLit
                                 }
                                 MouseArea {
                                     id: ppMH
                                     anchors.fill: parent
+                                    hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: LyricsService.togglePlay()
                                 }
@@ -2115,14 +2112,14 @@ Item {
             }
 
             /* ========================================================= */
-            /* 3. RIGHT COLUMN: TABS (AUDIO, CALENDAR, SYSTEM) (~316px)  */
+            /* 3. RIGHT COLUMN: TABS (AUDIO & CALENDAR) (~348px)         */
             /* ========================================================= */
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: 6
 
-                // 3A. Header Tab Bar (Audio, Calendar, System)
+                // 3A. Header Tab Bar (Audio & Calendar)
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 26
@@ -2131,35 +2128,38 @@ Item {
                     // Audio Tab Pill
                     Rectangle {
                         Layout.preferredHeight: 24
-                        Layout.preferredWidth: audioTabRow.implicitWidth + 16
+                        Layout.preferredWidth: audioTabRow.implicitWidth + 18
                         radius: 12
-                        color: root.centerTab === 0 ? Theme.accent : (audioTabHov.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.06))
+                        color: root.centerTab === 0 ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.20)
+                                                    : (audioTabHov.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.05))
                         border.width: 1
-                        border.color: root.centerTab === 0 ? Theme.accentLit : Theme.outline
+                        border.color: root.centerTab === 0 ? Theme.accentLit : Qt.rgba(1, 1, 1, 0.08)
 
                         RowLayout {
                             id: audioTabRow
                             anchors.centerIn: parent
-                            spacing: 4
+                            spacing: 5
                             Text {
                                 text: "tune"
                                 font.family: Theme.fontIcon
                                 font.pixelSize: 13
-                                color: root.centerTab === 0 ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                                color: root.centerTab === 0 ? Theme.accentLit : Theme.fgDim
                             }
                             Text {
                                 text: "Audio"
                                 font.family: "JetBrainsMono Nerd Font"
                                 font.pixelSize: Theme.fontPx(8.5)
                                 font.weight: Font.Bold
-                                color: root.centerTab === 0 ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                                color: root.centerTab === 0 ? Theme.accentLit : Theme.fg
                             }
                             Rectangle {
                                 visible: root.activeAppStreams.length > 0
                                 Layout.preferredHeight: 14
                                 Layout.preferredWidth: strmCntTxt.implicitWidth + 6
                                 radius: 7
-                                color: root.centerTab === 0 ? (Theme.isDark ? Qt.rgba(0,0,0,0.3) : Qt.rgba(1,1,1,0.4)) : Theme.accent
+                                color: root.centerTab === 0 ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.20)
+                                border.width: 1
+                                border.color: root.centerTab === 0 ? Theme.accentLit : "transparent"
                                 Text {
                                     id: strmCntTxt
                                     anchors.centerIn: parent
@@ -2167,7 +2167,7 @@ Item {
                                     font.family: "JetBrainsMono Nerd Font"
                                     font.pixelSize: Theme.fontPx(7)
                                     font.weight: Font.Bold
-                                    color: root.centerTab === 0 ? (Theme.isDark ? "#ffffff" : "#101116") : (Theme.isDark ? "#101116" : "#ffffff")
+                                    color: Theme.accentLit
                                 }
                             }
                         }
@@ -2186,28 +2186,29 @@ Item {
                     // Calendar Tab Pill
                     Rectangle {
                         Layout.preferredHeight: 24
-                        Layout.preferredWidth: calTabRow.implicitWidth + 16
+                        Layout.preferredWidth: calTabRow.implicitWidth + 18
                         radius: 12
-                        color: root.centerTab === 1 ? Theme.accent : (calTabHov.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.06))
+                        color: root.centerTab === 1 ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.20)
+                                                    : (calTabHov.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.05))
                         border.width: 1
-                        border.color: root.centerTab === 1 ? Theme.accentLit : Theme.outline
+                        border.color: root.centerTab === 1 ? Theme.accentLit : Qt.rgba(1, 1, 1, 0.08)
 
                         RowLayout {
                             id: calTabRow
                             anchors.centerIn: parent
-                            spacing: 4
+                            spacing: 5
                             Text {
                                 text: "calendar_month"
                                 font.family: Theme.fontIcon
                                 font.pixelSize: 13
-                                color: root.centerTab === 1 ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                                color: root.centerTab === 1 ? Theme.accentLit : Theme.fgDim
                             }
                             Text {
                                 text: "Calendar"
                                 font.family: "JetBrainsMono Nerd Font"
                                 font.pixelSize: Theme.fontPx(8.5)
                                 font.weight: Font.Bold
-                                color: root.centerTab === 1 ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                                color: root.centerTab === 1 ? Theme.accentLit : Theme.fg
                             }
                         }
                         MouseArea {
@@ -2216,42 +2217,6 @@ Item {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: root.centerTab = 1
-                        }
-                    }
-
-                    // System Tab Pill
-                    Rectangle {
-                        Layout.preferredHeight: 24
-                        Layout.preferredWidth: sysTabRow.implicitWidth + 16
-                        radius: 12
-                        color: root.centerTab === 2 ? Theme.accent : (sysTabHov.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.06))
-                        border.width: 1
-                        border.color: root.centerTab === 2 ? Theme.accentLit : Theme.outline
-
-                        RowLayout {
-                            id: sysTabRow
-                            anchors.centerIn: parent
-                            spacing: 4
-                            Text {
-                                text: "memory"
-                                font.family: Theme.fontIcon
-                                font.pixelSize: 13
-                                color: root.centerTab === 2 ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
-                            }
-                            Text {
-                                text: "System"
-                                font.family: "JetBrainsMono Nerd Font"
-                                font.pixelSize: Theme.fontPx(8.5)
-                                font.weight: Font.Bold
-                                color: root.centerTab === 2 ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
-                            }
-                        }
-                        MouseArea {
-                            id: sysTabHov
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.centerTab = 2
                         }
                     }
 
@@ -2317,7 +2282,7 @@ Item {
                                                 text: root.isMuted ? "volume_off" : (root.volRatio > 0.5 ? "volume_up" : (root.volRatio > 0.0 ? "volume_down" : "volume_mute"))
                                                 font.family: Theme.fontIcon
                                                 font.pixelSize: 14
-                                                color: root.isMuted ? Theme.err : Theme.accent
+                                                color: root.isMuted ? Theme.err : Theme.accentLit
                                             }
                                             Text {
                                                 text: "Output Devices"
@@ -2352,7 +2317,7 @@ Item {
                                                     text: root.isMuted ? "volume_off" : "volume_up"
                                                     font.family: Theme.fontIcon
                                                     font.pixelSize: 13
-                                                    color: root.isMuted ? Theme.err : Theme.accent
+                                                    color: root.isMuted ? Theme.err : Theme.accentLit
                                                 }
                                                 MouseArea {
                                                     id: outMuteHov
@@ -2372,18 +2337,40 @@ Item {
                                                 Layout.fillWidth: true
                                                 Layout.preferredHeight: 16
 
+                                                // Track background
                                                 Rectangle {
-                                                    anchors.fill: parent
-                                                    radius: 8
+                                                    anchors.left: parent.left
+                                                    anchors.right: parent.right
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    height: 6
+                                                    radius: 3
                                                     color: Qt.rgba(1, 1, 1, 0.10)
                                                 }
+                                                // Progress fill
                                                 Rectangle {
-                                                    height: parent.height
+                                                    anchors.left: parent.left
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    height: 6
                                                     width: Math.max(0, Math.min(parent.width, parent.width * (root.isMuted ? 0 : root.volRatio)))
-                                                    radius: 8
-                                                    color: root.isMuted ? Theme.fgFaint : Theme.accent
+                                                    radius: 3
+                                                    color: root.isMuted ? Theme.fgFaint : Theme.accentLit
+                                                    Behavior on width {
+                                                        enabled: !outVolArea.pressed
+                                                        NumberAnimation { duration: 100 }
+                                                    }
                                                 }
+                                                // Circular Thumb
+                                                Rectangle {
+                                                    width: 12; height: 12; radius: 6
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    x: Math.max(0, Math.min(parent.width - width, (parent.width * (root.isMuted ? 0 : root.volRatio)) - (width / 2)))
+                                                    color: root.isMuted ? Theme.fgFaint : Theme.accentLit
+                                                    border.width: 1.5
+                                                    border.color: Theme.bg
+                                                }
+
                                                 MouseArea {
+                                                    id: outVolArea
                                                     anchors.fill: parent
                                                     hoverEnabled: true
                                                     cursorShape: Qt.PointingHandCursor
@@ -2424,9 +2411,10 @@ Item {
                                                     Layout.fillWidth: true
                                                     Layout.preferredHeight: 24
                                                     radius: 6
-                                                    color: isDefault ? Theme.accent : (snkMH.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.05))
+                                                    color: isDefault ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
+                                                                     : (snkMH.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.04))
                                                     border.width: 1
-                                                    border.color: isDefault ? Theme.accentLit : Theme.outline
+                                                    border.color: isDefault ? Theme.accentLit : Qt.rgba(1, 1, 1, 0.08)
 
                                                     RowLayout {
                                                         anchors.fill: parent
@@ -2443,7 +2431,7 @@ Item {
                                                             }
                                                             font.family: Theme.fontIcon
                                                             font.pixelSize: 12
-                                                            color: isDefault ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                                                            color: isDefault ? Theme.accentLit : Theme.fgDim
                                                         }
 
                                                         Text {
@@ -2452,7 +2440,7 @@ Item {
                                                             font.family: "JetBrainsMono Nerd Font"
                                                             font.pixelSize: Theme.fontPx(7.5)
                                                             font.weight: isDefault ? Font.Bold : Font.Normal
-                                                            color: isDefault ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                                                            color: isDefault ? Theme.accentLit : Theme.fg
                                                             elide: Text.ElideRight
                                                         }
 
@@ -2461,7 +2449,7 @@ Item {
                                                             text: "check"
                                                             font.family: Theme.fontIcon
                                                             font.pixelSize: 12
-                                                            color: Theme.isDark ? "#101116" : "#ffffff"
+                                                            color: Theme.accentLit
                                                         }
                                                     }
 
@@ -2490,9 +2478,10 @@ Item {
                                                     Layout.fillWidth: true
                                                     Layout.preferredHeight: 22
                                                     radius: 6
-                                                    color: isSelected ? Theme.accent : (pMH.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.05))
+                                                    color: isSelected ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
+                                                                      : (pMH.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.04))
                                                     border.width: 1
-                                                    border.color: isSelected ? Theme.accentLit : Theme.outline
+                                                    border.color: isSelected ? Theme.accentLit : Qt.rgba(1, 1, 1, 0.08)
 
                                                     RowLayout {
                                                         anchors.centerIn: parent
@@ -2501,14 +2490,14 @@ Item {
                                                             text: modelData.name.includes("headphone") ? "headphones" : "speaker"
                                                             font.family: Theme.fontIcon
                                                             font.pixelSize: 11
-                                                            color: isSelected ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                                                            color: isSelected ? Theme.accentLit : Theme.fgDim
                                                         }
                                                         Text {
                                                             text: modelData.desc || modelData.name
                                                             font.family: "JetBrainsMono Nerd Font"
                                                             font.pixelSize: Theme.fontPx(7.2)
                                                             font.weight: isSelected ? Font.Bold : Font.Normal
-                                                            color: isSelected ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                                                            color: isSelected ? Theme.accentLit : Theme.fg
                                                         }
                                                     }
                                                     MouseArea {
@@ -2547,7 +2536,7 @@ Item {
                                                 text: root.isMicMuted ? "mic_off" : "mic"
                                                 font.family: Theme.fontIcon
                                                 font.pixelSize: 14
-                                                color: root.isMicMuted ? Theme.err : Theme.accent
+                                                color: root.isMicMuted ? Theme.err : Theme.accentLit
                                             }
                                             Text {
                                                 text: "Input Devices (Microphone)"
@@ -2582,7 +2571,7 @@ Item {
                                                     text: root.isMicMuted ? "mic_off" : "mic"
                                                     font.family: Theme.fontIcon
                                                     font.pixelSize: 13
-                                                    color: root.isMicMuted ? Theme.err : Theme.accent
+                                                    color: root.isMicMuted ? Theme.err : Theme.accentLit
                                                 }
                                                 MouseArea {
                                                     id: micMuteMH
@@ -2598,18 +2587,40 @@ Item {
                                                 Layout.fillWidth: true
                                                 Layout.preferredHeight: 16
 
+                                                // Track background
                                                 Rectangle {
-                                                    anchors.fill: parent
-                                                    radius: 8
+                                                    anchors.left: parent.left
+                                                    anchors.right: parent.right
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    height: 6
+                                                    radius: 3
                                                     color: Qt.rgba(1, 1, 1, 0.10)
                                                 }
+                                                // Progress fill
                                                 Rectangle {
-                                                    height: parent.height
+                                                    anchors.left: parent.left
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    height: 6
                                                     width: Math.max(0, Math.min(parent.width, parent.width * (root.isMicMuted ? 0 : root.micVolRatio)))
-                                                    radius: 8
-                                                    color: root.isMicMuted ? Theme.fgFaint : Theme.accent
+                                                    radius: 3
+                                                    color: root.isMicMuted ? Theme.fgFaint : Theme.accentLit
+                                                    Behavior on width {
+                                                        enabled: !micArea.pressed
+                                                        NumberAnimation { duration: 100 }
+                                                    }
                                                 }
+                                                // Circular Thumb
+                                                Rectangle {
+                                                    width: 12; height: 12; radius: 6
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    x: Math.max(0, Math.min(parent.width - width, (parent.width * (root.isMicMuted ? 0 : root.micVolRatio)) - (width / 2)))
+                                                    color: root.isMicMuted ? Theme.fgFaint : Theme.accentLit
+                                                    border.width: 1.5
+                                                    border.color: Theme.bg
+                                                }
+
                                                 MouseArea {
+                                                    id: micArea
                                                     anchors.fill: parent
                                                     hoverEnabled: true
                                                     cursorShape: Qt.PointingHandCursor
@@ -2644,9 +2655,10 @@ Item {
                                                     Layout.fillWidth: true
                                                     Layout.preferredHeight: 24
                                                     radius: 6
-                                                    color: isDefault ? Theme.accent : (srcMH.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.05))
+                                                    color: isDefault ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
+                                                                     : (srcMH.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.04))
                                                     border.width: 1
-                                                    border.color: isDefault ? Theme.accentLit : Theme.outline
+                                                    border.color: isDefault ? Theme.accentLit : Qt.rgba(1, 1, 1, 0.08)
 
                                                     RowLayout {
                                                         anchors.fill: parent
@@ -2658,7 +2670,7 @@ Item {
                                                             text: "mic"
                                                             font.family: Theme.fontIcon
                                                             font.pixelSize: 12
-                                                            color: isDefault ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                                                            color: isDefault ? Theme.accentLit : Theme.fgDim
                                                         }
 
                                                         Text {
@@ -2667,7 +2679,7 @@ Item {
                                                             font.family: "JetBrainsMono Nerd Font"
                                                             font.pixelSize: Theme.fontPx(7.5)
                                                             font.weight: isDefault ? Font.Bold : Font.Normal
-                                                            color: isDefault ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fg
+                                                            color: isDefault ? Theme.accentLit : Theme.fg
                                                             elide: Text.ElideRight
                                                         }
 
@@ -2676,7 +2688,7 @@ Item {
                                                             text: "check"
                                                             font.family: Theme.fontIcon
                                                             font.pixelSize: 12
-                                                            color: Theme.isDark ? "#101116" : "#ffffff"
+                                                            color: Theme.accentLit
                                                         }
                                                     }
 
@@ -2741,17 +2753,34 @@ Item {
                                                     Layout.fillWidth: true
                                                     Layout.preferredHeight: 14
 
+                                                    // Track background
                                                     Rectangle {
-                                                        anchors.fill: parent
-                                                        radius: 7
+                                                        anchors.left: parent.left
+                                                        anchors.right: parent.right
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        height: 5
+                                                        radius: 2.5
                                                         color: Qt.rgba(1, 1, 1, 0.10)
                                                     }
+                                                    // Progress fill
                                                     Rectangle {
-                                                        height: parent.height
+                                                        anchors.left: parent.left
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        height: 5
                                                         width: Math.max(0, Math.min(parent.width, parent.width * (streamMuted ? 0 : streamVol)))
-                                                        radius: 7
-                                                        color: streamMuted ? Theme.fgFaint : Theme.accent
+                                                        radius: 2.5
+                                                        color: streamMuted ? Theme.fgFaint : Theme.accentLit
                                                     }
+                                                    // Mini Thumb
+                                                    Rectangle {
+                                                        width: 10; height: 10; radius: 5
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        x: Math.max(0, Math.min(parent.width - width, (parent.width * (streamMuted ? 0 : streamVol)) - (width / 2)))
+                                                        color: streamMuted ? Theme.fgFaint : Theme.accentLit
+                                                        border.width: 1
+                                                        border.color: Theme.bg
+                                                    }
+
                                                     MouseArea {
                                                         anchors.fill: parent
                                                         cursorShape: Qt.PointingHandCursor
@@ -2785,9 +2814,9 @@ Item {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 32
                                     radius: 10
-                                    color: root.showVirtualDevices ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.12) : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65)
+                                    color: root.showVirtualDevices ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.14) : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65)
                                     border.width: 1
-                                    border.color: root.showVirtualDevices ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.40) : Theme.outline
+                                    border.color: root.showVirtualDevices ? Theme.accentLit : Theme.outline
 
                                     RowLayout {
                                         anchors.fill: parent
@@ -2798,7 +2827,7 @@ Item {
                                             text: "graphic_eq"
                                             font.family: Theme.fontIcon
                                             font.pixelSize: 14
-                                            color: root.showVirtualDevices ? Theme.accent : Theme.fgDim
+                                            color: root.showVirtualDevices ? Theme.accentLit : Theme.fgDim
                                         }
 
                                         ColumnLayout {
@@ -2809,7 +2838,7 @@ Item {
                                                 font.family: "JetBrainsMono Nerd Font"
                                                 font.pixelSize: Theme.fontPx(8)
                                                 font.weight: Font.Bold
-                                                color: root.showVirtualDevices ? Theme.fg : Theme.fgDim
+                                                color: root.showVirtualDevices ? Theme.accentLit : Theme.fgDim
                                             }
                                             Text {
                                                 text: "EasyEffects & software sinks (persisted)"
@@ -2823,13 +2852,15 @@ Item {
                                             Layout.preferredWidth: 32
                                             Layout.preferredHeight: 18
                                             radius: 9
-                                            color: root.showVirtualDevices ? Theme.accent : Qt.rgba(1, 1, 1, 0.15)
+                                            color: root.showVirtualDevices ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : Qt.rgba(1, 1, 1, 0.15)
+                                            border.width: 1
+                                            border.color: root.showVirtualDevices ? Theme.accentLit : Qt.rgba(1, 1, 1, 0.10)
 
                                             Rectangle {
-                                                width: 14; height: 14; radius: 7
+                                                width: 12; height: 12; radius: 6
                                                 anchors.verticalCenter: parent.verticalCenter
-                                                x: root.showVirtualDevices ? parent.width - width - 2 : 2
-                                                color: root.showVirtualDevices ? (Theme.isDark ? "#101116" : "#ffffff") : (Theme.isDark ? "#bbbbbb" : "#888888")
+                                                x: root.showVirtualDevices ? parent.width - width - 3 : 3
+                                                color: root.showVirtualDevices ? Theme.accentLit : (Theme.isDark ? "#888888" : "#aaaaaa")
                                                 Behavior on x { NumberAnimation { duration: 150 } }
                                             }
                                         }
@@ -2952,9 +2983,9 @@ Item {
                                             anchors.centerIn: parent
                                             width: 18; height: 18
                                             radius: 9
-                                            color: isToday ? Theme.accent : (isSelected ? Theme.bgHover : "transparent")
-                                            border.width: isSelected && !isToday ? 1 : 0
-                                            border.color: Theme.accentLit
+                                            color: isToday ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.28) : (isSelected ? Theme.bgHover : "transparent")
+                                            border.width: (isToday || isSelected) ? 1 : 0
+                                            border.color: isToday ? Theme.accentLit : (isSelected ? Theme.outline : "transparent")
 
                                             Text {
                                                 anchors.centerIn: parent
@@ -2962,7 +2993,7 @@ Item {
                                                 font.family: "JetBrainsMono Nerd Font"
                                                 font.pixelSize: Theme.fontPx(7)
                                                 font.weight: isToday ? Font.Bold : Font.Normal
-                                                color: isToday ? (Theme.isDark ? "#101116" : "#ffffff") : (isCurrentMonth ? Theme.fg : "transparent")
+                                                color: isToday ? Theme.accentLit : (isCurrentMonth ? Theme.fg : "transparent")
                                             }
                                         }
 
@@ -2971,113 +3002,6 @@ Item {
                                             enabled: isCurrentMonth
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: root.selectedDay = dayNum
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // ── TAB 2 VIEW: SYSTEM TELEMETRY ──
-                    Item {
-                        anchors.fill: parent
-                        visible: root.centerTab === 2
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 8
-
-                            // CPU Gauge Card
-                            Rectangle {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 46
-                                radius: 10
-                                color: Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65)
-                                border.width: 1
-                                border.color: Theme.outline
-
-                                ColumnLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: 6
-                                    spacing: 4
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Text {
-                                            text: "CPU Activity"
-                                            font.family: "JetBrainsMono Nerd Font"
-                                            font.pixelSize: Theme.fontPx(8)
-                                            font.weight: Font.Bold
-                                            color: Theme.fg
-                                        }
-                                        Item { Layout.fillWidth: true }
-                                        Text {
-                                            text: root.cpuUsage + "%"
-                                            font.family: "JetBrainsMono Nerd Font"
-                                            font.pixelSize: Theme.fontPx(8)
-                                            font.weight: Font.Bold
-                                            color: root.cpuUsage > 80 ? Theme.err : (root.cpuUsage > 50 ? Theme.warn : Theme.accentLit)
-                                        }
-                                    }
-
-                                    Rectangle {
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: 8
-                                        radius: 4
-                                        color: Qt.rgba(1, 1, 1, 0.10)
-                                        Rectangle {
-                                            height: parent.height
-                                            width: parent.width * (root.cpuUsage / 100.0)
-                                            radius: 4
-                                            color: root.cpuUsage > 80 ? Theme.err : (root.cpuUsage > 50 ? Theme.warn : Theme.accent)
-                                        }
-                                    }
-                                }
-                            }
-
-                            // RAM Gauge Card
-                            Rectangle {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 46
-                                radius: 10
-                                color: Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.65)
-                                border.width: 1
-                                border.color: Theme.outline
-
-                                ColumnLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: 6
-                                    spacing: 4
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Text {
-                                            text: "Memory (RAM)"
-                                            font.family: "JetBrainsMono Nerd Font"
-                                            font.pixelSize: Theme.fontPx(8)
-                                            font.weight: Font.Bold
-                                            color: Theme.fg
-                                        }
-                                        Item { Layout.fillWidth: true }
-                                        Text {
-                                            text: root.ramUsageGB + " GB (" + root.ramPct + "%)"
-                                            font.family: "JetBrainsMono Nerd Font"
-                                            font.pixelSize: Theme.fontPx(8)
-                                            font.weight: Font.Bold
-                                            color: root.ramPct > 85 ? Theme.err : Theme.accentLit
-                                        }
-                                    }
-
-                                    Rectangle {
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: 8
-                                        radius: 4
-                                        color: Qt.rgba(1, 1, 1, 0.10)
-                                        Rectangle {
-                                            height: parent.height
-                                            width: parent.width * (root.ramPct / 100.0)
-                                            radius: 4
-                                            color: root.ramPct > 85 ? Theme.err : Theme.accent
                                         }
                                     }
                                 }
