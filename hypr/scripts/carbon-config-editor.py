@@ -1228,8 +1228,13 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             self.stack.add_named(page_widget, cat_id)
         self.current_cat_id = None
 
-        # Default to Look & Feel or Motion page
-        initial_cat = "looknfeel"
+        # Default to Bar & Island page (or requested page argument)
+        initial_cat = "bar"
+        for arg in sys.argv[1:]:
+            a = arg.lstrip("-").lower()
+            if a in self.nav_rows:
+                initial_cat = a
+                break
         if initial_cat in self.nav_rows:
             self.nav_list.select_row(self.nav_rows[initial_cat])
             self.stack.set_visible_child_name(initial_cat)
@@ -1689,6 +1694,14 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             self.bar_pos["mainBarEdge"] = "bottom" if idx == 1 else "top"
             self.mark_dirty()
         self.add_combo_row(card, "Screen Position", "Anchor bar to top or bottom edge", edges, edge_idx, on_edge_selected)
+
+        bat_layouts = ["Horizontal", "Vertical"]
+        cur_bat_layout = str(self.bar_mode.get("batteryLayout", "horizontal")).capitalize()
+        bat_idx = 1 if cur_bat_layout == "Vertical" else 0
+        def on_bat_layout_selected(idx):
+            self.bar_mode["batteryLayout"] = "vertical" if idx == 1 else "horizontal"
+            self.mark_dirty()
+        self.add_combo_row(card, "Battery Layout", "Control Center fluid battery layout orientation", bat_layouts, bat_idx, on_bat_layout_selected)
 
         cur_h = int(self.bar_pos.get("notchHeight", 32))
         def on_h_changed(v):

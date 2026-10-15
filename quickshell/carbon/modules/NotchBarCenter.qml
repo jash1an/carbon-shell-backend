@@ -20,7 +20,7 @@ NotchContainer {
     clip: true
     bottomRadius: isExpanded ? 20 : 14
     implicitHeight: isExpanded ? 270 : 32
-    implicitWidth: isExpanded ? 860 : (contentImplicitWidth + (leftFillet ? filletRadius : 0) + (rightFillet ? filletRadius : 0) + (horizontalPadding * 2))
+    implicitWidth: isExpanded ? 820 : (contentImplicitWidth + (leftFillet ? filletRadius : 0) + (rightFillet ? filletRadius : 0) + (horizontalPadding * 2))
 
     earWidth: 20
     contentSpacing: 8
@@ -336,7 +336,7 @@ NotchContainer {
         anchors.top: parent.top
         anchors.topMargin: 4
         anchors.horizontalCenter: parent.horizontalCenter
-        width: 860
+        width: 820
         height: 260
         showBackground: false
         open: root.isExpanded

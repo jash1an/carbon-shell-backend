@@ -207,7 +207,7 @@ ShellRoot {
         root.centerDashboardOpen = false
     }
     function toggleCenterDashboard() {
-        if (root.centerDashboardOpen && root.centerDashboardPinned) {
+        if (root.centerDashboardOpen) {
             root.centerDashboardPinned = false
             root.centerDashboardOpen = false
         } else {
@@ -742,6 +742,7 @@ ShellRoot {
     property int islandPage: 0
     property bool islandPersistent: true
     property bool islandHovered: false
+    property string batteryLayout: "horizontal"
     readonly property bool islandRevealed: islandPersistent || islandHovered || mixerOpen || trayOpen || brightnessOpen || batteryOpen || wifiOpen || btOpen || calendarOpen || centerDashboardOpen || smallMusicOpen
 
     property bool _switchingBarMode: false
@@ -795,6 +796,9 @@ ShellRoot {
                 }
                 if (d.islandPersistent !== undefined) {
                     root.islandPersistent = Boolean(d.islandPersistent)
+                }
+                if (d.batteryLayout) {
+                    root.batteryLayout = String(d.batteryLayout).toLowerCase()
                 }
                 if (root.barMode === "pill" || root.barMode === "minimal") {
                     if (root.mainBarEdge !== "top" && root.mainBarEdge !== "bottom") {
@@ -881,11 +885,11 @@ ShellRoot {
     property string rightEdge: "top"
 
     /* Panel corner placement for Quick Settings (Control Center):
-     * - Bottom edge -> "top_left"
-     * - Top edge (default) -> "bottom_right"
+     * - Top-right (default floating desktop location)
+     * - Bottom edge -> "bottom_right" or "bottom_left"
      */
     readonly property string controlsCorner: {
-        return (root.mainBarEdge === "bottom" || root.barEdge === "bottom") ? "top_left" : "bottom_right"
+        return (root.mainBarEdge === "bottom" || root.barEdge === "bottom") ? "bottom_right" : "top_right"
     }
 
     property int notchEarRadius: 10
@@ -1213,6 +1217,14 @@ ShellRoot {
                         root.toggleSmallMusic()
                     else if (cmd === "controls")
                         root.toggleControls()
+                    else if (cmd === "controls wifi") {
+                        root.openControls()
+                        if (controlsItem) controlsItem.openWifiDetails()
+                    }
+                    else if (cmd === "controls bt" || cmd === "controls bluetooth") {
+                        root.openControls()
+                        if (controlsItem) controlsItem.openBtDetails()
+                    }
                     else if (cmd === "controls volume up") {
                         if (root.barMode === "nucleus" && root.nucleusHubItem) root.nucleusHubItem.volumeAction("up")
                     }
@@ -1795,9 +1807,11 @@ ShellRoot {
                         anchors.leftMargin: 8
                         anchors.rightMargin: 8
 
-                        /* Left: Workspaces & App Launcher */
+                        /* Left: Workspaces & App Launcher (Removed per prompt) */
                         BarLeft {
                             id: pillLeftItem
+                            visible: false
+                            width: 0
                             anchors.left: parent.left
                             anchors.verticalCenter: parent.verticalCenter
                             showBackground: false
@@ -1892,9 +1906,11 @@ ShellRoot {
                     anchors.topMargin: 8
                     anchors.bottomMargin: 8
 
-                    /* Top: Workspaces & App Launcher */
+                    /* Top: Workspaces & App Launcher (Removed per prompt) */
                     BarLeft {
                         id: pillVertLeftItem
+                        visible: false
+                        height: 0
                         anchors.top: parent.top
                         anchors.horizontalCenter: parent.horizontalCenter
                         showBackground: false
@@ -2259,6 +2275,38 @@ ShellRoot {
         }
     }
 
+    /* ── Notch Mode: Center Dashboard Scrim for Outside Click ─────────── */
+    Variants {
+        model: Quickshell.screens
+
+        PanelWindow {
+            id: centerDashboardScrimWindow
+            required property var modelData
+
+            screen: modelData
+            color: "transparent"
+            WlrLayershell.namespace: "carbon-center-dashboard-scrim"
+            WlrLayershell.layer: WlrLayer.Top
+            exclusionMode: ExclusionMode.Ignore
+            aboveWindows: true
+            anchors {
+                top: true
+                bottom: true
+                left: true
+                right: true
+            }
+            visible: root.barMode === "notch" && root.centerDashboardOpen
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    console.log("[scrim] Outside click detected - closing center dashboard")
+                    root.closeCenterDashboard()
+                }
+            }
+        }
+    }
+
     /* ── Notch Mode: Curved 3-notch bar ──────────────────────────────── */
     Variants {
         model: Quickshell.screens
@@ -2270,7 +2318,7 @@ ShellRoot {
             screen: modelData
             color: "transparent"
             WlrLayershell.namespace: "carbon-bar-notch"
-            WlrLayershell.layer: WlrLayer.Top
+            WlrLayershell.layer: root.centerDashboardOpen ? WlrLayer.Overlay : WlrLayer.Top
             exclusionMode: root.barMode === "notch" ? ExclusionMode.Normal : ExclusionMode.Ignore
             exclusiveZone: root.barMode === "notch" ? Math.max(0, root.notchHeight + root.notchAppGap) : 0
             aboveWindows: true
@@ -2314,8 +2362,8 @@ ShellRoot {
                 Region {
                     x: notchLeftItem.x
                     y: root.mainBarEdge === "bottom" ? (notchBarWindow.height - notchLeftItem.height) : 0
-                    width: notchLeftItem.width
-                    height: notchLeftItem.height
+                    width: notchLeftItem.visible ? notchLeftItem.width : 0
+                    height: notchLeftItem.visible ? notchLeftItem.height : 0
                 }
                 Region {
                     x: notchCenterItem.x
@@ -2333,6 +2381,8 @@ ShellRoot {
 
             NotchBarLeft {
                 id: notchLeftItem
+                visible: false
+                width: 0
                 notchOpacity: root.notchOpacity
                 filletRadius: root.notchEarRadius
                 bottomRadius: root.sideNotchBottomRadius
@@ -2350,6 +2400,7 @@ ShellRoot {
 
             NotchBarCenter {
                 id: notchCenterItem
+                z: root.centerDashboardOpen ? 100 : 1
                 notchOpacity: root.notchOpacity
                 filletRadius: root.notchEarRadius
                 bottomRadius: root.notchBottomRadius
@@ -2372,6 +2423,7 @@ ShellRoot {
 
             NotchBarRight {
                 id: notchRightItem
+                z: 1
                 notchOpacity: root.notchOpacity
                 filletRadius: root.notchEarRadius
                 bottomRadius: root.sideNotchBottomRadius
@@ -2400,6 +2452,7 @@ ShellRoot {
                 onOpenNotif: root.openNotif()
                 onCloseNotif: root.closeNotif()
                 onToggleNotif: root.toggleNotif()
+                onToggleControls: root.toggleControls()
                 onOpenPower: root.openPower()
             }
         }
@@ -3483,31 +3536,17 @@ ShellRoot {
         exclusionMode: ExclusionMode.Ignore
         aboveWindows: true
 
-        Keys.onEscapePressed: (event) => {
-            root.closeCenterDashboard();
-            event.accepted = true;
-        }
-
         anchors {
-            top: root.mainBarEdge !== "bottom"
-            bottom: root.mainBarEdge === "bottom"
-        }
-        margins {
-            top: root.popupTopMargin
-            bottom: root.popupBottomMargin
-        }
-
-        implicitWidth: centerDashboardItem.implicitWidth
-        implicitHeight: centerDashboardItem.implicitHeight
-
-        mask: Region {
-            item: (root.centerDashboardOpen || centerDashboardItem.animatingOut) ? centerDashboardItem.cardItem : null
+            top: true
+            bottom: true
+            left: true
+            right: true
         }
 
         visible: (root.centerDashboardOpen || centerDashboardItem.animatingOut) && root.barMode !== "notch" && root.barMode !== "minimal"
 
         function updateHover() {
-            var isHov = windowHoverArea.containsMouse || centerDashboardItem.hovered
+            var isHov = centerDashboardItem.hovered
             root.centerDashboardHovered = isHov
             if (isHov) {
                 root.centerDashboardAwaitingHover = false
@@ -3518,24 +3557,38 @@ ShellRoot {
             }
         }
 
-        MouseArea {
-            id: windowHoverArea
+        Item {
             anchors.fill: parent
-            hoverEnabled: true
-            acceptedButtons: Qt.NoButton
-            z: 99
-            onContainsMouseChanged: centerDashboardWindow.updateHover()
-        }
+            focus: root.centerDashboardOpen
+            Keys.enabled: root.centerDashboardOpen
+            Keys.onEscapePressed: (event) => {
+                root.closeCenterDashboard();
+                event.accepted = true;
+            }
 
-        CenterDashboard {
-            id: centerDashboardItem
-            anchors.centerIn: parent
-            open: root.centerDashboardOpen
-            minimalCalendarOnly: root.barMode === "minimal"
-            attachedBottom: root.mainBarEdge === "bottom"
-            onCloseRequested: root.closeCenterDashboard()
-            onHoveredChanged: centerDashboardWindow.updateHover()
-            Keys.onEscapePressed: root.closeCenterDashboard()
+            /* Outside click dismisser */
+            MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    console.log("[centerDashboardWindow] Outside click - closing center dashboard")
+                    root.closeCenterDashboard()
+                }
+            }
+
+            CenterDashboard {
+                id: centerDashboardItem
+                anchors.top: root.mainBarEdge !== "bottom" ? parent.top : undefined
+                anchors.bottom: root.mainBarEdge === "bottom" ? parent.bottom : undefined
+                anchors.topMargin: root.mainBarEdge !== "bottom" ? root.popupTopMargin : 0
+                anchors.bottomMargin: root.mainBarEdge === "bottom" ? root.popupBottomMargin : 0
+                anchors.horizontalCenter: parent.horizontalCenter
+                open: root.centerDashboardOpen
+                minimalCalendarOnly: root.barMode === "minimal"
+                attachedBottom: root.mainBarEdge === "bottom"
+                onCloseRequested: root.closeCenterDashboard()
+                onHoveredChanged: centerDashboardWindow.updateHover()
+                Keys.onEscapePressed: root.closeCenterDashboard()
+            }
         }
     }
 
@@ -3770,53 +3823,68 @@ ShellRoot {
         color: "transparent"
         WlrLayershell.namespace: "carbon-controls"
         WlrLayershell.layer: WlrLayer.Overlay
-        WlrLayershell.keyboardFocus: root.controlsVisible ? (root.barMode === "minimal" ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand) : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: root.controlsVisible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         exclusionMode: ExclusionMode.Ignore
+        aboveWindows: true
 
         anchors {
-            top: root.controlsCorner === "top_left"
-            bottom: root.controlsCorner !== "top_left"
-            left: root.controlsCorner === "top_left" || root.controlsCorner === "bottom_left"
-            right: root.controlsCorner === "bottom_right"
-        }
-        margins {
-            top: 0
-            bottom: 0
-            left: 0
-            right: 0
-        }
-
-        implicitWidth: controlsItem.implicitWidth
-        implicitHeight: controlsItem.implicitHeight
-
-        mask: Region {
-            item: (root.controlsVisible || controlsItem.animatingOut) ? controlsItem : null
-            x: 0; y: 0
-            width: (root.controlsVisible || controlsItem.animatingOut) ? controlsItem.implicitWidth : 0
-            height: (root.controlsVisible || controlsItem.animatingOut) ? controlsItem.implicitHeight : 0
+            top: true
+            bottom: true
+            left: true
+            right: true
         }
 
         visible: (root.controlsVisible || controlsItem.animatingOut)
 
-        QuickSettings {
-            id: controlsItem
+        Item {
+            anchors.fill: parent
             focus: root.controlsVisible
+            Keys.enabled: root.controlsVisible
             Keys.onEscapePressed: event => {
-                root.closeControls()
-                event.accepted = true
-            }
-            corner: root.controlsCorner
-            width: controlsItem.implicitWidth
-            height: controlsItem.implicitHeight
-            open: root.controlsVisible
-            shellOpacity: root.shellOpacity
-            server: notificationServer
-            onHoveredChanged: {
-                root.controlsHovered = controlsItem.hovered
-                if (controlsItem.hovered) {
-                    controlsLeaveTimer.stop()
+                if (controlsItem.btPopupOpen) {
+                    controlsItem.btPopupOpen = false
+                    event.accepted = true
+                } else if (controlsItem.wifiPopupOpen) {
+                    controlsItem.wifiPopupOpen = false
+                    event.accepted = true
                 } else {
-                    controlsLeaveTimer.restart()
+                    root.closeControls()
+                    event.accepted = true
+                }
+            }
+
+            /* Outside click-absorber: clicking outside the panel closes it */
+            MouseArea {
+                anchors.fill: parent
+                onClicked: root.closeControls()
+            }
+
+            QuickSettings {
+                id: controlsItem
+                anchors {
+                    top: root.controlsCorner.startsWith("top") ? parent.top : undefined
+                    bottom: root.controlsCorner.startsWith("bottom") ? parent.bottom : undefined
+                    left: root.controlsCorner.endsWith("left") ? parent.left : undefined
+                    right: root.controlsCorner.endsWith("right") ? parent.right : undefined
+                    topMargin: root.controlsCorner.startsWith("top") ? (root.popupTopMargin > 0 ? root.popupTopMargin + 6 : 14) : 0
+                    bottomMargin: root.controlsCorner.startsWith("bottom") ? (root.popupBottomMargin > 0 ? root.popupBottomMargin + 6 : 14) : 0
+                    leftMargin: root.controlsCorner.endsWith("left") ? 14 : 0
+                    rightMargin: root.controlsCorner.endsWith("right") ? 14 : 0
+                }
+                corner: root.controlsCorner
+                width: controlsItem.implicitWidth
+                height: controlsItem.implicitHeight
+                open: root.controlsVisible
+                batteryLayout: root.batteryLayout
+                shellOpacity: root.shellOpacity
+                server: notificationServer
+                onHoveredChanged: {
+                    root.controlsHovered = controlsItem.hovered
+                    if (controlsItem.hovered) {
+                        controlsLeaveTimer.stop()
+                    } else {
+                        controlsLeaveTimer.restart()
+                    }
                 }
             }
         }

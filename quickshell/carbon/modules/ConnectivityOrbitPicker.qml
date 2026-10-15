@@ -28,6 +28,7 @@ Item {
     property string pickerMode: "none"
     // state: "list" | "pass" | "busy" | "passkey"
     property string state: "list"
+    property bool standaloneMode: false
 
     readonly property bool isOpen: root.pickerMode === "wifi" || root.pickerMode === "bluetooth"
     readonly property bool reducedMotion: Boolean(Theme.reducedMotion)
@@ -231,6 +232,18 @@ Item {
         initialScanTimer.restart()
         openAnim.restart()
         startBtBackend()
+    }
+
+    function rescanBluetooth() {
+        root.scanAnimRunning = true
+        if (btBackendProc.running) {
+            try {
+                btBackendProc.write(JSON.stringify({ action: "power_on" }) + "\n")
+            } catch (e) {}
+        } else {
+            startBtBackend()
+        }
+        manualScanTimer.restart()
     }
 
     function goBack() {
@@ -686,9 +699,87 @@ Item {
        ══════════════════════════════════════════════════════════════════════ */
     visible: root.transitionProgress > 0.001
 
+    // ── 0. STANDALONE HEADER (When opened from Control Center) ──
+    Item {
+        id: standaloneHeader
+        visible: root.standaloneMode
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: -115
+        width: 340
+        height: 36
+
+        RowLayout {
+            anchors.fill: parent
+            spacing: 8
+
+            Rectangle {
+                width: 32
+                height: 32
+                radius: 8
+                color: standaloneBackHov.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.08)
+                border.width: 1
+                border.color: standaloneBackHov.containsMouse ? Theme.accent : Theme.outline
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "arrow_back"
+                    font.family: Theme.fontIcon
+                    font.pixelSize: 16
+                    color: standaloneBackHov.containsMouse ? Theme.accent : Theme.fg
+                }
+
+                MouseArea {
+                    id: standaloneBackHov
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.goBack()
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: root.pickerMode === "wifi" ? "Wi-Fi Networks" : "Bluetooth Devices"
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(11)
+                font.weight: Font.Bold
+                color: Theme.fg
+            }
+
+            Rectangle {
+                width: 32
+                height: 32
+                radius: 8
+                color: standaloneRescanHov.containsMouse ? Theme.bgHover : Qt.rgba(1, 1, 1, 0.08)
+                border.width: 1
+                border.color: standaloneRescanHov.containsMouse ? Theme.accent : Theme.outline
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "refresh"
+                    font.family: Theme.fontIcon
+                    font.pixelSize: 16
+                    color: (root.wifiScanning || root.btScanning) ? Theme.accent : Theme.fgDim
+                }
+
+                MouseArea {
+                    id: standaloneRescanHov
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (root.pickerMode === "wifi") root.rescanWifi()
+                        else root.rescanBluetooth()
+                    }
+                }
+            }
+        }
+    }
+
     // ── 1. TWO TAB SLOTS ON NUCLEUS HORIZONTAL LINE (y = 0) ──
     Item {
         id: tabsContainer
+        visible: !root.standaloneMode
         anchors.centerIn: parent
         width: 1
         height: 1
@@ -769,9 +860,9 @@ Item {
         opacity: visible ? 1.0 : 0.0
         Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
-        // When busy (connecting/pairing): center at (0, 104) around selected item
-        // When scanning: center at (0, 0) around nucleus
-        readonly property real targetCenterY: (root.state === "busy") ? 104.0 : 0.0
+        // When busy (connecting/pairing): center around selected item
+        // When scanning: center around nucleus (or -35 in standalone mode)
+        readonly property real targetCenterY: root.standaloneMode ? -35.0 : ((root.state === "busy") ? 104.0 : 0.0)
         readonly property real targetRadius: (root.state === "busy") ? 44.0 : 40.0
 
         y: targetCenterY
@@ -805,8 +896,8 @@ Item {
         height: 1
 
         // Transition: fly from nucleus center (0, 0) to (0, 104) starting at 25% of transition
-        readonly property real listProgress: Math.max(0.0, Math.min(1.0, (root.transitionProgress - 0.25) / 0.75))
-        y: 104.0 * listProgress
+        readonly property real listProgress: root.standaloneMode ? root.transitionProgress : Math.max(0.0, Math.min(1.0, (root.transitionProgress - 0.25) / 0.75))
+        y: root.standaloneMode ? -35.0 : (104.0 * listProgress)
         opacity: listProgress
 
         // Input Capture Area for Wheel & Drag Scroll
@@ -958,7 +1049,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         width: 380
         height: 50
-        y: 160
+        y: root.standaloneMode ? 25.0 : 160.0
         opacity: listRowLayer.listProgress
 
         ColumnLayout {
@@ -1003,13 +1094,13 @@ Item {
         }
     }
 
-    // ── 5. ACTION ROW (y = +236px from nucleus center) ──
+    // ── 5. ACTION ROW ──
     Item {
         id: actionRowLayer
         anchors.horizontalCenter: parent.horizontalCenter
         width: 380
         height: 60
-        y: 236
+        y: root.standaloneMode ? 82.0 : 236.0
         opacity: listRowLayer.listProgress
 
         // A. Normal List / Busy State
@@ -1319,6 +1410,7 @@ Item {
 
     // ── 7. SCAN BUTTON (Bottom-Right of Picker) ──
     RowLayout {
+        visible: !root.standaloneMode
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.horizontalCenterOffset: 154
         y: 240

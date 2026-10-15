@@ -223,18 +223,30 @@ Item {
     /* ----------------------------- visuals ----------------------------- */
     Item {
         id: sheet
-        width: parent.width
-        height: parent.height
+        anchors.fill: parent
+
+        Rectangle {
+            id: cardBgRect
+            anchors.fill: parent
+            visible: root.barMode !== "notch"
+            radius: 16
+            color: Theme.isDark ? Qt.rgba(0.06, 0.07, 0.09, 0.98) : Qt.rgba(Theme.m3surfaceContainer.r, Theme.m3surfaceContainer.g, Theme.m3surfaceContainer.b, 0.98)
+            border.width: 1
+            border.color: root.open ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.40) : Theme.outline
+        }
 
         Shape {
             id: cardBgShape
             anchors.fill: parent
-            preferredRendererType: Shape.GeometryRenderer
+            visible: root.barMode === "notch"
+            preferredRendererType: Shape.CurveRenderer
             antialiasing: true
             asynchronous: false
+            layer.enabled: true
+            layer.smooth: true
 
             ShapePath {
-                fillColor: root.barMode === "notch" ? (Theme.isDark ? Qt.rgba(0.04, 0.04, 0.06, root.notchOpacity) : Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, root.notchOpacity)) : Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, Theme.shellOpacity)
+                fillColor: Theme.isDark ? Qt.rgba(0.04, 0.04, 0.06, root.notchOpacity) : Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, root.notchOpacity)
                 strokeColor: "transparent"
                 strokeWidth: 0
                 PathSvg { path: root.fillPath }
@@ -281,9 +293,9 @@ Item {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.margins: 14
-            anchors.leftMargin: root.barMode === "notch" ? 24 : 14
-            height: 18
+            anchors.margins: 12
+            anchors.leftMargin: root.barMode === "notch" ? 20 : 12
+            height: 24
             spacing: 8
 
             Text {
@@ -295,7 +307,7 @@ Item {
             Text {
                 text: "Bluetooth"
                 font.family: "JetBrainsMono Nerd Font"
-                font.pixelSize: Theme.fontPx(15)
+                font.pixelSize: Theme.fontPx(14)
                 font.weight: Font.Bold
                 color: Theme.fg
             }
@@ -305,13 +317,13 @@ Item {
                      : (root.powerOn ? (deviceModel.count === 0 ? "No devices" : "On")
                                      : "Off")
                 font.family: "JetBrainsMono Nerd Font"
-                font.pixelSize: Theme.fontPx(12)
+                font.pixelSize: Theme.fontPx(11)
                 elide: Text.ElideRight
                 horizontalAlignment: Text.AlignRight
                 color: (root.btName.length > 0 || root.powerOn) ? Theme.accentLit : Theme.fgFaint
             }
             Rectangle {
-                Layout.preferredWidth: 30
+                Layout.preferredWidth: 32
                 Layout.preferredHeight: 18
                 Layout.alignment: Qt.AlignVCenter
                 radius: 9
@@ -320,6 +332,7 @@ Item {
                 border.color: root.powerOn ? "transparent" : Theme.fgFaint
                 MouseArea {
                     anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: root.powerToggled(!root.powerOn)
                 }
                 Rectangle {
@@ -332,14 +345,23 @@ Item {
                     Behavior on x { NumberAnimation { duration: Theme.motionDurationShort2; easing.type: Theme.easingEmphasized } }
                 }
             }
-            Text {
-                text: "close"
-                font.family: Theme.fontIcon
-                font.pixelSize: 16
-                color: Theme.fgDim
+            Rectangle {
+                Layout.preferredWidth: 22
+                Layout.preferredHeight: 22
+                Layout.alignment: Qt.AlignVCenter
+                radius: 11
+                color: closeHov.containsMouse ? Theme.bgHover : "transparent"
+                Text {
+                    anchors.centerIn: parent
+                    text: "close"
+                    font.family: Theme.fontIcon
+                    font.pixelSize: 15
+                    color: closeHov.containsMouse ? Theme.fg : Theme.fgDim
+                }
                 MouseArea {
+                    id: closeHov
                     anchors.fill: parent
-                    anchors.margins: -4
+                    hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.requestedClose()
                 }
@@ -347,32 +369,34 @@ Item {
         }
 
         Rectangle {
+            id: sepLine
             anchors.top: headRow.bottom
-            anchors.topMargin: 10
+            anchors.topMargin: 8
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.leftMargin: root.barMode === "notch" ? 24 : 14
-            anchors.rightMargin: 14
+            anchors.leftMargin: root.barMode === "notch" ? 20 : 12
+            anchors.rightMargin: 12
             height: 1
             color: Theme.outline
         }
 
         ListView {
             id: devList
-            anchors.top: parent.top
-            anchors.topMargin: 44
+            anchors.top: sepLine.bottom
+            anchors.topMargin: 8
             anchors.bottom: footRow.top
+            anchors.bottomMargin: 8
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.leftMargin: root.barMode === "notch" ? 18 : 6
-            anchors.rightMargin: 6
+            anchors.leftMargin: root.barMode === "notch" ? 16 : 8
+            anchors.rightMargin: 8
             clip: true
             model: deviceModel
-            spacing: 2
+            spacing: 4
 
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AsNeeded
-                width: 6
+                width: 4
                 parent: devList
                 anchors.top: devList.top
                 anchors.bottom: devList.bottom
@@ -381,8 +405,8 @@ Item {
 
             delegate: Rectangle {
                 id: row
-                width: devList.width - 12
-                height: 38
+                width: devList.width
+                height: 40
                 radius: 10
                 color: hov.hovered ? Theme.bgHover : "transparent"
 
@@ -403,20 +427,21 @@ Item {
                     ColumnLayout {
                         Layout.fillWidth: true
                         Layout.preferredWidth: 1
-                        spacing: 0
+                        spacing: 1
                         Text {
                             Layout.fillWidth: true
                             elide: Text.ElideRight
                             text: model.name.length > 0 ? model.name : model.mac
                             font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: Theme.fontPx(13)
+                            font.pixelSize: Theme.fontPx(12)
+                            font.weight: model.connected ? Font.Bold : Font.Normal
                             color: model.connected ? Theme.accentLit : Theme.fg
                         }
                         Text {
                             Layout.fillWidth: true
                             text: model.connected ? "Connected" : (model.paired ? "Paired" : "Ready to pair")
                             font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: Theme.fontPx(10)
+                            font.pixelSize: Theme.fontPx(9.5)
                             color: model.connected ? Theme.accentLit : Theme.fgDim
                         }
                     }
@@ -450,23 +475,43 @@ Item {
             }
         }
 
+        Text {
+            anchors.centerIn: devList
+            visible: root.powerOn && deviceModel.count === 0 && !root.scanning
+            text: "No paired devices found"
+            font.family: "JetBrainsMono Nerd Font"
+            font.pixelSize: Theme.fontPx(11)
+            color: Theme.fgFaint
+        }
+
+        Text {
+            anchors.centerIn: devList
+            visible: !root.powerOn
+            text: "Bluetooth is disabled"
+            font.family: "JetBrainsMono Nerd Font"
+            font.pixelSize: Theme.fontPx(11)
+            color: Theme.fgFaint
+        }
+
         Rectangle {
             id: footRow
             anchors.bottom: parent.bottom
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.bottomMargin: 14
-            anchors.leftMargin: 14
-            anchors.rightMargin: 14
-            height: 40
+            anchors.bottomMargin: 12
+            anchors.leftMargin: 12
+            anchors.rightMargin: 12
+            height: 38
             radius: 12
             color: Theme.bgAlt
+            border.width: 1
+            border.color: Theme.outline
 
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 12
                 anchors.rightMargin: 12
-                spacing: 10
+                spacing: 8
 
                 Text {
                     text: root.working ? "" : (root.scanning ? "sync" : "search")
@@ -485,7 +530,7 @@ Item {
                         : deviceModel.count === 0 ? "No known devices"
                         : "Tap a device to connect"
                     font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: Theme.fontPx(12)
+                    font.pixelSize: Theme.fontPx(11)
                     color: root.status.length > 0 ? Theme.accentLit : Theme.fgFaint
                 }
 

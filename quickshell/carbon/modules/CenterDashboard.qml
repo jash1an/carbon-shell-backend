@@ -26,7 +26,7 @@ Item {
     readonly property bool hovered: (rootHover && rootHover.hovered) || (mainCardHover && mainCardHover.hovered)
     signal closeRequested()
 
-    implicitWidth: root.minimalCalendarOnly ? 310 : 860
+    implicitWidth: root.minimalCalendarOnly ? 310 : 820
     implicitHeight: root.minimalCalendarOnly ? 276 : 260
     width: implicitWidth
     height: implicitHeight
