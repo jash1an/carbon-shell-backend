@@ -352,7 +352,7 @@ Item {
                 text: "wifi"
                 font.family: Theme.fontIcon
                 font.pixelSize: 18
-                color: Theme.accentLit
+                color: Theme.accent
             }
             Text {
                 text: "Wi-Fi"
@@ -366,9 +366,10 @@ Item {
                 text: root.wifiName.length > 0 ? root.wifiName : (root.powerOn ? "Not connected" : "Off")
                 font.family: "JetBrainsMono Nerd Font"
                 font.pixelSize: Theme.fontPx(12)
+                font.weight: root.wifiName.length > 0 ? Font.Bold : Font.Normal
                 elide: Text.ElideRight
                 horizontalAlignment: Text.AlignRight
-                color: root.wifiName.length > 0 ? Theme.accentLit : Theme.fgFaint
+                color: root.wifiName.length > 0 ? Theme.accent : Theme.fgFaint
             }
             Rectangle {
                 Layout.preferredWidth: 30
@@ -480,6 +481,7 @@ Item {
                             text: model.ssid
                             font.family: "JetBrainsMono Nerd Font"
                             font.pixelSize: Theme.fontPx(14)
+                            font.weight: model.inUse ? Font.Bold : Font.Normal
                             color: model.inUse ? Theme.accentLit : Theme.fg
                         }
                         Text {
@@ -489,7 +491,8 @@ Item {
                             text: model.inUse ? "Connected" : (model.isSaved ? "Saved" : "")
                             font.family: "JetBrainsMono Nerd Font"
                             font.pixelSize: Theme.fontPx(11)
-                            color: Theme.fgDim
+                            font.weight: model.inUse ? Font.DemiBold : Font.Normal
+                            color: model.inUse ? Theme.accent : Theme.fgDim
                         }
                     }
 

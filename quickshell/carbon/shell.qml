@@ -324,20 +324,52 @@ ShellRoot {
     property bool batteryHidden: true
 
     function openBattery() {
-        root.closeAllPopupsExcept("battery")
-        root.batteryOpen = true
-    }
-    function closeBattery() {
-        root.batteryOpen = false
-        root.batteryPinned = false
-    }
-    function toggleBattery() {
-        if (root.batteryOpen) {
-            root.closeBattery()
+        if (root.barMode === "pill") {
+            root.closeAllPopupsExcept("controls")
+            root.controlsPinned = true
+            root.controlsVisible = true
+            if (controlsItem) {
+                controlsItem.wifiPopupOpen = false
+                controlsItem.btPopupOpen = false
+                controlsItem.audioPopupOpen = false
+                controlsItem.mode = 2
+            }
         } else {
             root.closeAllPopupsExcept("battery")
-            root.batteryPinned = true
             root.batteryOpen = true
+        }
+    }
+    function closeBattery() {
+        if (root.barMode === "pill") {
+            root.closeControls()
+        } else {
+            root.batteryOpen = false
+            root.batteryPinned = false
+        }
+    }
+    function toggleBattery() {
+        if (root.barMode === "pill") {
+            if (root.controlsVisible && controlsItem && controlsItem.mode === 2) {
+                root.closeControls()
+            } else {
+                root.closeAllPopupsExcept("controls")
+                root.controlsPinned = true
+                root.controlsVisible = true
+                if (controlsItem) {
+                    controlsItem.wifiPopupOpen = false
+                    controlsItem.btPopupOpen = false
+                    controlsItem.audioPopupOpen = false
+                    controlsItem.mode = 2
+                }
+            }
+        } else {
+            if (root.batteryOpen) {
+                root.closeBattery()
+            } else {
+                root.closeAllPopupsExcept("battery")
+                root.batteryPinned = true
+                root.batteryOpen = true
+            }
         }
     }
 

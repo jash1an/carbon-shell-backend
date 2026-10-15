@@ -108,6 +108,16 @@ Singleton {
         return "#" + s
     }
 
+    function lum(c) {
+        if (!c) return 0
+        try {
+            var qc = Qt.color(c)
+            return 0.299 * qc.r + 0.587 * qc.g + 0.114 * qc.b
+        } catch (e) {
+            return 0
+        }
+    }
+
     function reload() {
         try {
             caelestiaFile.reload()
@@ -183,7 +193,12 @@ Singleton {
                     root.fgFaint = Qt.rgba(root.m3outline.r, root.m3outline.g, root.m3outline.b, 0.70)
 
                     root.accent = root.m3primary
-                    root.accentLit = root.m3onPrimaryContainer
+                    var litCand = c.accentLit ? col(c.accentLit, "#eedbc9") : (
+                        (lum(root.m3primaryContainer) > 0.5) ? root.m3primaryContainer :
+                        (lum(root.m3onPrimaryContainer) > 0.5) ? root.m3onPrimaryContainer :
+                        (lum(root.m3primary) > 0.5) ? root.m3primary : Qt.lighter(root.m3primary, 1.25)
+                    )
+                    root.accentLit = litCand
                     root.accentFg = root.m3onPrimary
                     root.accentContrast = root.m3onPrimary
                     root.outline = Qt.rgba(root.m3outlineVariant.r, root.m3outlineVariant.g, root.m3outlineVariant.b, 0.40)

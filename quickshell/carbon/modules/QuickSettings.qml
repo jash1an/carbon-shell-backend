@@ -954,7 +954,7 @@ Item {
                                             if (mouse.button === Qt.RightButton) {
                                                 root.openWifiDetails()
                                             } else {
-                                                root.openWifiDetails()
+                                                root.toggleWifi()
                                             }
                                         }
                                     }
@@ -1041,7 +1041,7 @@ Item {
                                             if (mouse.button === Qt.RightButton) {
                                                 root.openBtDetails()
                                             } else {
-                                                root.openBtDetails()
+                                                root.toggleBt()
                                             }
                                         }
                                     }
