@@ -20,7 +20,7 @@ Item {
     id: root
 
     implicitWidth: 350
-    implicitHeight: 152
+    implicitHeight: 86
 
     /* ── MPRIS Player Resolution ─────────────────────────────────────────── */
     readonly property var players: Mpris.players.values !== undefined ? Mpris.players.values : Mpris.players
@@ -229,135 +229,35 @@ Item {
         }
     }
 
-    /* ── Doodles Over & Around Media Card ────────────────────────────────── */
-    Item {
-        id: doodlesContainer
-        anchors.bottom: cardBg.top
-        anchors.bottomMargin: -6
-        anchors.left: cardBg.left
+    /* ── Moon Doodle (top-right inside card) ─────────────────────────────── */
+    Image {
+        id: moonDoodle
+        anchors.top: cardBg.top
         anchors.right: cardBg.right
-        height: 64
+        anchors.topMargin: 7
+        anchors.rightMargin: 10
+        width: 38
+        height: 38
+        source: Theme.isDark
+            ? "doodles/doodle_moon_white.png"
+            : "doodles/doodle_moon_black.png"
+        fillMode: Image.PreserveAspectFit
+        smooth: true
+        mipmap: true
+        opacity: root.showing ? 0.72 : 0.0
         visible: root.showing
-        opacity: root.showing ? 1.0 : 0.0
         Behavior on opacity { NumberAnimation { duration: 350 } }
 
-        // 1. Singer Character Doodle (left side, peeking over card edge)
-        Item {
-            id: singerWrapper
-            anchors.left: parent.left
-            anchors.leftMargin: 12
-            anchors.bottom: parent.bottom
-            width: 56
-            height: 62
-            transformOrigin: Item.BottomCenter
-
-            Image {
-                id: singerImg
-                anchors.fill: parent
-                source: "doodles/doodle_singer_hq.png"
-                fillMode: Image.PreserveAspectFit
-                smooth: true
-                mipmap: true
-            }
-
-            // Headphone sound vibration ripples (visible when playing)
-            Text {
-                anchors.right: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.verticalCenterOffset: 2
-                text: "(( "
-                font.family: "JetBrainsMono Nerd Font"
-                font.pixelSize: 13
-                font.bold: true
-                color: "#FFFFFF"
-                opacity: root.isPlaying ? 0.75 : 0.0
-                Behavior on opacity { NumberAnimation { duration: 300 } }
-            }
-
-            // Subtle rhythmic bounce & head sway when playing
-            SequentialAnimation {
-                running: root.isPlaying
-                loops: Animation.Infinite
-                ParallelAnimation {
-                    NumberAnimation { target: singerWrapper; property: "rotation"; to: 2.2; duration: 550; easing.type: Easing.InOutQuad }
-                    NumberAnimation { target: singerWrapper; property: "y"; to: -2.5; duration: 275; easing.type: Easing.OutQuad }
-                }
-                ParallelAnimation {
-                    NumberAnimation { target: singerWrapper; property: "rotation"; to: -2.2; duration: 550; easing.type: Easing.InOutQuad }
-                    NumberAnimation { target: singerWrapper; property: "y"; to: 0; duration: 275; easing.type: Easing.InQuad }
-                }
-            }
-        }
-
-        // 2. Musical Staff & Notes (floating upward across the middle)
-        Item {
-            id: notesWrapper
-            anchors.left: singerWrapper.right
-            anchors.leftMargin: 4
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 6
-            width: 145
-            height: 52
-
-            Image {
-                id: notesImg
-                anchors.fill: parent
-                source: "doodles/doodle_notes.png"
-                fillMode: Image.PreserveAspectFit
-                smooth: true
-                mipmap: true
-                opacity: root.isPlaying ? 0.95 : 0.6
-                Behavior on opacity { NumberAnimation { duration: 400 } }
-            }
-
-            // Gentle floating wave animation
-            SequentialAnimation {
-                running: root.isPlaying
-                loops: Animation.Infinite
-                NumberAnimation { target: notesWrapper; property: "y"; to: -3.5; duration: 1100; easing.type: Easing.InOutSine }
-                NumberAnimation { target: notesWrapper; property: "y"; to: 0; duration: 1100; easing.type: Easing.InOutSine }
-            }
-        }
-
-        // 3. Floating Sparkles, Heart & Accents
-        Image {
-            id: accentsImg
-            anchors.fill: parent
-            source: "doodles/doodle_accents.svg"
-            fillMode: Image.PreserveAspectFit
-            opacity: root.isPlaying ? 0.85 : 0.4
-            Behavior on opacity { NumberAnimation { duration: 400 } }
-        }
-
-        // 4. Sketched Spotify / Soundwaves Logo Doodle (top right)
-        Item {
-            id: spotifyDoodleWrapper
-            anchors.right: parent.right
-            anchors.rightMargin: 12
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 6
-            width: 44
-            height: 44
-
-            Image {
-                id: spotifyImg
-                anchors.fill: parent
-                source: "doodles/doodle_spotify.png"
-                fillMode: Image.PreserveAspectFit
-                smooth: true
-                mipmap: true
-                opacity: 0.9
-            }
-
-            // Soft pulse when playing
-            SequentialAnimation {
-                running: root.isPlaying
-                loops: Animation.Infinite
-                NumberAnimation { target: spotifyDoodleWrapper; property: "scale"; to: 1.06; duration: 650; easing.type: Easing.InOutSine }
-                NumberAnimation { target: spotifyDoodleWrapper; property: "scale"; to: 1.0; duration: 650; easing.type: Easing.InOutSine }
-            }
+        // Gentle slow float
+        SequentialAnimation on y {
+            running: root.showing
+            loops: Animation.Infinite
+            NumberAnimation { to: -3; duration: 2200; easing.type: Easing.InOutSine }
+            NumberAnimation { to: 0;  duration: 2200; easing.type: Easing.InOutSine }
         }
     }
+
+
 
     /* ── Content Layout ─────────────────────────────────────────────────── */
     RowLayout {
