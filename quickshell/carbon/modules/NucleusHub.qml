@@ -2901,7 +2901,7 @@ Item {
 
                 Text {
                     anchors.centerIn: parent
-                    text: connectivityPicker ? connectivityPicker.captionText : ""
+                    text: (connectivityPicker && connectivityPicker.captionText) ? connectivityPicker.captionText : ""
                     font.family: "JetBrainsMono Nerd Font"
                     font.pixelSize: Theme.fontPx(12)
                     font.bold: true

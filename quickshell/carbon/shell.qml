@@ -743,6 +743,10 @@ ShellRoot {
     property bool islandPersistent: true
     property bool islandHovered: false
     property string batteryLayout: "horizontal"
+    property bool vanishControlCenter: false
+    property bool showVinylDisc: true
+    property bool showEqualizer: true
+    property bool autoExpandOnTrack: false
     readonly property bool islandRevealed: islandPersistent || islandHovered || mixerOpen || trayOpen || brightnessOpen || batteryOpen || wifiOpen || btOpen || calendarOpen || centerDashboardOpen || smallMusicOpen
 
     property bool _switchingBarMode: false
@@ -799,6 +803,13 @@ ShellRoot {
                 }
                 if (d.batteryLayout) {
                     root.batteryLayout = String(d.batteryLayout).toLowerCase()
+                }
+                if (d.vanishControlCenter !== undefined) {
+                    root.vanishControlCenter = Boolean(d.vanishControlCenter)
+                } else if (d.nucleus && d.nucleus.controlCenter !== undefined) {
+                    root.vanishControlCenter = Boolean(d.nucleus.controlCenter)
+                } else {
+                    root.vanishControlCenter = false
                 }
                 if (root.barMode === "pill" || root.barMode === "minimal") {
                     if (root.mainBarEdge !== "top" && root.mainBarEdge !== "bottom") {
@@ -979,6 +990,10 @@ ShellRoot {
                 if (d.minimalBlur !== undefined) root.minimalBlur = !!d.minimalBlur
             }
 
+            if (d.showVinylDisc !== undefined) root.showVinylDisc = Boolean(d.showVinylDisc)
+            if (d.showEqualizer !== undefined) root.showEqualizer = Boolean(d.showEqualizer)
+            if (d.autoExpandOnTrack !== undefined) root.autoExpandOnTrack = Boolean(d.autoExpandOnTrack)
+
             root.barHeight = (root.barMode === "notch" ? root.notchHeight : root.pillHeight)
         } catch (e) {}
     }
@@ -986,6 +1001,43 @@ ShellRoot {
     Component.onCompleted: {
         reloadBarMode()
         applyBarPos(barPosFile.text())
+        reloadControlCenterConfig()
+    }
+
+    property real volumeStepVal: 0.05
+    property real brightnessStepVal: 0.05
+    property bool showBatteryPercent: true
+
+    FileView {
+        id: controlCenterConfigFile
+        path: root.carbonConfigDir + "/carbon-control-center.json"
+        watchChanges: true
+        blockLoading: true
+        printErrors: false
+        onLoaded: root.reloadControlCenterConfig()
+        onFileChanged: root.reloadControlCenterConfig()
+    }
+
+    FileView {
+        id: hyprControlCenterConfigFile
+        path: root.home + "/.config/hypr/carbon-control-center.json"
+        watchChanges: true
+        blockLoading: true
+        printErrors: false
+        onLoaded: root.reloadControlCenterConfig()
+        onFileChanged: root.reloadControlCenterConfig()
+    }
+
+    function reloadControlCenterConfig() {
+        try {
+            var txt = controlCenterConfigFile.text()
+            if (!txt || txt.trim().length === 0) txt = hyprControlCenterConfigFile.text()
+            if (!txt || txt.trim().length === 0) return
+            var d = JSON.parse(txt)
+            if (d.volumeStep !== undefined) root.volumeStepVal = Math.max(0.01, Math.min(0.20, (parseFloat(d.volumeStep) || 5) / 100.0))
+            if (d.brightnessStep !== undefined) root.brightnessStepVal = Math.max(0.01, Math.min(0.20, (parseFloat(d.brightnessStep) || 5) / 100.0))
+            if (d.showBatteryPercent !== undefined) root.showBatteryPercent = Boolean(d.showBatteryPercent)
+        } catch (e) {}
     }
 
     /* ── MPRIS Music Tracking ────────────────────────────────────────── */
@@ -1026,11 +1078,13 @@ ShellRoot {
     property bool controlsPinned: false
 
     function openControls() {
+        if (root.barMode === "nucleus" && !root.vanishControlCenter) return
         root.closeAllPopupsExcept("controls")
         root.controlsPinned = true
         root.controlsVisible = true
     }
     function openControlsHover() {
+        if (root.barMode === "nucleus" && !root.vanishControlCenter) return
         root.closeAllPopupsExcept("controls")
         root.controlsPinned = false
         root.controlsVisible = true
@@ -1038,6 +1092,10 @@ ShellRoot {
     }
     function closeControls() { root.controlsVisible = false; root.controlsPinned = false }
     function toggleControls() {
+        if (root.barMode === "nucleus" && !root.vanishControlCenter) {
+            root.closeControls()
+            return
+        }
         if (root.controlsVisible) {
             root.closeControls()
         } else {
@@ -1824,6 +1882,8 @@ ShellRoot {
                             id: pillCenterItem
                             anchors.centerIn: parent
                             barContent: root.musicBarContent
+                            showVinylDisc: root.showVinylDisc
+                            showEqualizer: root.showEqualizer
                             onOpenCenterDashboard: root.openCenterDashboard()
                             onCloseCenterDashboard: centerDashboardLeaveTimer.restart()
                             onToggleCenterDashboard: root.toggleCenterDashboard()
@@ -2407,6 +2467,8 @@ ShellRoot {
                 isExpanded: root.centerDashboardOpen
                 visible: root.musicBarEdge === root.mainBarEdge
                 barContent: root.musicBarContent
+                showVinylDisc: root.showVinylDisc
+                showEqualizer: root.showEqualizer
                 attachedBottom: root.mainBarEdge === "bottom"
                 hasAttachedPopup: (root.calendarOpen || root.smallMusicOpen) && !root.centerDashboardOpen
                 anchors.top: root.mainBarEdge !== "bottom" ? parent.top : undefined
@@ -2876,8 +2938,8 @@ ShellRoot {
                         if (wasClosed && action !== "open") {
                             nucleusHubItemInstance.osdOpenedHub = true
                         }
-                        if (action === "up") nucleusHubItemInstance.stepVolume(0.05)
-                        else if (action === "down") nucleusHubItemInstance.stepVolume(-0.05)
+                        if (action === "up") nucleusHubItemInstance.stepVolume(root.volumeStepVal)
+                        else if (action === "down") nucleusHubItemInstance.stepVolume(-root.volumeStepVal)
                         else if (action === "toggle-mute") nucleusHubItemInstance.toggleVolumeMute()
                         else if (action === "open") nucleusHubItemInstance.openVolumeMode()
                     }
@@ -2885,13 +2947,72 @@ ShellRoot {
                         if (wasClosed && action !== "open") {
                             nucleusHubItemInstance.osdOpenedHub = true
                         }
-                        if (action === "up") nucleusHubItemInstance.stepBrightness(0.05)
-                        else if (action === "down") nucleusHubItemInstance.stepBrightness(-0.05)
+                        if (action === "up") nucleusHubItemInstance.stepBrightness(root.brightnessStepVal)
+                        else if (action === "down") nucleusHubItemInstance.stepBrightness(-root.brightnessStepVal)
                         else if (action === "open") nucleusHubItemInstance.openBrightnessMode()
                     }
                     function onNotifPanelRequested() {
                         nucleusHubItemInstance.notifPanelOpen = true
                         nucleusHubItemInstance.focusedLobe = "alerts"
+                    }
+                }
+            }
+        }
+    }
+
+    /* ── Vanish Mode Floating Control Center Button ── */
+    Variants {
+        model: Quickshell.screens
+
+        PanelWindow {
+            id: vanishControlsWindow
+            required property var modelData
+            screen: modelData
+            color: "transparent"
+            WlrLayershell.namespace: "carbon-vanish-controls"
+            WlrLayershell.layer: WlrLayer.Top
+            exclusionMode: ExclusionMode.Ignore
+            aboveWindows: false
+            anchors {
+                top: true
+                right: true
+            }
+            margins {
+                top: 14
+                right: 14
+            }
+            implicitWidth: 36
+            implicitHeight: 36
+            visible: root.barMode === "nucleus" && root.vanishControlCenter && !root.nucleusHubItem.hubOpen
+
+            Item {
+                anchors.fill: parent
+
+                Rectangle {
+                    id: vanishControlsBtn
+                    anchors.fill: parent
+                    radius: 18
+                    color: Theme.bg
+                    border.width: 1
+                    border.color: (vanishControlsMouse.containsMouse || root.controlsVisible) ? Theme.accent : Theme.outline
+
+                    Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "tune"
+                        font.family: "Material Symbols Outlined"
+                        font.pixelSize: 18
+                        color: (vanishControlsMouse.containsMouse || root.controlsVisible) ? Theme.accentLit : Theme.fg
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                    }
+
+                    MouseArea {
+                        id: vanishControlsMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.toggleControls()
                     }
                 }
             }
@@ -2965,6 +3086,8 @@ ShellRoot {
             NotchBarCenter {
                 id: separateNotchCenter
                 barContent: root.musicBarContent
+                showVinylDisc: root.showVinylDisc
+                showEqualizer: root.showEqualizer
                 attachedBottom: root.musicBarEdge === "bottom"
                 hasAttachedPopup: root.centerDashboardOpen || root.calendarOpen || root.smallMusicOpen
                 anchors.fill: parent
@@ -3876,6 +3999,7 @@ ShellRoot {
                 height: controlsItem.implicitHeight
                 open: root.controlsVisible
                 batteryLayout: root.batteryLayout
+                showBatteryPercent: root.showBatteryPercent
                 shellOpacity: root.shellOpacity
                 server: notificationServer
                 onHoveredChanged: {

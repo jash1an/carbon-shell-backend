@@ -34,6 +34,9 @@ NotchContainer {
     signal openCenterDashboard()
     signal closeCenterDashboard()
 
+    property bool showVinylDisc: true
+    property bool showEqualizer: true
+
     readonly property bool hudActive: HudService.active
 
     focus: root.isExpanded
@@ -223,6 +226,7 @@ NotchContainer {
                     border.width: 1.5
                     anchors.verticalCenter: parent.verticalCenter
                     clip: true
+                    visible: root.showVinylDisc
 
                     MouseArea {
                         anchors.fill: parent
@@ -260,7 +264,7 @@ NotchContainer {
                     id: eqWaveform
                     spacing: 2
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: root.hasTrack
+                    visible: root.showEqualizer && root.hasTrack
 
                     Repeater {
                         model: [

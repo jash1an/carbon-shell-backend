@@ -117,7 +117,9 @@ Item {
             if (txt.length > 0) {
                 const parsed = JSON.parse(txt)
                 if (parsed.mediaOverlay !== undefined) {
-                    root.enabledSetting = parsed.mediaOverlay
+                    root.enabledSetting = Boolean(parsed.mediaOverlay)
+                } else if (parsed.showMedia !== undefined) {
+                    root.enabledSetting = Boolean(parsed.showMedia)
                 }
             }
         } catch (e) {}

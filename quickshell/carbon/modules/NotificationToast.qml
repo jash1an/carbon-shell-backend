@@ -83,7 +83,8 @@ Rectangle {
     Connections {
         target: NotificationService
         function onNotificationArrived(item) {
-            // Suppress toast if DND is active or panel is open
+            // Suppress toast if notifications are disabled, DND is active, or panel is open
+            if (!NotificationService.notificationsEnabled) return
             if (NotificationService.dnd || root.panelOpen) return
             root.showToast(item)
         }
@@ -92,7 +93,7 @@ Rectangle {
     function showToast(item) {
         root.toastItem = item
         root.swipeX = 0
-        root.remainingTime = 4800
+        root.remainingTime = NotificationService.toastTimeoutMs
         root.active = true
     }
 

@@ -36,14 +36,14 @@ Item {
     Behavior on yOffset {
         NumberAnimation {
             id: slideAnim
-            duration: root.open ? 130 : 95
+            duration: root.open ? root.animSpeed : Math.round(root.animSpeed * 0.7)
             easing.type: root.open ? Easing.OutCubic : Easing.InCubic
         }
     }
 
     Behavior on scale {
         NumberAnimation {
-            duration: root.open ? 130 : 95
+            duration: root.open ? root.animSpeed : Math.round(root.animSpeed * 0.7)
             easing.type: root.open ? Easing.OutCubic : Easing.InCubic
         }
     }
@@ -71,10 +71,42 @@ Item {
         }
     }
 
+    /* ── Launcher Configuration Watcher ── */
+    property int animSpeed: 170
+    property int maxResultsCount: 8
+    property bool showRecentsEnabled: true
+    property bool clipboardEnabled: true
+
+    readonly property string launcherConfigFile: {
+        var envDir = Quickshell.env("CARBON_CONFIG_DIR")
+        if (envDir && envDir.length > 0) return envDir + "/carbon-launcher.json"
+        return (Quickshell.env("HOME") || "") + "/.config/carbon/carbon-launcher.json"
+    }
+
+    FileView {
+        id: launcherConfigWatcher
+        path: root.launcherConfigFile
+        watchChanges: true
+        printErrors: false
+        onFileChanged: launcherConfigWatcher.reload()
+        onLoaded: {
+            try {
+                const raw = launcherConfigWatcher.text().trim()
+                if (raw) {
+                    const d = JSON.parse(raw)
+                    if (d.animationSpeed !== undefined) root.animSpeed = Math.max(50, parseInt(d.animationSpeed) || 170)
+                    if (d.maxResults !== undefined) root.maxResultsCount = Math.max(2, parseInt(d.maxResults) || 8)
+                    if (d.showRecents !== undefined) root.showRecentsEnabled = Boolean(d.showRecents)
+                    if (d.clipboardHistory !== undefined) root.clipboardEnabled = Boolean(d.clipboardHistory)
+                }
+            } catch (e) {}
+        }
+    }
+
     Behavior on opacity {
         NumberAnimation {
             id: opacityAnim
-            duration: root.open ? 120 : 85
+            duration: root.open ? Math.round(root.animSpeed * 0.8) : Math.round(root.animSpeed * 0.6)
             easing.type: Easing.OutCubic
         }
     }
@@ -985,8 +1017,9 @@ Item {
 
                     Item {
                         id: tabClip
-                        width: tabClipText.implicitWidth + 20
+                        width: root.clipboardEnabled ? (tabClipText.implicitWidth + 20) : 0
                         height: 26
+                        visible: root.clipboardEnabled
 
                         Text {
                             id: tabClipText

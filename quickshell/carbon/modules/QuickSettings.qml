@@ -367,6 +367,7 @@ Item {
 
     /* ============================ Battery & Power Profiles ============================ */
     property string batteryLayout: "horizontal"
+    property bool showBatteryPercent: true
     readonly property var battery: UPower.displayDevice
     readonly property bool hasBattery: battery ? battery.isPresent : false
     readonly property real batteryPct: battery ? battery.percentage : 1.0
@@ -1942,6 +1943,7 @@ Item {
                                     Text {
                                         Layout.alignment: Qt.AlignRight
                                         text: Math.round(root.batteryPct * 100) + "%"
+                                        visible: root.showBatteryPercent
                                         font.family: "JetBrainsMono Nerd Font"
                                         font.pixelSize: Theme.fontPx(22)
                                         font.weight: Font.Bold
@@ -2312,6 +2314,7 @@ Item {
 
                                     Text {
                                         text: Math.round(root.batteryPct * 100) + "%"
+                                        visible: root.showBatteryPercent
                                         font.family: "JetBrainsMono Nerd Font"
                                         font.pixelSize: Theme.fontPx(22)
                                         font.weight: Font.Bold

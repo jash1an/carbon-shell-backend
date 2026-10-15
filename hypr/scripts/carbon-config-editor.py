@@ -1679,49 +1679,68 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         cur_mode = self.bar_mode.get("mode", "notch")
         cur_idx = mode_ids.index(cur_mode) if cur_mode in mode_ids else 0
 
-        def on_mode_selected(idx):
-            mode_id = mode_ids[idx]
-            self.bar_mode["mode"] = mode_id
-            self.bar_mode["islandStyle"] = mode_id
-            self.mark_dirty()
+        # Bar Style Combobox (Always visible)
+        dd_mode = self.add_combo_row(card, "Bar Style", "Choose screen notch, floating pill, or single dynamic island", modes, cur_idx, lambda idx: on_mode_selected(idx))
 
-        self.add_combo_row(card, "Bar Style", "Choose screen notch, floating pill, or single dynamic island", modes, cur_idx, on_mode_selected)
-
+        # Screen Position (Top / Bottom) - Notch & Pill
         edges = ["Top", "Bottom"]
         cur_edge = self.bar_pos.get("mainBarEdge", "top")
         edge_idx = 1 if cur_edge == "bottom" else 0
         def on_edge_selected(idx):
             self.bar_pos["mainBarEdge"] = "bottom" if idx == 1 else "top"
             self.mark_dirty()
-        self.add_combo_row(card, "Screen Position", "Anchor bar to top or bottom edge", edges, edge_idx, on_edge_selected)
+        dd_edge = self.add_combo_row(card, "Screen Position", "Anchor bar to top or bottom edge", edges, edge_idx, on_edge_selected)
+        row_pos = dd_edge.get_parent()
 
+        # Control Center Toggle (ONLY for Vanish Mode)
+        cur_vanish_cc = bool(self.bar_mode.get("vanishControlCenter", False) or self.bar_mode.get("nucleus", {}).get("controlCenter", False))
+        def on_vanish_cc_toggle(act):
+            self.bar_mode["vanishControlCenter"] = bool(act)
+            if "nucleus" not in self.bar_mode or not isinstance(self.bar_mode["nucleus"], dict):
+                self.bar_mode["nucleus"] = {}
+            self.bar_mode["nucleus"]["controlCenter"] = bool(act)
+            self.mark_dirty()
+            update_visibility("nucleus")
+        sw_vanish_cc = self.add_switch_row(card, "Control Center", "Show floating Control Center button in Vanish Mode", cur_vanish_cc, on_vanish_cc_toggle)
+        row_vanish_cc = sw_vanish_cc.get_parent()
+
+        # Battery Layout (Horizontal / Vertical)
         bat_layouts = ["Horizontal", "Vertical"]
         cur_bat_layout = str(self.bar_mode.get("batteryLayout", "horizontal")).capitalize()
         bat_idx = 1 if cur_bat_layout == "Vertical" else 0
         def on_bat_layout_selected(idx):
             self.bar_mode["batteryLayout"] = "vertical" if idx == 1 else "horizontal"
             self.mark_dirty()
-        self.add_combo_row(card, "Battery Layout", "Control Center fluid battery layout orientation", bat_layouts, bat_idx, on_bat_layout_selected)
+        dd_bat = self.add_combo_row(card, "Battery Layout", "Control Center fluid battery layout orientation", bat_layouts, bat_idx, on_bat_layout_selected)
+        row_bat = dd_bat.get_parent()
 
+        # Bar Height - Notch & Pill
         cur_h = int(self.bar_pos.get("notchHeight", 32))
         def on_h_changed(v):
             self.bar_pos["notchHeight"] = v
             self.bar_pos["barHeight"] = v
+            self.bar_pos["pillHeight"] = v
             self.mark_dirty()
-        self.add_slider_row(card, "Bar Height", "Vertical height of the notch / bar", 24, 48, 1, cur_h, "px", on_h_changed)
+        sl_h = self.add_slider_row(card, "Bar Height", "Vertical height of the notch / bar", 24, 48, 1, cur_h, "px", on_h_changed)
+        row_h = sl_h.get_parent()
 
+        # Notch Ear Radius - Notch Only
         cur_ear = int(self.bar_pos.get("notchEarRadius", 10))
         def on_ear_changed(v):
             self.bar_pos["notchEarRadius"] = v
             self.mark_dirty()
-        self.add_slider_row(card, "Notch Ear Radius", "SaneAspect top concave fillet curve", 0, 16, 1, cur_ear, "px", on_ear_changed)
+        sl_ear = self.add_slider_row(card, "Notch Ear Radius", "SaneAspect top concave fillet curve", 0, 16, 1, cur_ear, "px", on_ear_changed)
+        row_ear = sl_ear.get_parent()
 
+        # Notch Corner Radius - Notch Only
         cur_bot = int(self.bar_pos.get("notchBottomRadius", 14))
         def on_bot_changed(v):
             self.bar_pos["notchBottomRadius"] = v
             self.mark_dirty()
-        self.add_slider_row(card, "Notch Corner Radius", "Convex rounded bottom corners", 8, 24, 1, cur_bot, "px", on_bot_changed)
+        sl_bot = self.add_slider_row(card, "Notch Corner Radius", "Convex rounded bottom corners", 8, 24, 1, cur_bot, "px", on_bot_changed)
+        row_bot = sl_bot.get_parent()
 
+        # Background Opacity - Notch, Pill, Minimal
         cur_o = int(float(self.bar_pos.get("notchOpacity", 0.96)) * 100)
         def on_o_changed(v):
             val = round(v / 100.0, 2)
@@ -1730,8 +1749,10 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             self.bar_pos["pillOpacity"] = val
             self.bar_pos["minimalOpacity"] = val
             self.mark_dirty()
-        self.add_slider_row(card, "Background Opacity", "Surface darkness / transparency", 20, 100, 5, cur_o, "%", on_o_changed)
+        sl_o = self.add_slider_row(card, "Background Opacity", "Surface darkness / transparency", 20, 100, 5, cur_o, "%", on_o_changed)
+        row_op = sl_o.get_parent()
 
+        # Frosted Glass Blur - Notch, Pill, Minimal
         cur_blur = is_layer_blur_enabled()
         def on_blur_toggle(act):
             self.bar_pos["notchBlur"] = act
@@ -1739,7 +1760,51 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             self.bar_pos["pillBlur"] = act
             self.pending_layer_blur = act
             self.mark_dirty()
-        self.add_switch_row(card, "Frosted Glass Blur", "Enable backdrop blur behind the bar", cur_blur, on_blur_toggle)
+        sw_blur = self.add_switch_row(card, "Frosted Glass Blur", "Enable backdrop blur behind the bar", cur_blur, on_blur_toggle)
+        row_blur = sw_blur.get_parent()
+
+        def update_visibility(selected_mode):
+            is_notch = (selected_mode == "notch")
+            is_pill = (selected_mode == "pill")
+            is_minimal = (selected_mode == "minimal")
+            is_nucleus = (selected_mode == "nucleus")
+
+            # Screen Position: Notch and Pill
+            row_pos.set_visible(is_notch or is_pill)
+
+            # Bar Height: Notch and Pill
+            row_h.set_visible(is_notch or is_pill)
+
+            # Notch Ear Radius: strictly Notch
+            row_ear.set_visible(is_notch)
+
+            # Notch Corner Radius: strictly Notch
+            row_bot.set_visible(is_notch)
+
+            # Background Opacity: Notch, Pill, and Minimal
+            row_op.set_visible(is_notch or is_pill or is_minimal)
+
+            # Frosted Glass Blur: Notch, Pill, and Minimal
+            row_blur.set_visible(is_notch or is_pill or is_minimal)
+
+            # Vanish Control Center: ONLY in Vanish Mode
+            row_vanish_cc.set_visible(is_nucleus)
+
+            # Battery Layout: Notch, Pill, Minimal, and in Vanish only if Control Center is enabled
+            if is_nucleus:
+                has_cc = bool(self.bar_mode.get("vanishControlCenter", False) or self.bar_mode.get("nucleus", {}).get("controlCenter", False))
+                row_bat.set_visible(has_cc)
+            else:
+                row_bat.set_visible(True)
+
+        def on_mode_selected(idx):
+            mode_id = mode_ids[idx]
+            self.bar_mode["mode"] = mode_id
+            self.bar_mode["islandStyle"] = mode_id
+            self.mark_dirty()
+            update_visibility(mode_id)
+
+        update_visibility(cur_mode)
 
         page.append(card)
         return page
@@ -1789,6 +1854,15 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             self.bar_mode["nucleus"]["transition"] = bool(act)
             self.mark_dirty()
         self.add_switch_row(card1, "Mode-Switch Transition", "Play fullscreen transition sequence when entering Vanish", trans_act, on_trans_toggle)
+
+        van_cc_act = bool(self.bar_mode.get("vanishControlCenter", False) or nuc_cfg.get("controlCenter", False))
+        def on_van_cc_toggle(act):
+            self.bar_mode["vanishControlCenter"] = bool(act)
+            if "nucleus" not in self.bar_mode or not isinstance(self.bar_mode["nucleus"], dict):
+                self.bar_mode["nucleus"] = {}
+            self.bar_mode["nucleus"]["controlCenter"] = bool(act)
+            self.mark_dirty()
+        self.add_switch_row(card1, "Control Center", "Show floating Control Center button in Vanish Mode", van_cc_act, on_van_cc_toggle)
 
         anim_options = ["Quantum Collapse (~2.4s)", "Instant Crossfade (300ms)"]
         anim_ids = ["quantum", "crossfade"]
@@ -2211,11 +2285,19 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         page = self.create_page_container(icon, title, subtitle)
         card = self.create_settings_card()
 
-        styles = ["Titan 3D Pop", "Stacked Dual", "Nordic Monospace", "Valley Modern"]
+        styles = [
+            "Titan 3D Pop",
+            "Stacked Dual",
+            "Nordic Monospace",
+            "Cyber HUD (Orbitron)",
+            "Split Glass Pill",
+            "Aero Minimal Pill"
+        ]
+        style_ids = ["titan", "stacked", "mono_glow", "orbitron", "split_pill", "minimal_pill"]
         cur_s = self.clock_cfg.get("style", "titan")
-        idx = {"titan": 0, "stacked": 1, "mono_glow": 2, "valley": 3}.get(cur_s, 0)
+        idx = style_ids.index(cur_s) if cur_s in style_ids else 0
         def on_s_changed(sel):
-            self.clock_cfg["style"] = ["titan", "stacked", "mono_glow", "valley"][sel]
+            self.clock_cfg["style"] = style_ids[sel]
             self.mark_dirty()
         self.add_combo_row(card, "Typography Style", "Visual appearance of center island clock", styles, idx, on_s_changed)
 
@@ -2677,7 +2759,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         def on_bat(act):
             self.control_cfg["showBatteryPercent"] = act
             self.mark_dirty()
-        self.add_switch_row(card, "Show Battery Percentage", "Display text next to battery icon in notch", bat_act, on_bat)
+        self.add_switch_row(card, "Show Battery Percentage", "Display battery percentage text in the Control Center fluid card", bat_act, on_bat)
 
         page.append(card)
         return page
@@ -2701,9 +2783,10 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             self.mark_dirty()
         self.add_slider_row(card, "Background Blur", "Amount of backdrop blur when locked", 0, 10, 1, blur_r, "passes", on_blur_r)
 
-        media_act = bool(self.lock_cfg.get("showMedia", True))
+        media_act = bool(self.lock_cfg.get("showMedia", self.lock_cfg.get("mediaOverlay", True)))
         def on_media(act):
             self.lock_cfg["showMedia"] = act
+            self.lock_cfg["mediaOverlay"] = act
             self.mark_dirty()
         self.add_switch_row(card, "Media Player on Lock Screen", "Show currently playing track when locked", media_act, on_media)
 
@@ -3144,15 +3227,40 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             write_json(hypr_bar_mode, self.bar_mode)
 
         write_json(BAR_POS_PATH, self.bar_pos)
+        hypr_bar_pos = os.path.expanduser("~/.config/hypr/carbon-bar-position.json")
+        if hypr_bar_pos != BAR_POS_PATH:
+            write_json(hypr_bar_pos, self.bar_pos)
+
         write_json(CLOCK_STYLE_PATH, self.clock_cfg)
+        hypr_clock = os.path.expanduser("~/.config/hypr/carbon-clock-style.json")
+        if hypr_clock != CLOCK_STYLE_PATH:
+            write_json(hypr_clock, self.clock_cfg)
+
         write_json(MOTION_CONFIG_PATH, self.motion_cfg)
+        hypr_motion = os.path.expanduser("~/.config/hypr/carbon-motion.json")
+        if hypr_motion != MOTION_CONFIG_PATH:
+            write_json(hypr_motion, self.motion_cfg)
+
         write_json(LAUNCHER_CONFIG_PATH, self.launcher_cfg)
         hypr_launcher = os.path.expanduser("~/.config/hypr/carbon-launcher.json")
         if hypr_launcher != LAUNCHER_CONFIG_PATH:
             write_json(hypr_launcher, self.launcher_cfg)
+
         write_json(NOTIF_CONFIG_PATH, self.notif_cfg)
+        hypr_notif = os.path.expanduser("~/.config/hypr/carbon-notifications.json")
+        if hypr_notif != NOTIF_CONFIG_PATH:
+            write_json(hypr_notif, self.notif_cfg)
+
         write_json(CONTROL_CONFIG_PATH, self.control_cfg)
+        hypr_ctrl = os.path.expanduser("~/.config/hypr/carbon-control-center.json")
+        if hypr_ctrl != CONTROL_CONFIG_PATH:
+            write_json(hypr_ctrl, self.control_cfg)
+
         write_json(LOCKSCREEN_CONFIG_PATH, self.lock_cfg)
+        hypr_lock = os.path.expanduser("~/.config/hypr/carbon-lockscreen.json")
+        if hypr_lock != LOCKSCREEN_CONFIG_PATH:
+            write_json(hypr_lock, self.lock_cfg)
+
         write_json(VANISH_SHORTCUTS_PATH, self.vanish_shortcuts)
         generate_vanish_keybinds_conf(self.vanish_shortcuts)
 
@@ -3182,16 +3290,22 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
 
         # 4. Save lockscreen hyprlock.conf if blurRadius changed
         if "blurRadius" in self.lock_cfg:
-            h_path = os.path.expanduser("~/.config/hypr/hyprlock.conf")
-            if os.path.exists(h_path):
-                try:
-                    with open(h_path, "r", encoding="utf-8") as f:
-                        c = f.read()
-                    c = re.sub(r"(blur_passes\s*=\s*)\d+", rf"\g<1>{int(self.lock_cfg['blurRadius'])}", c)
-                    with open(h_path, "w", encoding="utf-8") as f:
-                        f.write(c)
-                except Exception:
-                    pass
+            blur_val = int(self.lock_cfg["blurRadius"])
+            hyprlock_paths = [
+                os.path.expanduser("~/.config/hypr/hyprlock.conf"),
+                os.path.expanduser("~/.config/carbon/hyprlock.conf"),
+                os.path.expanduser("~/carbon-shell/hypr/hyprlock.conf"),
+            ]
+            for h_path in hyprlock_paths:
+                if os.path.exists(h_path):
+                    try:
+                        with open(h_path, "r", encoding="utf-8") as f:
+                            c = f.read()
+                        c = re.sub(r"(blur_passes\s*=\s*)\d+", rf"\g<1>{blur_val}", c)
+                        with open(h_path, "w", encoding="utf-8") as f:
+                            f.write(c)
+                    except Exception:
+                        pass
 
         # 5. Apply layer blur if pending
         if self.pending_layer_blur is not None:
@@ -3277,7 +3391,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
 
 def main():
     app = CarbonConfigApp()
-    return app.run(sys.argv)
+    return app.run([sys.argv[0]])
 
 if __name__ == "__main__":
     sys.exit(main())

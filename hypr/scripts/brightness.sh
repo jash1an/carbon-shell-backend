@@ -4,7 +4,12 @@
 
 iDIR="$HOME/.config/swaync/icons"
 notification_timeout=1000
-step=10  # INCREASE/DECREASE BY THIS VALUE
+step=5  # INCREASE/DECREASE BY THIS VALUE
+cfg="${CARBON_CONFIG_DIR:-$HOME/.config/carbon}/carbon-control-center.json"
+[ -f "$cfg" ] || cfg="$HOME/.config/hypr/carbon-control-center.json"
+if [ -f "$cfg" ]; then
+    step=$(python3 -c "import json; print(json.load(open('$cfg')).get('brightnessStep', 5))" 2>/dev/null || echo 5)
+fi
 
 # Get brightness
 get_backlight() {

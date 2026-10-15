@@ -29,6 +29,8 @@ Item {
     signal toggleControls()
 
     readonly property bool hudActive: HudService.active
+    property bool showVinylDisc: true
+    property bool showEqualizer: true
     implicitHeight: 34
     implicitWidth: (hudActive ? dynamicPill.implicitWidth : rowLayout.implicitWidth) + (showBackground ? 20 : 0)
 
@@ -175,6 +177,7 @@ Item {
                 border.width: 1.5
                 anchors.verticalCenter: parent.verticalCenter
                 clip: true
+                visible: root.showVinylDisc
 
                 Image {
                     id: albumArtImg
@@ -205,7 +208,7 @@ Item {
                 id: eqWaveform
                 spacing: 2
                 anchors.verticalCenter: parent.verticalCenter
-                visible: root.hasTrack
+                visible: root.showEqualizer && root.hasTrack
 
                 Repeater {
                     model: [

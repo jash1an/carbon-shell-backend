@@ -2,6 +2,7 @@ pragma Singleton
 
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Services.Notifications
 import "../Singletons"
 
@@ -40,6 +41,41 @@ Singleton {
 
     function toggleDnd() {
         root.dnd = !root.dnd
+    }
+
+    property bool notificationsEnabled: true
+    property int toastTimeoutMs: 5000
+
+    FileView {
+        id: notifConfigFile
+        path: (Quickshell.env("CARBON_CONFIG_DIR") || ((Quickshell.env("HOME") || "") + "/.config/carbon")) + "/carbon-notifications.json"
+        watchChanges: true
+        blockLoading: true
+        printErrors: false
+        onLoaded: root.reloadNotifConfig()
+        onFileChanged: root.reloadNotifConfig()
+    }
+
+    FileView {
+        id: hyprNotifConfigFile
+        path: ((Quickshell.env("HOME") || "") + "/.config/hypr/carbon-notifications.json")
+        watchChanges: true
+        blockLoading: true
+        printErrors: false
+        onLoaded: root.reloadNotifConfig()
+        onFileChanged: root.reloadNotifConfig()
+    }
+
+    function reloadNotifConfig() {
+        try {
+            var txt = notifConfigFile.text()
+            if (!txt || txt.trim().length === 0) txt = hyprNotifConfigFile.text()
+            if (!txt || txt.trim().length === 0) return
+            var d = JSON.parse(txt)
+            if (d.enabled !== undefined) root.notificationsEnabled = Boolean(d.enabled)
+            if (d.dnd !== undefined && Boolean(d.dnd) !== root.dnd) root.dnd = Boolean(d.dnd)
+            if (d.timeout !== undefined) root.toastTimeoutMs = Math.max(1000, (parseInt(d.timeout) || 5) * 1000)
+        } catch (e) {}
     }
 
     // List of notification objects stored in memory:

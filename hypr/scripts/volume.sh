@@ -39,25 +39,37 @@ notify_user() {
     fi
 }
 
+get_volume_step() {
+    local cfg="${CARBON_CONFIG_DIR:-$HOME/.config/carbon}/carbon-control-center.json"
+    [ -f "$cfg" ] || cfg="$HOME/.config/hypr/carbon-control-center.json"
+    if [ -f "$cfg" ]; then
+        python3 -c "import json; print(json.load(open('$cfg')).get('volumeStep', 5))" 2>/dev/null || echo 5
+    else
+        echo 5
+    fi
+}
+
 # Increase Volume
 inc_volume() {
+    local step=$(get_volume_step)
     if [ -S /tmp/carbon-shell.sock ]; then
         ~/.config/carbon/scripts/carbon-ipc.sh "controls volume up"
     elif [ "$(pamixer --get-mute)" == "true" ]; then
         toggle_mute
     else
-        pamixer -i 5 --allow-boost --set-limit 150 && notify_user
+        pamixer -i "$step" --allow-boost --set-limit 150 && notify_user
     fi
 }
 
 # Decrease Volume
 dec_volume() {
+    local step=$(get_volume_step)
     if [ -S /tmp/carbon-shell.sock ]; then
         ~/.config/carbon/scripts/carbon-ipc.sh "controls volume down"
     elif [ "$(pamixer --get-mute)" == "true" ]; then
         toggle_mute
     else
-        pamixer -d 5 && notify_user
+        pamixer -d "$step" && notify_user
     fi
 }
 
