@@ -16,6 +16,11 @@ import subprocess
 import threading
 from datetime import datetime, date
 
+# Ensure user site-packages are accessible across environments
+user_site = os.path.expanduser(f"~/.local/lib/python{sys.version_info.major}.{sys.version_info.minor}/site-packages")
+if os.path.exists(user_site) and user_site not in sys.path:
+    sys.path.insert(0, user_site)
+
 # Ensure instant GTK4 launch without Vulkan GPU enumeration stalls
 os.environ.setdefault("GSK_RENDERER", "cairo")
 
@@ -25,18 +30,68 @@ gi.require_version("Adw", "1")
 gi.require_version("Pango", "1.0")
 gi.require_version("PangoCairo", "1.0")
 from gi.repository import Gtk, Adw, Gio, GLib, Pango, Gdk, PangoCairo
-import cairo
 
-POMO_STATE_PATH = os.path.expanduser("~/.config/hypr/carbon-pomodoro.json")
-TODOS_PATH = os.path.expanduser("~/.config/hypr/carbon-todos.json")
-THEME_JSON_PATH = os.path.expanduser("~/.config/hypr/theme.json")
+try:
+    import cairo
+except ImportError:
+    try:
+        from gi.repository import cairo
+    except ImportError as e:
+        subprocess.run([
+            "notify-send", "-a", "Carbon Pomodoro", "-u", "critical",
+            "Missing Cairo Dependency",
+            "python-cairo is required to render the Carbon Pomodoro progress ring."
+        ], check=False)
+        raise e
+
+
+def _resolve_config_dirs():
+    dirs = []
+    env_dir = os.environ.get("CARBON_CONFIG_DIR")
+    if env_dir:
+        dirs.append(os.path.abspath(os.path.expanduser(env_dir)))
+    for p in ["~/.config/carbon", "~/.config/hypr"]:
+        full = os.path.abspath(os.path.expanduser(p))
+        if full not in dirs:
+            dirs.append(full)
+    return dirs
+
+
+CONFIG_DIRS = _resolve_config_dirs()
+
+
+def get_read_path(filename):
+    for d in CONFIG_DIRS:
+        p = os.path.join(d, filename)
+        if os.path.exists(p):
+            return p
+    for d in CONFIG_DIRS:
+        if os.path.isdir(d):
+            return os.path.join(d, filename)
+    return os.path.join(CONFIG_DIRS[0], filename)
+
+
+def get_write_paths(filename):
+    paths = []
+    for d in CONFIG_DIRS:
+        if os.path.isdir(d):
+            paths.append(os.path.join(d, filename))
+    if not paths:
+        paths.append(os.path.expanduser(f"~/.config/hypr/{filename}"))
+    return paths
+
+
+POMO_STATE_PATH = get_read_path("carbon-pomodoro.json")
+TODOS_PATH = get_read_path("carbon-todos.json")
+THEME_JSON_PATH = get_read_path("theme.json")
 
 
 def load_theme():
     theme = {}
-    if os.path.exists(THEME_JSON_PATH):
+    theme_path = get_read_path("theme.json")
+    if os.path.exists(theme_path):
         try:
-            with open(THEME_JSON_PATH, "r", encoding="utf-8") as f:
+            with open(theme_path, "r", encoding="utf-8") as f:
                 theme = json.load(f)
         except Exception:
             pass
@@ -832,7 +887,8 @@ class PomodoroWindow(Adw.ApplicationWindow):
         # Re-render UI from initial state
         self.render_all(skip_tasks=True)
 
-        self.last_saved_mtime = 0.0
+        read_path = get_read_path("carbon-pomodoro.json")
+        self.last_saved_mtime = os.path.getmtime(read_path) if os.path.exists(read_path) else 0.0
 
         # Timer tick handler (1 second)
         GLib.timeout_add(1000, self.on_second_tick)
@@ -889,10 +945,11 @@ class PomodoroWindow(Adw.ApplicationWindow):
             "targetSessions": 8,
             "history": []
         }
-        if os.path.exists(POMO_STATE_PATH):
+        read_path = get_read_path("carbon-pomodoro.json")
+        if os.path.exists(read_path):
             try:
-                self.last_saved_mtime = os.path.getmtime(POMO_STATE_PATH)
-                with open(POMO_STATE_PATH, "r", encoding="utf-8") as f:
+                self.last_saved_mtime = os.path.getmtime(read_path)
+                with open(read_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     default_state.update(data)
             except Exception:
@@ -907,28 +964,36 @@ class PomodoroWindow(Adw.ApplicationWindow):
         return default_state
 
     def save_state(self):
-        try:
-            with open(POMO_STATE_PATH, "w", encoding="utf-8") as f:
-                json.dump(self.state, f, indent=2)
-            self.last_saved_mtime = os.path.getmtime(POMO_STATE_PATH)
-        except Exception as e:
-            print("Error saving pomodoro state:", e)
+        latest_mtime = 0.0
+        for p in get_write_paths("carbon-pomodoro.json"):
+            try:
+                os.makedirs(os.path.dirname(p), exist_ok=True)
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump(self.state, f, indent=2)
+                latest_mtime = max(latest_mtime, os.path.getmtime(p))
+            except Exception as e:
+                print(f"Error saving pomodoro state to {p}:", e)
+        if latest_mtime > 0.0:
+            self.last_saved_mtime = latest_mtime
 
     def load_todos(self):
-        if os.path.exists(TODOS_PATH):
+        read_path = get_read_path("carbon-todos.json")
+        if os.path.exists(read_path):
             try:
-                with open(TODOS_PATH, "r", encoding="utf-8") as f:
+                with open(read_path, "r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception:
                 pass
         return []
 
     def save_todos(self):
-        try:
-            with open(TODOS_PATH, "w", encoding="utf-8") as f:
-                json.dump(self.todos, f, indent=2)
-        except Exception as e:
-            print("Error saving todos:", e)
+        for p in get_write_paths("carbon-todos.json"):
+            try:
+                os.makedirs(os.path.dirname(p), exist_ok=True)
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump(self.todos, f, indent=2)
+            except Exception as e:
+                print(f"Error saving todos to {p}:", e)
 
     # ── UI Rendering ──────────────────────────────────────────────────────────
     def fmt_time(self, s):
@@ -1158,10 +1223,11 @@ class PomodoroWindow(Adw.ApplicationWindow):
     def on_second_tick(self):
         # Check if external source (e.g. TimerPane in Carbon Shell) modified the state
         try:
-            if os.path.exists(POMO_STATE_PATH):
-                mtime = os.path.getmtime(POMO_STATE_PATH)
+            read_path = get_read_path("carbon-pomodoro.json")
+            if os.path.exists(read_path):
+                mtime = os.path.getmtime(read_path)
                 if mtime > getattr(self, "last_saved_mtime", 0.0) + 0.1:
-                    with open(POMO_STATE_PATH, "r", encoding="utf-8") as f:
+                    with open(read_path, "r", encoding="utf-8") as f:
                         external = json.load(f)
                     self.last_saved_mtime = mtime
                     self.state.update(external)
