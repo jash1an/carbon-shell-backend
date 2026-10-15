@@ -3654,6 +3654,16 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             else:
                 subprocess.run(["sh", ipc_script, f"set-bar-mode {mode_id}"], check=False)
 
+        # Waybar lifecycle for pill mode
+        if mode_id == "pill":
+            waybar_launch = os.path.expanduser("~/.config/waybar/launch.sh")
+            if os.path.exists(waybar_launch):
+                subprocess.Popen(["bash", waybar_launch])
+        else:
+            subprocess.run(["pkill", "-x", "waybar"], check=False)
+            subprocess.run(["pkill", "-x", "waybar-bin"], check=False)
+            subprocess.run(["pkill", "-x", "swaync"], check=False)
+
         # 7. Reload Hyprland & Carbon Quickshell
         try:
             subprocess.run(["hyprctl", "reload"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

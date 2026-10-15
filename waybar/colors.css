@@ -1,0 +1,11 @@
+@define-color background #121318;
+@define-color surface #121318;
+@define-color surface-container #1e1f25;
+@define-color text #e2e2e9;
+@define-color primary #aec6ff;
+@define-color secondary #bfc6dc;
+@define-color tertiary #dfbbde;
+@define-color primary-container #2d4678;
+@define-color on-primary #122f60;
+@define-color border #44474f;
+@define-color shadow rgba(0, 0, 0, 0.4);

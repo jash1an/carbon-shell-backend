@@ -703,8 +703,14 @@ ShellRoot {
     property bool workspaceOsdActive: false
     property var nucleusRestingSpin: "hover"
     property bool screenshotFreezeActive: false
-    property string screenshotFreezePath: ""
-    onBarModeChanged: console.log("[BAR-MODE CHANGED] New root.barMode is now: " + root.barMode)
+    onBarModeChanged: {
+        console.log("[BAR-MODE CHANGED] New root.barMode is now: " + root.barMode)
+        if (root.barMode === "pill") {
+            Quickshell.execDetached(["bash", root.home + "/.config/waybar/launch.sh"])
+        } else {
+            Quickshell.execDetached(["bash", "-c", "pkill -x waybar; pkill -x waybar-bin; pkill -x swaync"])
+        }
+    }
 
     FileView {
         id: barModeFile
@@ -903,6 +909,7 @@ ShellRoot {
         if (root.mainBarEdge === "bottom") return 0
         if (root.barMode === "notch") return root.notchHeight + 4
         if (root.barMode === "pill") return root.pillHeight + 10
+        if (root.barMode === "minimal") return (root.islandStyle === "notch" ? root.notchHeight + 6 : root.pillHeight + 16)
         return 0
     }
 
@@ -910,6 +917,7 @@ ShellRoot {
         if (root.mainBarEdge !== "bottom") return 0
         if (root.barMode === "notch") return root.notchHeight + 4
         if (root.barMode === "pill") return root.pillHeight + 10
+        if (root.barMode === "minimal") return (root.islandStyle === "notch" ? root.notchHeight + 6 : root.pillHeight + 16)
         return 0
     }
 
@@ -994,6 +1002,11 @@ ShellRoot {
         reloadBarMode()
         applyBarPos(barPosFile.text())
         reloadControlCenterConfig()
+        if (root.barMode === "pill") {
+            Quickshell.execDetached(["bash", root.home + "/.config/waybar/launch.sh"])
+        } else {
+            Quickshell.execDetached(["bash", "-c", "pkill -x waybar; pkill -x waybar-bin; pkill -x swaync"])
+        }
     }
 
     property real volumeStepVal: 0.05
@@ -1821,8 +1834,8 @@ ShellRoot {
             color: "transparent"
             WlrLayershell.namespace: "carbon-bar-pill-full"
             WlrLayershell.layer: WlrLayer.Top
-            exclusionMode: root.barMode === "pill" ? ExclusionMode.Normal : ExclusionMode.Ignore
-            exclusiveZone: root.barMode === "pill" ? Math.max(0, root.pillHeight + (root.mainBarEdge !== "bottom" ? 8 : 0) + root.pillAppGap) : 0
+            exclusionMode: ExclusionMode.Ignore
+            exclusiveZone: 0
             aboveWindows: true
             anchors {
                 top: root.mainBarEdge !== "bottom"
@@ -1838,7 +1851,7 @@ ShellRoot {
             }
 
             implicitHeight: root.pillHeight
-            visible: root.barMode === "pill" && root.mainBarEdge !== "left" && root.mainBarEdge !== "right"
+            visible: false
 
             Loader {
                 id: pillFullBarLoader
@@ -2208,8 +2221,6 @@ ShellRoot {
                 onCloseSmallMusic: smallMusicLeaveTimer.restart()
                 onToggleSmallMusic: root.toggleSmallMusic()
                 onSwitchIslandStyle: (s) => root.switchIslandStyle(s)
-                onConvertToPill: root.switchBarMode("pill")
-                onConvertToNotch: root.switchBarMode("notch")
                 onToggleSpotlight: root.toggleDefaultLauncher()
                 onOpenSpotlight: root.toggleDefaultLauncher()
             }
@@ -3920,14 +3931,17 @@ ShellRoot {
                 anchors {
                     top: root.controlsCorner.startsWith("top") ? parent.top : undefined
                     bottom: root.controlsCorner.startsWith("bottom") ? parent.bottom : undefined
-                    left: root.controlsCorner.endsWith("left") ? parent.left : undefined
-                    right: root.controlsCorner.endsWith("right") ? parent.right : undefined
+                    left: (root.barMode === "minimal") ? undefined : (root.controlsCorner.endsWith("left") ? parent.left : undefined)
+                    right: (root.barMode === "minimal") ? undefined : (root.controlsCorner.endsWith("right") ? parent.right : undefined)
+                    horizontalCenter: (root.barMode === "minimal") ? parent.horizontalCenter : undefined
                     topMargin: root.controlsCorner.startsWith("top") ? (root.popupTopMargin > 0 ? root.popupTopMargin + 6 : 14) : 0
                     bottomMargin: root.controlsCorner.startsWith("bottom") ? (root.popupBottomMargin > 0 ? root.popupBottomMargin + 6 : 14) : 0
-                    leftMargin: root.controlsCorner.endsWith("left") ? 14 : 0
-                    rightMargin: root.controlsCorner.endsWith("right") ? 14 : 0
+                    leftMargin: (root.barMode === "minimal") ? 0 : (root.controlsCorner.endsWith("left") ? 14 : 0)
+                    rightMargin: (root.barMode === "minimal") ? 0 : (root.controlsCorner.endsWith("right") ? 14 : 0)
                 }
-                corner: root.controlsCorner
+                corner: (root.barMode === "minimal")
+                        ? (root.mainBarEdge === "bottom" ? "bottom_center" : "top_center")
+                        : root.controlsCorner
                 width: controlsItem.implicitWidth
                 height: controlsItem.implicitHeight
                 open: root.controlsVisible
