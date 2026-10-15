@@ -743,7 +743,6 @@ ShellRoot {
     property bool islandPersistent: true
     property bool islandHovered: false
     property string batteryLayout: "horizontal"
-    property bool vanishControlCenter: false
     property bool showVinylDisc: true
     property bool showEqualizer: true
     property bool autoExpandOnTrack: false
@@ -803,13 +802,6 @@ ShellRoot {
                 }
                 if (d.batteryLayout) {
                     root.batteryLayout = String(d.batteryLayout).toLowerCase()
-                }
-                if (d.vanishControlCenter !== undefined) {
-                    root.vanishControlCenter = Boolean(d.vanishControlCenter)
-                } else if (d.nucleus && d.nucleus.controlCenter !== undefined) {
-                    root.vanishControlCenter = Boolean(d.nucleus.controlCenter)
-                } else {
-                    root.vanishControlCenter = false
                 }
                 if (root.barMode === "pill" || root.barMode === "minimal") {
                     if (root.mainBarEdge !== "top" && root.mainBarEdge !== "bottom") {
@@ -1078,13 +1070,13 @@ ShellRoot {
     property bool controlsPinned: false
 
     function openControls() {
-        if (root.barMode === "nucleus" && !root.vanishControlCenter) return
+        if (root.barMode === "nucleus") return
         root.closeAllPopupsExcept("controls")
         root.controlsPinned = true
         root.controlsVisible = true
     }
     function openControlsHover() {
-        if (root.barMode === "nucleus" && !root.vanishControlCenter) return
+        if (root.barMode === "nucleus") return
         root.closeAllPopupsExcept("controls")
         root.controlsPinned = false
         root.controlsVisible = true
@@ -1092,7 +1084,7 @@ ShellRoot {
     }
     function closeControls() { root.controlsVisible = false; root.controlsPinned = false }
     function toggleControls() {
-        if (root.barMode === "nucleus" && !root.vanishControlCenter) {
+        if (root.barMode === "nucleus") {
             root.closeControls()
             return
         }
@@ -2960,65 +2952,6 @@ ShellRoot {
         }
     }
 
-    /* ── Vanish Mode Floating Control Center Button ── */
-    Variants {
-        model: Quickshell.screens
-
-        PanelWindow {
-            id: vanishControlsWindow
-            required property var modelData
-            screen: modelData
-            color: "transparent"
-            WlrLayershell.namespace: "carbon-vanish-controls"
-            WlrLayershell.layer: WlrLayer.Top
-            exclusionMode: ExclusionMode.Ignore
-            aboveWindows: false
-            anchors {
-                top: true
-                right: true
-            }
-            margins {
-                top: 14
-                right: 14
-            }
-            implicitWidth: 36
-            implicitHeight: 36
-            visible: root.barMode === "nucleus" && root.vanishControlCenter && !root.nucleusHubItem.hubOpen
-
-            Item {
-                anchors.fill: parent
-
-                Rectangle {
-                    id: vanishControlsBtn
-                    anchors.fill: parent
-                    radius: 18
-                    color: Theme.bg
-                    border.width: 1
-                    border.color: (vanishControlsMouse.containsMouse || root.controlsVisible) ? Theme.accent : Theme.outline
-
-                    Behavior on border.color { ColorAnimation { duration: 150 } }
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "tune"
-                        font.family: "Material Symbols Outlined"
-                        font.pixelSize: 18
-                        color: (vanishControlsMouse.containsMouse || root.controlsVisible) ? Theme.accentLit : Theme.fg
-                        Behavior on color { ColorAnimation { duration: 150 } }
-                    }
-
-                    MouseArea {
-                        id: vanishControlsMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.toggleControls()
-                    }
-                }
-            }
-        }
-    }
-
     /* ── Nucleus Mode-Switch Transition Overlay Window (~2.3s) ── */
     Variants {
         model: root.nucleusTransitionActive ? Quickshell.screens : []
@@ -3957,7 +3890,7 @@ ShellRoot {
             right: true
         }
 
-        visible: (root.controlsVisible || controlsItem.animatingOut)
+        visible: (root.controlsVisible || controlsItem.animatingOut) && root.barMode !== "nucleus"
 
         Item {
             anchors.fill: parent

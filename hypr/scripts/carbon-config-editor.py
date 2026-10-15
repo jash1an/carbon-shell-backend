@@ -62,6 +62,24 @@ THEME_PATH = os.path.join(CONFIG_DIR, "theme.json")
 WALLPAPER_SOURCE_PATH = os.path.join(CONFIG_DIR, "carbon-wallpaper-source.json")
 BLUR_EXCEPTIONS_JSON = os.path.join(CONFIG_DIR, "carbon-blur-exceptions.json")
 BLUR_EXCEPTIONS_CONF = os.path.join(CONFIG_DIR, "blur-exceptions.conf")
+POWER_CONFIG_PATH = os.path.join(CONFIG_DIR, "carbon-power.json")
+POWER_CONF_PATH = os.path.join(CONFIG_DIR, "power.conf")
+HYPRIDLE_CONF_PATH = os.path.join(CONFIG_DIR, "hypridle.conf")
+
+DEFAULT_POWER_CONFIG = {
+    "profile": "balanced",
+    "powerButtonAction": "poweroff",
+    "sleepButtonAction": "suspend",
+    "lidActionBattery": "suspend",
+    "lidActionAC": "suspend",
+    "sleepMode": "suspend",
+    "hibernationEnabled": True,
+    "dimEnabled": True,
+    "dimTimeout": 180,
+    "dimBrightnessPercent": 20,
+    "screenOffTimeout": 300,
+    "autoSuspendTimeout": 1800,
+}
 
 DEFAULT_VANISH_SHORTCUTS = {
     "hub_toggle": {
@@ -520,6 +538,125 @@ def write_blur_exceptions_config(exceptions):
         except Exception as e:
             pass
 
+def generate_hypridle_conf(power_cfg):
+    dim_enabled = bool(power_cfg.get("dimEnabled", True))
+    dim_timeout = int(power_cfg.get("dimTimeout", 180))
+    dim_pct = int(power_cfg.get("dimBrightnessPercent", 20))
+    screen_off_timeout = int(power_cfg.get("screenOffTimeout", 300))
+    auto_suspend_timeout = int(power_cfg.get("autoSuspendTimeout", 1800))
+
+    lines = [
+        "# ==============================================================================",
+        "# Carbon Shell — Hypridle Configuration",
+        "# Managed by Carbon Settings App (carbon-config-editor)",
+        "# ==============================================================================",
+        "",
+        "general {",
+        "    lock_cmd = ~/.config/hypr/scripts/hyprlock.sh",
+        "    before_sleep_cmd = loginctl lock-session",
+        "    after_sleep_cmd = hyprctl dispatch dpms on",
+        "}",
+        "",
+    ]
+
+    if dim_enabled and dim_timeout > 0:
+        lines.extend([
+            "# === MONITOR BACKLIGHT DIM ===",
+            "listener {",
+            f"    timeout = {dim_timeout}",
+            f"    on-timeout = brightnessctl -s set {dim_pct}%",
+            "    on-resume = brightnessctl -r",
+            "}",
+            "",
+        ])
+
+    if screen_off_timeout > 0:
+        lines.extend([
+            "# === TURN OFF SCREEN ===",
+            "listener {",
+            f"    timeout = {screen_off_timeout}",
+            "    on-timeout = hyprctl dispatch dpms off",
+            "    on-resume = hyprctl dispatch dpms on && brightnessctl -r",
+            "}",
+            "",
+        ])
+
+    if auto_suspend_timeout > 0:
+        lines.extend([
+            "# === AUTO SUSPEND ===",
+            "listener {",
+            f"    timeout = {auto_suspend_timeout}",
+            "    on-timeout = systemctl suspend",
+            "}",
+            "",
+        ])
+
+    return "\n".join(lines) + "\n"
+
+def write_power_configs(power_cfg):
+    targets_json = [
+        POWER_CONFIG_PATH,
+        os.path.expanduser("~/.config/hypr/carbon-power.json"),
+        os.path.expanduser("~/carbon-shell/hypr/carbon-power.json"),
+    ]
+    for t in targets_json:
+        try:
+            write_json(t, power_cfg)
+        except Exception:
+            pass
+
+    power_conf_content = (
+        "# ==============================================================================\n"
+        "# Carbon Shell — Power, Button & Lid Event Bindings\n"
+        "# Managed by Carbon Settings App (carbon-config-editor)\n"
+        "# ==============================================================================\n\n"
+        "# Physical Power & Sleep Buttons\n"
+        "bind = , XF86PowerOff, exec, ~/.config/carbon/scripts/carbon-power-handler.sh power_button\n"
+        "bind = , XF86Sleep, exec, ~/.config/carbon/scripts/carbon-power-handler.sh sleep_button\n\n"
+        "# Laptop Lid Switch Events (switch:on = closed, switch:off = opened)\n"
+        "bindl = , switch:on:Lid Switch, exec, ~/.config/carbon/scripts/carbon-power-handler.sh lid_close\n"
+        "bindl = , switch:off:Lid Switch, exec, ~/.config/carbon/scripts/carbon-power-handler.sh lid_open\n"
+    )
+    targets_conf = [
+        POWER_CONF_PATH,
+        os.path.expanduser("~/.config/hypr/power.conf"),
+        os.path.expanduser("~/carbon-shell/hypr/power.conf"),
+    ]
+    for t in targets_conf:
+        try:
+            os.makedirs(os.path.dirname(t), exist_ok=True)
+            with open(t, "w", encoding="utf-8") as f:
+                f.write(power_conf_content)
+        except Exception:
+            pass
+
+    hypridle_content = generate_hypridle_conf(power_cfg)
+    targets_idle = [
+        HYPRIDLE_CONF_PATH,
+        os.path.expanduser("~/.config/hypr/hypridle.conf"),
+        os.path.expanduser("~/carbon-shell/hypr/hypridle.conf"),
+    ]
+    for t in targets_idle:
+        try:
+            os.makedirs(os.path.dirname(t), exist_ok=True)
+            with open(t, "w", encoding="utf-8") as f:
+                f.write(hypridle_content)
+        except Exception:
+            pass
+
+    profile = power_cfg.get("profile", "balanced")
+    pwr_script = os.path.join(CONFIG_DIR, "scripts/carbon-power-profile.sh")
+    if not os.path.exists(pwr_script):
+        pwr_script = os.path.expanduser("~/.config/hypr/scripts/carbon-power-profile.sh")
+    if os.path.exists(pwr_script):
+        subprocess.run(["bash", pwr_script, "set", profile], check=False)
+
+    try:
+        subprocess.run(["pkill", "-x", "hypridle"], check=False)
+        subprocess.Popen(["hypridle", "-c", HYPRIDLE_CONF_PATH], start_new_session=True)
+    except Exception:
+        pass
+
 def get_device_applications():
     apps = []
     seen = set()
@@ -805,6 +942,23 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         })
         self.var_data = read_variables()
         self.looknfeel_cfg = read_looknfeel_config()
+        self.power_cfg = read_json(POWER_CONFIG_PATH, DEFAULT_POWER_CONFIG.copy())
+        if not isinstance(self.power_cfg, dict):
+            self.power_cfg = DEFAULT_POWER_CONFIG.copy()
+        for k, v in DEFAULT_POWER_CONFIG.items():
+            if k not in self.power_cfg:
+                self.power_cfg[k] = v
+
+        profile_file = os.path.join(CONFIG_DIR, "power-profile")
+        if os.path.exists(profile_file):
+            try:
+                with open(profile_file, "r", encoding="utf-8") as f:
+                    cur_p = f.read().strip()
+                    if cur_p in ("power-saver", "balanced", "performance", "ultra"):
+                        self.power_cfg["profile"] = cur_p
+            except Exception:
+                pass
+
         self.blur_exceptions = read_json(BLUR_EXCEPTIONS_JSON, [])
         if not isinstance(self.blur_exceptions, list):
             self.blur_exceptions = []
@@ -1175,6 +1329,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             ("launcher", "Launcher", "system-search-symbolic", "Launcher", "Spotlight search, application launcher, and quick actions.", self.build_launcher_page),
             ("notifications", "Notifications", "preferences-system-notifications-symbolic", "Notifications", "Banner popups, notification badges, and Do Not Disturb.", self.build_notifications_page),
             ("control_center", "Control Center", "emblem-system-symbolic", "Control Center", "Quick toggles, volume mixer, brightness, and network trays.", self.build_control_center_page),
+            ("power", "Power & Battery", "battery-full-symbolic", "Power & Battery", "Power profiles, button & lid actions, sleep, hibernation, and display timeouts.", self.build_power_page),
             ("lockscreen", "Lock Screen", "system-lock-screen-symbolic", "Lock Screen", "Hyprlock layout, background blur, and biometric authentication.", self.build_lockscreen_page),
             ("system", "System", "preferences-system-symbolic", "System", "Performance profiles, default applications, and shell diagnostics.", self.build_system_page),
         ]
@@ -1692,17 +1847,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         dd_edge = self.add_combo_row(card, "Screen Position", "Anchor bar to top or bottom edge", edges, edge_idx, on_edge_selected)
         row_pos = dd_edge.get_parent()
 
-        # Control Center Toggle (ONLY for Vanish Mode)
-        cur_vanish_cc = bool(self.bar_mode.get("vanishControlCenter", False) or self.bar_mode.get("nucleus", {}).get("controlCenter", False))
-        def on_vanish_cc_toggle(act):
-            self.bar_mode["vanishControlCenter"] = bool(act)
-            if "nucleus" not in self.bar_mode or not isinstance(self.bar_mode["nucleus"], dict):
-                self.bar_mode["nucleus"] = {}
-            self.bar_mode["nucleus"]["controlCenter"] = bool(act)
-            self.mark_dirty()
-            update_visibility("nucleus")
-        sw_vanish_cc = self.add_switch_row(card, "Control Center", "Show floating Control Center button in Vanish Mode", cur_vanish_cc, on_vanish_cc_toggle)
-        row_vanish_cc = sw_vanish_cc.get_parent()
+
 
         # Battery Layout (Horizontal / Vertical)
         bat_layouts = ["Horizontal", "Vertical"]
@@ -1787,15 +1932,8 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             # Frosted Glass Blur: Notch, Pill, and Minimal
             row_blur.set_visible(is_notch or is_pill or is_minimal)
 
-            # Vanish Control Center: ONLY in Vanish Mode
-            row_vanish_cc.set_visible(is_nucleus)
-
-            # Battery Layout: Notch, Pill, Minimal, and in Vanish only if Control Center is enabled
-            if is_nucleus:
-                has_cc = bool(self.bar_mode.get("vanishControlCenter", False) or self.bar_mode.get("nucleus", {}).get("controlCenter", False))
-                row_bat.set_visible(has_cc)
-            else:
-                row_bat.set_visible(True)
+            # Battery Layout: Notch, Pill, Minimal (hidden in Vanish Mode)
+            row_bat.set_visible(is_notch or is_pill or is_minimal)
 
         def on_mode_selected(idx):
             mode_id = mode_ids[idx]
@@ -1855,14 +1993,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             self.mark_dirty()
         self.add_switch_row(card1, "Mode-Switch Transition", "Play fullscreen transition sequence when entering Vanish", trans_act, on_trans_toggle)
 
-        van_cc_act = bool(self.bar_mode.get("vanishControlCenter", False) or nuc_cfg.get("controlCenter", False))
-        def on_van_cc_toggle(act):
-            self.bar_mode["vanishControlCenter"] = bool(act)
-            if "nucleus" not in self.bar_mode or not isinstance(self.bar_mode["nucleus"], dict):
-                self.bar_mode["nucleus"] = {}
-            self.bar_mode["nucleus"]["controlCenter"] = bool(act)
-            self.mark_dirty()
-        self.add_switch_row(card1, "Control Center", "Show floating Control Center button in Vanish Mode", van_cc_act, on_van_cc_toggle)
+
 
         anim_options = ["Quantum Collapse (~2.4s)", "Instant Crossfade (300ms)"]
         anim_ids = ["quantum", "crossfade"]
@@ -2764,6 +2895,194 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         page.append(card)
         return page
 
+    # ── Category: Power & Battery ──────────────────────────────────────────
+    def build_power_page(self, icon, title, subtitle):
+        page = self.create_page_container(icon, title, subtitle)
+
+        # ── Card 1: Power Modes ──
+        card_modes = self.create_settings_card()
+        lbl_m = Gtk.Label(label="Power Modes")
+        lbl_m.set_halign(Gtk.Align.START)
+        lbl_m.add_css_class("heading")
+        card_modes.append(lbl_m)
+
+        modes = [
+            "Power Saver (Eco)",
+            "Balanced (Standard)",
+            "Performance (High)",
+            "Ultra (Game Mode)"
+        ]
+        mode_ids = ["power-saver", "balanced", "performance", "ultra"]
+        cur_mode = self.power_cfg.get("profile", "balanced")
+        cur_idx = mode_ids.index(cur_mode) if cur_mode in mode_ids else 1
+
+        def on_power_profile(idx):
+            self.power_cfg["profile"] = mode_ids[idx]
+            self.mark_dirty()
+
+        self.add_combo_row(
+            card_modes,
+            "Active Power Profile",
+            "Select CPU performance, energy bias, and gaming optimizations",
+            modes,
+            cur_idx,
+            on_power_profile
+        )
+        page.append(card_modes)
+
+        # ── Card 2: Physical Button & Lid Actions ──
+        card_buttons = self.create_settings_card()
+        lbl_b = Gtk.Label(label="Physical Button & Lid Actions")
+        lbl_b.set_halign(Gtk.Align.START)
+        lbl_b.add_css_class("heading")
+        card_buttons.append(lbl_b)
+
+        btn_actions = ["Shut Down", "Sleep / Suspend", "Hibernate", "Lock Screen", "Do Nothing"]
+        btn_action_ids = ["poweroff", "suspend", "hibernate", "lock", "ignore"]
+
+        cur_pwr = self.power_cfg.get("powerButtonAction", "poweroff")
+        pwr_idx = btn_action_ids.index(cur_pwr) if cur_pwr in btn_action_ids else 0
+        def on_pwr_btn(idx):
+            self.power_cfg["powerButtonAction"] = btn_action_ids[idx]
+            self.mark_dirty()
+        self.add_combo_row(card_buttons, "Power Button Action", "Action when hardware power key is pressed", btn_actions, pwr_idx, on_pwr_btn)
+
+        sleep_actions = ["Sleep / Suspend", "Hibernate", "Lock Screen", "Do Nothing"]
+        sleep_action_ids = ["suspend", "hibernate", "lock", "ignore"]
+        cur_slp = self.power_cfg.get("sleepButtonAction", "suspend")
+        slp_idx = sleep_action_ids.index(cur_slp) if cur_slp in sleep_action_ids else 0
+        def on_slp_btn(idx):
+            self.power_cfg["sleepButtonAction"] = sleep_action_ids[idx]
+            self.mark_dirty()
+        self.add_combo_row(card_buttons, "Sleep Button Action", "Action when hardware sleep key is pressed", sleep_actions, slp_idx, on_slp_btn)
+
+        lid_actions = ["Sleep / Suspend", "Hibernate", "Turn off display & Lock", "Shut Down", "Do Nothing"]
+        lid_action_ids = ["suspend", "hibernate", "lock_dpms", "poweroff", "ignore"]
+
+        cur_lid_bat = self.power_cfg.get("lidActionBattery", "suspend")
+        lid_bat_idx = lid_action_ids.index(cur_lid_bat) if cur_lid_bat in lid_action_ids else 0
+        def on_lid_bat(idx):
+            self.power_cfg["lidActionBattery"] = lid_action_ids[idx]
+            self.mark_dirty()
+        self.add_combo_row(card_buttons, "Lid Close (On Battery)", "Action when closing laptop lid while running on battery", lid_actions, lid_bat_idx, on_lid_bat)
+
+        cur_lid_ac = self.power_cfg.get("lidActionAC", "suspend")
+        lid_ac_idx = lid_action_ids.index(cur_lid_ac) if cur_lid_ac in lid_action_ids else 0
+        def on_lid_ac(idx):
+            self.power_cfg["lidActionAC"] = lid_action_ids[idx]
+            self.mark_dirty()
+        self.add_combo_row(card_buttons, "Lid Close (Plugged In / AC)", "Action when closing laptop lid while connected to charger", lid_actions, lid_ac_idx, on_lid_ac)
+
+        page.append(card_buttons)
+
+        # ── Card 3: Sleep Mode & Hibernation ──
+        card_sleep = self.create_settings_card()
+        lbl_s = Gtk.Label(label="Sleep Mode & Hibernation")
+        lbl_s.set_halign(Gtk.Align.START)
+        lbl_s.add_css_class("heading")
+        card_sleep.append(lbl_s)
+
+        # Sleep Row
+        row_sleep = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        row_sleep.add_css_class("settings-row")
+        row_sleep.set_hexpand(True)
+        lbl_box_s = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        lbl_box_s.set_hexpand(True)
+        lbl_s_t = Gtk.Label(label="Sleep Mode (Suspend to RAM)")
+        lbl_s_t.set_halign(Gtk.Align.START)
+        lbl_s_t.add_css_class("row-title")
+        lbl_box_s.append(lbl_s_t)
+        lbl_s_d = Gtk.Label(label="Low-power state that keeps current sessions in RAM for instant wake-up.")
+        lbl_s_d.set_halign(Gtk.Align.START)
+        lbl_s_d.set_wrap(True)
+        lbl_s_d.set_wrap_mode(Pango.WrapMode.WORD)
+        lbl_s_d.add_css_class("row-subtitle")
+        lbl_box_s.append(lbl_s_d)
+        row_sleep.append(lbl_box_s)
+
+        btn_test_sleep = Gtk.Button(label="Test Sleep Now")
+        btn_test_sleep.set_valign(Gtk.Align.CENTER)
+        btn_test_sleep.connect("clicked", lambda b: subprocess.Popen(["bash", "-c", "sleep 0.5 && systemctl suspend"]))
+        row_sleep.append(btn_test_sleep)
+        card_sleep.append(row_sleep)
+        self.register_search_item(self.current_cat_id, "Sleep Mode (Suspend to RAM)", "Low-power state that keeps current sessions in RAM for instant wake-up", row_sleep)
+
+        # Hibernation Row
+        row_hib = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        row_hib.add_css_class("settings-row")
+        row_hib.set_hexpand(True)
+        lbl_box_h = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        lbl_box_h.set_hexpand(True)
+        lbl_h_t = Gtk.Label(label="Hibernation (Suspend to Disk)")
+        lbl_h_t.set_halign(Gtk.Align.START)
+        lbl_h_t.add_css_class("row-title")
+        lbl_box_h.append(lbl_h_t)
+        lbl_h_d = Gtk.Label(label="Saves the entire RAM state to hard drive/SSD and powers off device completely.")
+        lbl_h_d.set_halign(Gtk.Align.START)
+        lbl_h_d.set_wrap(True)
+        lbl_h_d.set_wrap_mode(Pango.WrapMode.WORD)
+        lbl_h_d.add_css_class("row-subtitle")
+        lbl_box_h.append(lbl_h_d)
+        row_hib.append(lbl_box_h)
+
+        btn_test_hib = Gtk.Button(label="Test Hibernation Now")
+        btn_test_hib.set_valign(Gtk.Align.CENTER)
+        btn_test_hib.connect("clicked", lambda b: subprocess.Popen(["bash", "-c", "sleep 0.5 && systemctl hibernate"]))
+        row_hib.append(btn_test_hib)
+        card_sleep.append(row_hib)
+        self.register_search_item(self.current_cat_id, "Hibernation (Suspend to Disk)", "Saves the entire RAM state to the hard drive/SSD and powers off completely", row_hib)
+
+        page.append(card_sleep)
+
+        # ── Card 4: Display Timeout & Brightness ──
+        card_disp = self.create_settings_card()
+        lbl_d = Gtk.Label(label="Display Timeout & Brightness")
+        lbl_d.set_halign(Gtk.Align.START)
+        lbl_d.add_css_class("heading")
+        card_disp.append(lbl_d)
+
+        cur_dim_en = bool(self.power_cfg.get("dimEnabled", True))
+        def on_dim_en(act):
+            self.power_cfg["dimEnabled"] = act
+            self.mark_dirty()
+        self.add_switch_row(card_disp, "Screen Inactivity Dimming", "Automatically reduce screen backlight during inactivity", cur_dim_en, on_dim_en)
+
+        dim_timeouts = ["1 Minute", "2 Minutes", "3 Minutes", "5 Minutes", "10 Minutes"]
+        dim_vals = [60, 120, 180, 300, 600]
+        cur_dim_val = int(self.power_cfg.get("dimTimeout", 180))
+        cur_dim_idx = dim_vals.index(cur_dim_val) if cur_dim_val in dim_vals else 2
+        def on_dim_timeout(idx):
+            self.power_cfg["dimTimeout"] = dim_vals[idx]
+            self.mark_dirty()
+        self.add_combo_row(card_disp, "Dimming Timeout", "Inactivity delay before lowering screen backlight", dim_timeouts, cur_dim_idx, on_dim_timeout)
+
+        cur_dim_pct = int(self.power_cfg.get("dimBrightnessPercent", 20))
+        def on_dim_pct(v):
+            self.power_cfg["dimBrightnessPercent"] = int(v)
+            self.mark_dirty()
+        self.add_slider_row(card_disp, "Dimmed Backlight Level", "Target brightness percentage when dimmed", 5, 50, 5, cur_dim_pct, "%", on_dim_pct)
+
+        turnoff_opts = ["Never", "2 Minutes", "5 Minutes", "10 Minutes", "15 Minutes", "30 Minutes"]
+        turnoff_vals = [0, 120, 300, 600, 900, 1800]
+        cur_off_val = int(self.power_cfg.get("screenOffTimeout", 300))
+        cur_off_idx = turnoff_vals.index(cur_off_val) if cur_off_val in turnoff_vals else 2
+        def on_screen_off(idx):
+            self.power_cfg["screenOffTimeout"] = turnoff_vals[idx]
+            self.mark_dirty()
+        self.add_combo_row(card_disp, "Screen Turn-Off Timeout", "Idle duration before display enters standby (DPMS off)", turnoff_opts, cur_off_idx, on_screen_off)
+
+        suspend_opts = ["Never", "10 Minutes", "15 Minutes", "20 Minutes", "30 Minutes", "1 Hour"]
+        suspend_vals = [0, 600, 900, 1200, 1800, 3600]
+        cur_susp_val = int(self.power_cfg.get("autoSuspendTimeout", 1800))
+        cur_susp_idx = suspend_vals.index(cur_susp_val) if cur_susp_val in suspend_vals else 4
+        def on_auto_suspend(idx):
+            self.power_cfg["autoSuspendTimeout"] = suspend_vals[idx]
+            self.mark_dirty()
+        self.add_combo_row(card_disp, "Automatic Suspend Timeout", "Idle duration before system automatically enters sleep mode", suspend_opts, cur_susp_idx, on_auto_suspend)
+
+        page.append(card_disp)
+        return page
+
     # ── Category 10: Lock Screen ────────────────────────────────────────────
     def build_lockscreen_page(self, icon, title, subtitle):
         page = self.create_page_container(icon, title, subtitle)
@@ -3268,6 +3587,8 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         hypr_wp_path = os.path.expanduser("~/.config/hypr/carbon-wallpaper-source.json")
         if hypr_wp_path != WALLPAPER_SOURCE_PATH:
             write_json(hypr_wp_path, self.wallpaper_source_cfg)
+
+        write_power_configs(self.power_cfg)
 
         if hasattr(self, "save_tile_config"):
             self.save_tile_config()
