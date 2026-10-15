@@ -106,7 +106,7 @@ Item {
             if (mouse.button === Qt.RightButton) {
                 root.togglePlayPause()
             } else {
-                root.toggleControls()
+                root.toggleCenterDashboard()
             }
         }
     }
