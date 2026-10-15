@@ -2453,16 +2453,24 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             if not curr_branch:
                 curr_branch = "main"
 
-            remote_target = curr_branch
-            code_verify, _, _ = git_run(["rev-parse", "--verify", f"origin/{curr_branch}"])
-            if code_verify != 0:
-                _, upstream, _ = git_run(["rev-parse", "--abbrev-ref", "@{u}"])
-                if upstream and upstream != "@{u}":
-                    remote_target = upstream.replace("origin/", "")
-                else:
-                    remote_target = "main"
+            # 1. Determine upstream remote (prefer origin, fallback to first configured remote)
+            code_origin, _, _ = git_run(["remote", "get-url", "origin"])
+            upstream_remote = "origin" if code_origin == 0 else ""
+            if not upstream_remote:
+                _, remotes_list, _ = git_run(["remote"])
+                remotes = remotes_list.split()
+                upstream_remote = remotes[0] if remotes else "origin"
 
-            code_fetch, _, _ = git_run(["fetch", "origin", remote_target], timeout=15)
+            # 2. Determine target branch on upstream
+            remote_target = "main"
+            code_verify, _, _ = git_run(["rev-parse", "--verify", f"{upstream_remote}/{curr_branch}"])
+            if code_verify == 0:
+                remote_target = curr_branch
+            else:
+                remote_target = "main"
+
+            # 3. Fetch upstream remote
+            code_fetch, _, _ = git_run(["fetch", upstream_remote, remote_target], timeout=15)
             if code_fetch != 0:
                 GLib.idle_add(
                     self._on_check_updates_result,
@@ -2474,12 +2482,30 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
                 )
                 return
 
-            _, local_hash, _ = git_run(["rev-parse", "HEAD"])
-            _, count_str, _ = git_run(["rev-list", "--count", f"HEAD..origin/{remote_target}"])
+            ref_to_check = f"{upstream_remote}/{remote_target}"
+
+            # 4. Also fetch tracking remote if on custom fork branch
+            _, upstream_tracking, _ = git_run(["rev-parse", "--abbrev-ref", "@{u}"])
+            if upstream_tracking and upstream_tracking != "@{u}" and "/" in upstream_tracking:
+                track_remote, track_branch = upstream_tracking.split("/", 1)
+                if track_remote != upstream_remote:
+                    git_run(["fetch", track_remote, track_branch], timeout=15)
+
+            # 5. Check how many new upstream commits exist
+            _, count_str, _ = git_run(["rev-list", "--count", f"HEAD..{ref_to_check}"])
             count = int(count_str) if count_str.isdigit() else 0
 
+            # If no new upstream commits on main, check if tracking branch has commits ahead
+            if count == 0 and upstream_tracking and upstream_tracking != "@{u}":
+                _, count_track_str, _ = git_run(["rev-list", "--count", f"HEAD..{upstream_tracking}"])
+                track_count = int(count_track_str) if count_track_str.isdigit() else 0
+                if track_count > 0:
+                    count = track_count
+                    ref_to_check = upstream_tracking
+
+            _, local_hash, _ = git_run(["rev-parse", "HEAD"])
             _, commits_log, _ = git_run([
-                "log", "--oneline", "--no-merges", "-n", "5", f"HEAD..origin/{remote_target}"
+                "log", "--oneline", "--no-merges", "-n", "5", f"HEAD..{ref_to_check}"
             ])
 
             if count > 0:
@@ -2607,7 +2633,14 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         if term and updater_cmd and os.path.exists(updater_cmd):
             run_script = f'"{updater_cmd}"; echo; read -n 1 -s -r -p "Press any key to close..."; exit'
             try:
-                subprocess.Popen([term, "--title", "Carbon Shell Updater", "-e", "bash", "-c", run_script])
+                base_term = os.path.basename(term).lower()
+                if "kitty" in base_term or "foot" in base_term:
+                    cmd = [term, "--title", "Carbon Shell Updater", "bash", "-c", run_script]
+                elif "alacritty" in base_term:
+                    cmd = [term, "--title", "Carbon Shell Updater", "-e", "bash", "-c", run_script]
+                else:
+                    cmd = [term, "-e", "bash", "-c", run_script]
+                subprocess.Popen(cmd)
                 return
             except Exception as e:
                 print(f"Error launching terminal updater: {e}", file=sys.stderr)
