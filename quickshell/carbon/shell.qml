@@ -31,6 +31,7 @@ ShellRoot {
     property bool launcherOpen: false
     property bool wallpaperPickerOpen: false
     property string wallpaperSource: "local"
+    property var wallpaperModItem: null
 
     property bool spotlightOpen: false
     function openSpotlight() {
@@ -982,6 +983,7 @@ ShellRoot {
         bodyMarkupSupported: true
         onNotification: notification => {
             notification.tracked = true
+            NotificationService.addNotification(notification)
         }
     }
 
@@ -1363,6 +1365,10 @@ ShellRoot {
                         if (root.barMode !== "nucleus") root.switchBarMode("nucleus")
                         if (root.nucleusHubItem) root.nucleusHubItem.openBluetoothMode()
                     }
+                    else if (cmd === "nucleus notif" || cmd === "nucleus notifications" || cmd === "nucleus toggle-notif" || cmd === "nucleus alert" || cmd === "nucleus alerts") {
+                        if (root.barMode !== "nucleus") root.switchBarMode("nucleus")
+                        if (root.nucleusHubItem) root.nucleusHubItem.openNotificationPanel()
+                    }
                     else if (cmd === "calendar" || cmd === "center-dashboard" || cmd === "center" || cmd === "time-weather" || cmd === "toggle-dashboard" || cmd === "dashboard")
                         root.toggleCenterDashboard()
                     else if (cmd === "calendar-events") {
@@ -1535,6 +1541,10 @@ ShellRoot {
             WallpaperMod {
                 id: wpInstance
                 anchors.fill: parent
+
+                Component.onCompleted: {
+                    if (!root.wallpaperModItem) root.wallpaperModItem = wpInstance
+                }
 
                 Connections {
                     target: root
@@ -2353,6 +2363,7 @@ ShellRoot {
     readonly property QtObject nucleusHubItem: QtObject {
         property bool hubOpen: false
         property bool isClosing: false
+        property bool notifPanelOpen: false
         property string activeMode: "hub"
         signal toggleRequested()
         signal openRequested()
@@ -2364,7 +2375,11 @@ ShellRoot {
         signal bluetoothModeRequested()
         signal calendarModeRequested()
 
+        property real lastToggleTime: 0
         function toggle() { 
+            var now = Date.now()
+            if (now - lastToggleTime < 350) return
+            lastToggleTime = now
             if (!hubOpen || isClosing) {
                 isClosing = false
                 hubOpen = true
@@ -2596,6 +2611,8 @@ ShellRoot {
                         strokeColor: "#FFFFFF"
                         fillColor: "transparent"
                         capStyle: ShapePath.RoundCap
+                        startX: 27
+                        startY: 0
                         PathAngleArc {
                             centerX: 27
                             centerY: 27
@@ -2689,10 +2706,14 @@ ShellRoot {
                 onCloseRequested: {
                     root.nucleusHubItem.hubOpen = false
                     root.nucleusHubItem.isClosing = false
+                    root.nucleusHubItem.notifPanelOpen = false
                     root.nucleusHubItem.activeMode = "hub"
                 }
                 onActiveModeChanged: {
                     root.nucleusHubItem.activeMode = activeMode
+                }
+                onNotifPanelOpenChanged: {
+                    root.nucleusHubItem.notifPanelOpen = notifPanelOpen
                 }
 
                 Connections {
@@ -3719,9 +3740,14 @@ ShellRoot {
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             exclusionMode: ExclusionMode.Ignore
 
-            anchors {}
-            implicitWidth: 84
-            implicitHeight: 84
+            anchors {
+                top: true
+            }
+            margins {
+                top: 16
+            }
+            implicitWidth: 96
+            implicitHeight: 72
 
             visible: (root.barMode === "nucleus" || root.barMode === "vanish") && (wsOsdItem.active || wsOsdItem.opacity > 0.002)
 
@@ -3730,9 +3756,7 @@ ShellRoot {
 
             WorkspaceOsd {
                 id: wsOsdItem
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.top: parent.top
-                anchors.topMargin: 20
+                anchors.centerIn: parent
                 barMode: root.barMode
                 onActiveChanged: root.workspaceOsdActive = wsOsdItem.active
             }
@@ -3757,25 +3781,23 @@ ShellRoot {
 
             anchors {
                 top: true
-                right: true
+                right: root.barMode !== "nucleus"
             }
 
             margins {
-                top: 24
+                top: (root.barMode === "nucleus")
+                    ? Math.round((toastWindow.screen.height / 2) + 226 - (toastItemComp.implicitHeight / 2))
+                    : 24
                 right: 24
             }
 
             implicitWidth: toastItemComp.implicitWidth
             implicitHeight: toastItemComp.implicitHeight
-            visible: toastItemComp.active || toastItemComp.opacity > 0.005
+            visible: (toastItemComp.active || toastItemComp.opacity > 0.005) && !(root.nucleusHubItem && root.nucleusHubItem.notifPanelOpen)
 
             NotificationToast {
                 id: toastItemComp
-                onOpenPanelRequested: {
-                    if (root.nucleusHubItem) {
-                        root.nucleusHubItem.openNotificationPanel()
-                    }
-                }
+                panelOpen: root.nucleusHubItem ? root.nucleusHubItem.notifPanelOpen : false
             }
         }
     }

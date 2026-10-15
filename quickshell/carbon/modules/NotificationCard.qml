@@ -7,378 +7,351 @@ import "../Singletons"
 /**
  * NotificationCard.qml
  *
- * Requirements:
- * - Radius 21px. Icon tile 38px, radius 13, tinted with the app's color.
- * - App name (muted), a coral unread dot, and the time label on the right.
- * - Title (14px, weight 800), body (12.5px, muted, clamped to 2 lines when collapsed).
- * - Unread cards have a slightly brighter gradient and border. Read cards are flatter.
- * - Click expands the card (body unclamps, action buttons slide open) and marks it read.
- * - Action buttons: the first is a white pill (primary, dismisses the card),
- *   the rest are ghost pills (mark read and collapse).
- * - Hover reveals a small round X (top-right) that dismisses the card.
+ * Minimalist Vanish-Mode Notification Card (296px panel width compatible)
+ * - Padding: 11px 12px, Radius: 16
+ * - Top row: 6px unread coral dot + notif.appName (10.5px bold uppercase) + relative timestamp ("now", "2m")
+ * - Middle: notif.summary (13px weight 700 #f4f6f5)
+ * - Bottom: notif.body (12px rgba(244, 246, 245, 0.68)), clamped to 2 lines when collapsed, up to 8 lines when expanded
+ * - Slide-Commit Swipe Dismissal (commitThreshold = 85px) with rubber drag resistance past 85px and commit badge
+ * - Non-stealing gesture scrolling: drag.axis = Drag.XAxis, wheel events pass directly through to parent Flickable
  */
-Rectangle {
+Item {
     id: root
 
     required property var notifItem
     required property int cardIndex
 
-    // Expanded state
-    property bool expanded: false
-
-    // Signals
     signal dismissRequested(var item)
     signal actionInvoked(var item, var actionObj)
+    signal cardHoveredChanged(var cardItem, bool hovered)
 
-    readonly property bool isUnread: root.notifItem ? root.notifItem.unread : false
+    readonly property bool isUnread: root.notifItem ? (root.notifItem.unread === true) : false
     readonly property var actionsList: (root.notifItem && root.notifItem.actions) ? root.notifItem.actions : []
     readonly property bool hasActions: actionsList.length > 0
 
-    Layout.fillWidth: true
-    width: parent ? parent.width : 308
-    implicitWidth: 308
-    implicitHeight: mainCol.implicitHeight + 28
-    radius: 21
+    property bool isExpanded: false
+    property bool isDying: false
+    property bool isClearing: false
+
+    width: parent ? parent.width : 272
+    implicitWidth: 272
+    height: isDying ? 0 : (cardContentCol.implicitHeight + 22)
     clip: true
 
-    // Solid opaque styling matching Carbon shell & Matugen
-    color: root.isUnread ? Theme.m3surfaceContainerHigh : Theme.m3surfaceContainer
-    border.width: 1
-    border.color: root.isUnread 
-                  ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45) 
-                  : Theme.m3outlineVariant
-
-    // Theme-Sensitive Subtle Radial Accent Glow confined strictly inside the notification card
-    Rectangle {
-        anchors.top: parent.top
-        anchors.right: parent.right
-        anchors.topMargin: -30
-        anchors.rightMargin: -30
-        width: 110
-        height: 110
-        radius: 55
-        visible: root.isUnread
-        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
+    Behavior on height {
+        NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
     }
 
-    // Generate dynamic color tint from appName
-    function getAppColor(appName) {
-        var str = appName || "app"
-        var hash = 0
-        for (var i = 0; i < str.length; i++) {
-            hash = str.charCodeAt(i) + ((hash << 5) - hash)
-        }
-        var h = Math.abs(hash % 360) / 360.0
-        return Qt.hsla(h, 0.65, 0.60, 1.0)
-    }
-
-    readonly property color appTint: getAppColor(root.notifItem ? root.notifItem.appName : "")
-
-    // Drag swipe offset
-    property real swipeX: 0
-    property bool isDismissing: false
-
-    x: swipeX
-    opacity: isDismissing ? 0.0 : Math.max(0.0, 1.0 - (Math.abs(swipeX) / 180.0))
-
-    Behavior on swipeX {
-        NumberAnimation {
-            duration: 220
-            easing.type: Easing.OutCubic
-        }
-    }
-
+    opacity: isDying ? 0.0 : 1.0
     Behavior on opacity {
-        NumberAnimation {
-            duration: 180
-            easing.type: Easing.OutCubic
+        NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+    }
+
+    function triggerClearAnimation(delayMs) {
+        root.isClearing = true
+        clearTimer.interval = delayMs
+        clearTimer.restart()
+    }
+
+    Timer {
+        id: clearTimer
+        repeat: false
+        onTriggered: {
+            slideOutAnim.restart()
         }
     }
 
-    Behavior on implicitHeight {
-        NumberAnimation {
-            duration: 240
-            easing.type: Easing.OutCubic
-        }
+    property real slideTargetX: 0
+
+    function commitSlideOut(dir) {
+        root.slideTargetX = dir * (root.width + 60)
+        slideOutAnim.restart()
     }
 
+    // Slide-out animation for dismiss
     SequentialAnimation {
-        id: dismissAnim
+        id: slideOutAnim
         ParallelAnimation {
             NumberAnimation {
-                target: root
-                property: "swipeX"
-                to: root.swipeX < 0 ? -380 : 380
-                duration: 200
-                easing.type: Easing.InCubic
+                target: cardBody
+                property: "x"
+                to: root.slideTargetX !== 0 ? root.slideTargetX : (cardBody.x >= 0 ? (root.width + 60) : (-root.width - 60))
+                duration: 220
+                easing.type: Easing.OutCubic
             }
             NumberAnimation {
-                target: root
+                target: cardBody
                 property: "opacity"
                 to: 0.0
                 duration: 200
-                easing.type: Easing.InCubic
+                easing.type: Easing.OutQuad
             }
         }
         ScriptAction {
             script: {
-                root.dismissRequested(root.notifItem)
+                root.isDying = true
+                collapseTimer.restart()
             }
         }
     }
 
-    function dismissWithAnimation() {
-        if (root.isDismissing) return
-        root.isDismissing = true
-        dismissAnim.restart()
-    }
-
-    MouseArea {
-        id: cardMouseArea
-        anchors.fill: parent
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-
-        property real startX: 0
-        property real startY: 0
-        property bool isDragging: false
-
-        onPressed: (mouse) => {
-            startX = mouse.x
-            startY = mouse.y
-            isDragging = false
-        }
-
-        onPositionChanged: (mouse) => {
-            if (pressed) {
-                var dx = mouse.x - startX
-                var dy = mouse.y - startY
-                if (!isDragging && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
-                    isDragging = true
-                }
-                if (isDragging) {
-                    root.swipeX = dx
-                }
-            }
-        }
-
-        onReleased: (mouse) => {
-            if (isDragging) {
-                if (Math.abs(root.swipeX) > 90) {
-                    root.dismissWithAnimation()
-                } else {
-                    root.swipeX = 0
-                }
-                isDragging = false
-            }
-        }
-
-        onCanceled: {
-            root.swipeX = 0
-            isDragging = false
-        }
-
-        onClicked: (mouse) => {
-            if (!isDragging && Math.abs(root.swipeX) < 6) {
-                if (root.notifItem && root.notifItem.unread) {
-                    NotificationService.markRead(root.notifItem.id)
-                }
-                root.expanded = !root.expanded
-            }
+    Timer {
+        id: collapseTimer
+        interval: 210
+        repeat: false
+        onTriggered: {
+            root.dismissRequested(root.notifItem)
         }
     }
 
-    // Top Right Hover Close "X" Button
+    /* ── 1. Behind-the-card Commit Pill Track (revealed on horizontal swipe) ── */
     Rectangle {
-        id: closeBtn
-        z: 10
-        anchors.top: parent.top
-        anchors.right: parent.right
-        anchors.topMargin: 10
-        anchors.rightMargin: 10
-        width: 22
-        height: 22
-        radius: 11
-        color: closeMouse.containsMouse ? Qt.rgba(255/255, 255/255, 255/255, 0.25) : Qt.rgba(255/255, 255/255, 255/255, 0.12)
-        visible: cardMouseArea.containsMouse || closeMouse.containsMouse
+        id: commitTrack
+        anchors.fill: parent
+        radius: 16
+        color: Qt.rgba(Theme.m3surfaceVariant.r, Theme.m3surfaceVariant.g, Theme.m3surfaceVariant.b, 0.45)
+        border.width: 1
+        border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.25)
+        visible: Math.abs(cardBody.x) > 2
 
-        Text {
-            anchors.centerIn: parent
-            text: "close"
-            font.family: Theme.fontIcon
-            font.pixelSize: 13
-            color: "#f4f6f5"
+        readonly property bool swipingLeft: cardBody.x < 0
+        readonly property real commitProgress: Math.min(1.0, Math.abs(cardBody.x) / 75.0)
+        readonly property bool isCommitted: Math.abs(cardBody.x) >= 74.0
+
+        // Slide-Commit Handle
+        Rectangle {
+            anchors.verticalCenter: parent.verticalCenter
+            x: commitTrack.swipingLeft ? (parent.width - width - 12) : 12
+            width: commitTrack.isCommitted ? 42 : (30 + 8 * commitTrack.commitProgress)
+            height: 30
+            radius: 15
+            color: commitTrack.isCommitted ? Theme.accent : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.20 * commitTrack.commitProgress)
+            border.width: 1
+            border.color: commitTrack.isCommitted ? Theme.accent : Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.35)
+
+            scale: commitTrack.isCommitted ? 1.12 : (0.85 + 0.15 * commitTrack.commitProgress)
+            Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutBack } }
+            Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutBack } }
+            Behavior on color { ColorAnimation { duration: 150 } }
+
+            Text {
+                anchors.centerIn: parent
+                text: commitTrack.isCommitted ? "✓" : (commitTrack.swipingLeft ? "←" : "→")
+                font.family: "Manrope"
+                font.pixelSize: commitTrack.isCommitted ? 14 : 12
+                font.weight: Font.Bold
+                color: commitTrack.isCommitted ? Theme.accentFg : Theme.fg
+            }
+        }
+    }
+
+    /* ── 2. Front Interactive Card Body ── */
+    Rectangle {
+        id: cardBody
+        width: parent.width
+        height: parent.height
+        radius: 16
+        color: root.isUnread
+            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.08)
+            : Qt.rgba(Theme.m3surfaceContainerHigh.r, Theme.m3surfaceContainerHigh.g, Theme.m3surfaceContainerHigh.b, 0.65)
+        border.width: 1
+        border.color: root.isUnread
+            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.40)
+            : Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.20)
+
+        // Smooth return animation when released below commit threshold
+        Behavior on x {
+            id: cardXAnim
+            enabled: !cardDragArea.pressed && !slideOutAnim.running
+            NumberAnimation { duration: 250; easing.type: Easing.OutBack; easing.overshoot: 1.25 }
         }
 
+        // Horizontal swipe gesture area (non-stealing)
         MouseArea {
-            id: closeMouse
+            id: cardDragArea
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: {
-                root.dismissWithAnimation()
+
+            property real startRootX: 0
+            property real startRootY: 0
+            property bool isHorizontalDrag: false
+
+            // Do NOT capture wheel events: propagate cleanly to parent Flickable
+            onWheel: (wheel) => {
+                wheel.accepted = false
+            }
+
+            onEntered: {
+                root.cardHoveredChanged(root, true)
+            }
+            onExited: {
+                root.cardHoveredChanged(root, false)
+            }
+
+            onPressed: (mouse) => {
+                var p = cardDragArea.mapToItem(root, mouse.x, mouse.y)
+                startRootX = p.x
+                startRootY = p.y
+                isHorizontalDrag = false
+            }
+
+            onPositionChanged: (mouse) => {
+                if (pressed) {
+                    var p = cardDragArea.mapToItem(root, mouse.x, mouse.y)
+                    var dx = p.x - startRootX
+                    var dy = p.y - startRootY
+                    if (!isHorizontalDrag && Math.abs(dx) > 6 && Math.abs(dx) > Math.abs(dy)) {
+                        isHorizontalDrag = true
+                    }
+                    if (isHorizontalDrag) {
+                        // Apply rubber resistance beyond 75px commit threshold
+                        if (Math.abs(dx) > 75) {
+                            var sign = dx > 0 ? 1 : -1
+                            var excess = Math.abs(dx) - 75
+                            cardBody.x = sign * (75 + (excess * 0.35))
+                        } else {
+                            cardBody.x = dx
+                        }
+                    }
+                }
+            }
+
+            onReleased: (mouse) => {
+                if (isHorizontalDrag) {
+                    if (Math.abs(cardBody.x) >= 74) {
+                        // Slide Commit confirmed!
+                        root.commitSlideOut(cardBody.x > 0 ? 1 : -1)
+                    } else {
+                        // Spring back to 0
+                        cardBody.x = 0
+                    }
+                    isHorizontalDrag = false
+                }
+            }
+
+            onCanceled: {
+                cardBody.x = 0
+                isHorizontalDrag = false
+            }
+
+            onClicked: (mouse) => {
+                if (!isHorizontalDrag && Math.abs(cardBody.x) < 5) {
+                    if (root.notifItem && root.notifItem.unread) {
+                        NotificationService.markRead(root.notifItem.id)
+                    }
+                    root.isExpanded = !root.isExpanded
+                }
             }
         }
-    }
 
-    // Main Layout Content
-    ColumnLayout {
-        id: mainCol
-        anchors.fill: parent
-        anchors.margins: 14
-        spacing: 10
+        // Inner Card Content Layout (Padding: 11px 12px)
+        ColumnLayout {
+            id: cardContentCol
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 12
+            anchors.topMargin: 11
+            anchors.bottomMargin: 11
+            spacing: 5
 
-        // Header Row: Icon tile 38px, App name, Coral unread dot, Time label
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 10
-
-            // Icon Tile 38px, radius 13, tinted with app's color
-            Rectangle {
-                Layout.preferredWidth: 38
-                Layout.preferredHeight: 38
-                radius: 13
-                color: Qt.rgba(root.appTint.r, root.appTint.g, root.appTint.b, 0.22)
-                border.width: 1
-                border.color: Qt.rgba(root.appTint.r, root.appTint.g, root.appTint.b, 0.45)
-
-                Image {
-                    id: iconImg
-                    anchors.centerIn: parent
-                    width: 22
-                    height: 22
-                    fillMode: Image.PreserveAspectFit
-                    source: {
-                        var icon = root.notifItem ? (root.notifItem.appIcon || "") : ""
-                        if (!icon) return ""
-                        if (icon.indexOf("/") !== -1 || icon.startsWith("file:")) return icon
-                        return ""
-                    }
-                    visible: status === Image.Ready && source !== ""
-                }
-
-                Text {
-                    anchors.centerIn: parent
-                    visible: !iconImg.visible
-                    text: {
-                        var n = root.notifItem ? (root.notifItem.appName || "") : ""
-                        return n.length > 0 ? n.charAt(0).toUpperCase() : "A"
-                    }
-                    font.family: "Manrope"
-                    font.pixelSize: 16
-                    font.weight: Font.ExtraBold
-                    color: root.appTint
-                }
-            }
-
-            // App Name & Unread Dot
+            // ── Top Row: 6px coral dot + App Name (10.5px bold uppercase) + Relative Timestamp ──
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6
 
-                Text {
-                    text: root.notifItem ? (root.notifItem.appName || "Application") : ""
-                    font.family: "Manrope"
-                    font.pixelSize: 12
-                    font.weight: Font.DemiBold
-                    color: Qt.rgba(244/255, 246/255, 245/255, 0.66) // Muted at 66%
-                    elide: Text.ElideRight
-                    Layout.maximumWidth: 160
-                }
-
-                // Theme-sensitive unread dot
+                // 6px Unread Accent Dot
                 Rectangle {
                     visible: root.isUnread
                     Layout.preferredWidth: 6
                     Layout.preferredHeight: 6
                     radius: 3
-                    color: Theme.accent || "#f2705f"
+                    color: Theme.accent
                 }
 
-                Item { Layout.fillWidth: true }
+                // App Name in 11px bold uppercase
+                Text {
+                    text: {
+                        var app = root.notifItem ? (root.notifItem.appName || "System") : "System"
+                        return app.toUpperCase()
+                    }
+                    font.family: "Manrope"
+                    font.pixelSize: 11
+                    font.weight: Font.Bold
+                    font.letterSpacing: 0.6
+                    color: Theme.fgDim
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+
+                // Relative Timestamp ("now", "2m", "1h")
+                Text {
+                    text: root.notifItem ? (root.notifItem.timeStr || "now") : "now"
+                    font.family: "Manrope"
+                    font.pixelSize: 11
+                    font.weight: Font.Medium
+                    color: Theme.fgFaint
+                    Layout.alignment: Qt.AlignRight
+                }
             }
 
-            // Time Label (right)
+            // ── Middle: Summary in 13px weight 700 ──
             Text {
-                visible: !closeBtn.visible
-                text: root.notifItem ? (root.notifItem.timeStr || "") : ""
+                Layout.fillWidth: true
+                text: root.notifItem ? (root.notifItem.summary || "Notification") : "Notification"
                 font.family: "Manrope"
-                font.pixelSize: 11
-                font.weight: Font.Medium
-                color: Qt.rgba(244/255, 246/255, 245/255, 0.40) // Muted at 40%
-                Layout.alignment: Qt.AlignRight
+                font.pixelSize: 13
+                font.weight: Font.Bold
+                color: Theme.fg
+                wrapMode: Text.Wrap
+                maximumLineCount: root.isExpanded ? 4 : 2
+                elide: Text.ElideRight
+                visible: text.length > 0
             }
-        }
 
-        // Title: 14px, weight 800
-        Text {
-            Layout.fillWidth: true
-            text: root.notifItem ? (root.notifItem.summary || "") : ""
-            font.family: "Manrope"
-            font.pixelSize: 14
-            font.weight: Font.ExtraBold
-            color: "#f4f6f5"
-            wrapMode: Text.Wrap
-            maximumLineCount: root.expanded ? 4 : 1
-            elide: Text.ElideRight
-            visible: text.length > 0
-        }
+            // ── Bottom: Body in 12px ──
+            Text {
+                Layout.fillWidth: true
+                text: root.notifItem ? (root.notifItem.body || "") : ""
+                font.family: "Manrope"
+                font.pixelSize: 12
+                font.weight: Font.Normal
+                lineHeight: 1.25
+                color: Theme.fgDim
+                wrapMode: Text.Wrap
+                maximumLineCount: root.isExpanded ? 8 : 2
+                elide: Text.ElideRight
+                visible: text.length > 0
+            }
 
-        // Body: 12.5px, muted, clamped to 2 lines when collapsed
-        Text {
-            Layout.fillWidth: true
-            text: root.notifItem ? (root.notifItem.body || "") : ""
-            font.family: "Manrope"
-            font.pixelSize: 13
-            font.weight: Font.Medium
-            color: Qt.rgba(244/255, 246/255, 245/255, 0.66) // Muted at 66%
-            wrapMode: Text.Wrap
-            maximumLineCount: root.expanded ? 12 : 2
-            elide: Text.ElideRight
-            visible: text.length > 0
-        }
-
-        // Action Buttons Row (visible when expanded and hasActions)
-        Item {
-            Layout.fillWidth: true
-            implicitHeight: actionButtonsRow.implicitHeight
-            visible: root.expanded && root.hasActions
-
-            RowLayout {
-                id: actionButtonsRow
-                anchors.left: parent.left
-                anchors.right: parent.right
-                spacing: 8
+            // ── Action Pills (Revealed when expanded) ──
+            Flow {
+                Layout.fillWidth: true
+                Layout.topMargin: 4
+                spacing: 6
+                visible: root.isExpanded
 
                 Repeater {
                     model: root.actionsList
-
                     delegate: Rectangle {
                         id: actBtn
-                        required property int index
                         required property var modelData
-
-                        readonly property bool isPrimary: actBtn.index === 0
-
-                        Layout.preferredHeight: 30
-                        Layout.preferredWidth: actBtnText.implicitWidth + 24
-                        radius: 15
-
-                        // Primary is white pill; others are ghost pills
-                        color: actBtn.isPrimary 
-                               ? (actMouse.containsMouse ? "#ffffff" : Qt.rgba(255/255, 255/255, 255/255, 0.90))
-                               : (actMouse.containsMouse ? Qt.rgba(255/255, 255/255, 255/255, 0.16) : Qt.rgba(255/255, 255/255, 255/255, 0.08))
-                        border.width: actBtn.isPrimary ? 0 : 1
-                        border.color: Qt.rgba(255/255, 255/255, 255/255, 0.18)
+                        height: 24
+                        width: actText.implicitWidth + 16
+                        radius: 12
+                        color: actMouse.containsMouse ? Theme.bgHover : Qt.rgba(255/255, 255/255, 255/255, 0.08)
+                        border.width: 1
+                        border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.30)
 
                         Text {
-                            id: actBtnText
+                            id: actText
                             anchors.centerIn: parent
                             text: actBtn.modelData.text || "Action"
                             font.family: "Manrope"
-                            font.pixelSize: 12
-                            font.weight: actBtn.isPrimary ? Font.Bold : Font.DemiBold
-                            color: actBtn.isPrimary ? "#0f1416" : "#f4f6f5"
+                            font.pixelSize: 11
+                            font.weight: Font.DemiBold
+                            color: Theme.fg
                         }
 
                         MouseArea {
@@ -387,14 +360,42 @@ Rectangle {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                if (actBtn.isPrimary) {
-                                    root.actionInvoked(root.notifItem, actBtn.modelData)
-                                    root.dismissWithAnimation()
-                                } else {
-                                    root.actionInvoked(root.notifItem, actBtn.modelData)
-                                    root.expanded = false
+                                if (actBtn.modelData && typeof actBtn.modelData.invoke === "function") {
+                                    actBtn.modelData.invoke()
                                 }
+                                root.actionInvoked(root.notifItem, actBtn.modelData)
                             }
+                        }
+                    }
+                }
+
+                // Explicit "Dismiss" Pill
+                Rectangle {
+                    id: dismissPill
+                    height: 24
+                    width: dismissText.implicitWidth + 16
+                    radius: 12
+                    color: dismissMouse.containsMouse ? Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.25) : Qt.rgba(255/255, 255/255, 255/255, 0.06)
+                    border.width: 1
+                    border.color: dismissMouse.containsMouse ? Theme.err : Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.25)
+
+                    Text {
+                        id: dismissText
+                        anchors.centerIn: parent
+                        text: "Dismiss"
+                        font.family: "Manrope"
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                        color: dismissMouse.containsMouse ? Theme.err : Theme.fgDim
+                    }
+
+                    MouseArea {
+                        id: dismissMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            slideOutAnim.restart()
                         }
                     }
                 }

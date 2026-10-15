@@ -198,6 +198,8 @@ Item {
                 strokeWidth: 1.8
                 fillColor: "transparent"
                 capStyle: ShapePath.RoundCap
+                startX: 50
+                startY: 0
 
                 PathAngleArc {
                     centerX: 50

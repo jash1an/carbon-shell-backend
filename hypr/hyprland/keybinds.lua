@@ -3,7 +3,7 @@ local fn   = require("hyprland.functions")
 
 -- Launcher
 hl.bind(vars.kbMenu or "SUPER + Space", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh toggle-launcher"), { release = true })
-hl.bind("SUPER + SUPER_L", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh toggle-launcher"), { release = true })
+
 
 -- Screenshot
 hl.bind(vars.kbScreenshot or "SUPER + Print", hl.dsp.exec_cmd("~/.config/hypr/scripts/screenshot.sh"))

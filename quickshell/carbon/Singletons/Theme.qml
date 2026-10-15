@@ -344,8 +344,8 @@ Singleton {
     readonly property real moduleMargin: 5
 
     /* Typography */
-    readonly property string font: "JetBrainsMono Nerd Font"
-    readonly property string fontMono: "JetBrainsMono Nerd Font"
+    readonly property string font: "Rubik, Google Sans Flex, JetBrainsMono Nerd Font, sans-serif"
+    readonly property string fontMono: "JetBrainsMono Nerd Font, monospace"
 
     /* ── Global Font Scale — the single knob ────────────────────────── */
     // Edit this ONE number to resize every text element in the shell.

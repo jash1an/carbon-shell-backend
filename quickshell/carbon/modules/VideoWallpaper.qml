@@ -26,8 +26,8 @@ Item {
     VideoOutput {
         id: videoOutput
         anchors.fill: parent
-        visible: false
-        opacity: 0.0
+        visible: true
+        opacity: 1.0
         fillMode: VideoOutput.PreserveAspectCrop
     }
 }

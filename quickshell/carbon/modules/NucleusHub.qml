@@ -51,8 +51,15 @@ Item {
     function toggleNotifPanel() {
         root.notifPanelOpen = !root.notifPanelOpen
         if (root.notifPanelOpen) {
+            if (!root.hubOpen) root.open()
             root.focusedLobe = "alerts"
         }
+    }
+
+    function openNotificationPanel() {
+        if (!root.hubOpen) root.open()
+        root.focusedLobe = "alerts"
+        root.notifPanelOpen = true
     }
 
     readonly property string nightScript: {
@@ -132,6 +139,7 @@ Item {
         root.nucleusExpanded = true
         root.activeMode = "hub"
         root.focusedLobe = ""
+        root.notifPanelOpen = false
     }
 
     Timer {
@@ -175,9 +183,38 @@ Item {
         root.focusedLobe = (root.focusedLobe === name) ? "" : name
     }
 
+    property var alertsRandomOffsets: [
+        { dx: 0, dy: 0 },
+        { dx: 0, dy: 0 },
+        { dx: 0, dy: 0 },
+        { dx: 0, dy: 0 }
+    ]
+
+    function randomizeAlertsSubLobes() {
+        var offsets = []
+        for (var i = 0; i < 4; i++) {
+            var rX = (Math.random() - 0.5) * 4
+            var rY = (Math.random() - 0.5) * 4
+            offsets.push({ dx: rX, dy: rY })
+        }
+        root.alertsRandomOffsets = offsets
+    }
+
+    function resetAlertsSubLobes() {
+        root.alertsRandomOffsets = [
+            { dx: 0, dy: 0 },
+            { dx: 0, dy: 0 },
+            { dx: 0, dy: 0 },
+            { dx: 0, dy: 0 }
+        ]
+    }
+
     onFocusedLobeChanged: {
-        if (root.focusedLobe !== "alerts") {
+        if (root.focusedLobe === "alerts") {
+            root.randomizeAlertsSubLobes()
+        } else {
             root.notifPanelOpen = false
+            root.resetAlertsSubLobes()
         }
     }
 
@@ -1372,10 +1409,19 @@ Item {
                     }
                 }
 
-                // Origin is at center of hub, with gentle radial displacement
+                // Alerts Lobe remains in its natural orbit position (no jumping away from cursor)
+                readonly property bool isThisAlerts: lobeItem.lobeId === "alerts"
+                readonly property bool isAlertsFocused: root.focusedLobe === "alerts"
+                readonly property real alertShiftX: 0
+                readonly property real alertShiftY: 0
+
+                property real animAlertX: 0
+                property real animAlertY: 0
+
+                // Origin is at center of hub, with gentle radial displacement + alert shift
                 readonly property real idleRad: targetAngle * (Math.PI / 180.0)
-                x: (isThisFocused || root.isClosingHub) ? 0 : (idleDistOffset * Math.cos(idleRad))
-                y: (isThisFocused || root.isClosingHub) ? 0 : (idleDistOffset * Math.sin(idleRad))
+                x: ((isThisFocused || root.isClosingHub) ? 0 : (idleDistOffset * Math.cos(idleRad))) + animAlertX
+                y: ((isThisFocused || root.isClosingHub) ? 0 : (idleDistOffset * Math.sin(idleRad))) + animAlertY
                 width: 1
                 height: 1
                 transformOrigin: Item.TopLeft
@@ -1384,10 +1430,14 @@ Item {
                 readonly property bool isThisFocused: root.focusedLobe === lobeItem.lobeId
                 readonly property bool isAnyFocused: root.focusedLobe !== ""
 
-                // Dynamic Scale & Opacity per specifications:
-                // Focused lobe scale 0.92, others shrink to 0.45 and dim to 35%
-                readonly property real targetScale: isThisFocused ? 0.92 : (isAnyFocused ? (baseScale * 0.45) : baseScale)
-                readonly property real targetAlpha: isThisFocused ? 1.0 : (isAnyFocused ? 0.35 : 1.0)
+                // Dynamic Scale & Opacity:
+                // Keep Alert Lobe identical in scale to other lobes when focused
+                readonly property real targetScale: isThisFocused
+                    ? 0.92
+                    : (isAnyFocused ? (baseScale * 0.45) : baseScale)
+                readonly property real targetAlpha: isThisFocused
+                    ? 1.0
+                    : (isAnyFocused ? 0.35 : 1.0)
 
                 property real focusScale: targetScale
                 Behavior on focusScale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
@@ -1469,7 +1519,7 @@ Item {
 
                 Timer {
                     id: unfocusDebounceTimer
-                    interval: 180
+                    interval: 420
                     repeat: false
                     onTriggered: {
                         if (lobeItem.lobeId === "alerts" && root.notifPanelOpen) {
@@ -1500,10 +1550,10 @@ Item {
                 // ── Hit bridge keeping hover active when traversing between lobe button and satellites ──
                 Item {
                     id: lobeHitBridge
-                    x: lobeItem.currentRadius - 30
-                    y: -95
-                    width: 145
-                    height: 190
+                    x: lobeItem.currentRadius - 35
+                    y: -85
+                    width: 135
+                    height: 170
                     visible: lobeItem.isThisFocused
                     z: -1
                     MouseArea {
@@ -1529,10 +1579,11 @@ Item {
                 // ── 48px Standalone Round Icon Button at dynamic orbitalRadius ──
                 Item {
                     id: lobeTipButton
-                    x: lobeItem.currentRadius - 24
-                    y: -24
-                    width: 48
-                    height: 48
+                    readonly property real btnSize: 48
+                    x: lobeItem.currentRadius - (btnSize / 2)
+                    y: -(btnSize / 2)
+                    width: btnSize
+                    height: btnSize
 
                     Rectangle {
                         anchors.fill: parent
@@ -1544,20 +1595,21 @@ Item {
                                   : Qt.rgba(root.colBgDark.r, root.colBgDark.g, root.colBgDark.b, 0.92))
                         border.color: lobeItem.lobeColor
                         border.width: 2.0
-                        scale: lobeMouse.containsMouse ? 1.15 : 1.0
+                        scale: lobeMouse.containsMouse ? 1.08 : 1.0
                         Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
                         Text {
                             anchors.centerIn: parent
                             text: lobeItem.iconGlyph
                             font.family: Theme.fontIcon
-                            font.pixelSize: 22
+                            font.pixelSize: Theme.fontPx(22)
                             color: lobeItem.lobeColor
                             rotation: -lobeItem.rotation
                         }
 
-                        // Alerts Lobe Unread Count Badge (top-right, coral #f2705f, 2px dark border)
+                        // Alerts Lobe Unread Count Badge (top-right, coral #f2705f, 2px dark border, bump scale 1 -> 1.6 -> 1 over 500ms)
                         Rectangle {
+                            id: notifBadgeItem
                             visible: lobeItem.lobeId === "alerts" && NotificationService.unreadCount > 0
                             anchors.top: parent.top
                             anchors.right: parent.right
@@ -1566,10 +1618,29 @@ Item {
                             width: Math.max(18, badgeText.implicitWidth + 8)
                             height: 18
                             radius: 9
-                            color: "#f2705f"
+                            color: Theme.accent
                             border.color: root.colBgDark
                             border.width: 2.0
                             rotation: -lobeItem.rotation
+
+                            property real badgeBump: 1.0
+                            scale: badgeBump
+                            transformOrigin: Item.Center
+
+                            SequentialAnimation {
+                                id: notifBadgeBumpAnim
+                                NumberAnimation { target: notifBadgeItem; property: "badgeBump"; to: 1.6; duration: 200; easing.type: Easing.OutBack }
+                                NumberAnimation { target: notifBadgeItem; property: "badgeBump"; to: 1.0; duration: 300; easing.type: Easing.OutCubic }
+                            }
+
+                            Connections {
+                                target: NotificationService
+                                function onUnreadCountChanged() {
+                                    if (NotificationService.unreadCount > 0 && lobeItem.lobeId === "alerts") {
+                                        notifBadgeBumpAnim.restart()
+                                    }
+                                }
+                            }
 
                             Text {
                                 id: badgeText
@@ -1578,7 +1649,7 @@ Item {
                                 font.family: "Valley Sans"
                                 font.pixelSize: 10
                                 font.bold: true
-                                color: "#ffffff"
+                                color: Theme.accentFg
                             }
                         }
 
@@ -1654,7 +1725,7 @@ Item {
                             readonly property var satAngles: [-72, -24, 24, 72]
                             readonly property real relDeg: satAngles[index]
                             readonly property real relRad: relDeg * (Math.PI / 180.0)
-                            readonly property real satRadius: 66
+                            readonly property real satRadius: 58
 
                             property real satPop: lobeItem.isThisFocused ? 1.0 : 0.0
                             Behavior on satPop {
@@ -1664,11 +1735,13 @@ Item {
                                 }
                             }
 
+                            readonly property real subLobeSize: 40
+
                             // Radial position smoothly blooms outward with fluid spring
                             x: (satRadius * Math.cos(relRad) * satPop) - width / 2
                             y: (satRadius * Math.sin(relRad) * satPop) - height / 2
-                            width: 40
-                            height: 40
+                            width: subLobeSize
+                            height: subLobeSize
                             visible: (modelData.visible !== undefined) ? modelData.visible : true
                             scale: 0.35 + 0.65 * satPop
                             opacity: Math.min(1.0, satPop * 1.5)
@@ -1723,22 +1796,25 @@ Item {
                                     rotation: -lobeItem.rotation
                                 }
 
-                                // Badge for notifications (Unread count)
-                                Rectangle {
+                                // Unread notification dot indicator (vibrant solid red circle, no numbers)
+                                Item {
+                                    anchors.centerIn: parent
+                                    width: parent.width
+                                    height: parent.height
+                                    rotation: -lobeItem.rotation
                                     visible: modelData.badgeCount !== undefined && modelData.badgeCount > 0
-                                    anchors.top: parent.top
-                                    anchors.right: parent.right
-                                    anchors.topMargin: -4
-                                    anchors.rightMargin: -4
-                                    width: 16; height: 16; radius: 8
-                                    color: root.colCoral
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: String(modelData.badgeCount || "")
-                                        font.family: "JetBrainsMono Nerd Font"
-                                        font.pixelSize: Theme.fontPx(9)
-                                        font.bold: true
-                                        color: "#ffffff"
+
+                                    Rectangle {
+                                        anchors.top: parent.top
+                                        anchors.right: parent.right
+                                        anchors.topMargin: 2
+                                        anchors.rightMargin: 2
+                                        width: 8
+                                        height: 8
+                                        radius: 4
+                                        color: "#ff2222"
+                                        border.width: 1
+                                        border.color: Qt.rgba(0, 0, 0, 0.45)
                                     }
                                 }
 
@@ -1922,7 +1998,7 @@ Item {
                 id: lobeAlerts
                 lobeId: "alerts"
                 targetAngle: 345
-                baseScale: 0.90
+                baseScale: 1.00
                 staggerDelay: 270
                 retractDelay: 0
                 idleDuration: 6800
@@ -1933,15 +2009,15 @@ Item {
 
                 satelliteModel: [
                     {
-                        // Moon: toggles DND
+                        // Moon: toggles Night Light
                         icon: "nightlight",
                         isFontIcon: true,
-                        isActive: NotificationService.dnd,
-                        customBg: NotificationService.dnd ? "#c9d0ff" : undefined,
-                        customColor: NotificationService.dnd ? "#0f1416" : undefined,
-                        customBorder: NotificationService.dnd ? "#c9d0ff" : undefined,
+                        isActive: root.nightLightOn,
+                        customBg: root.nightLightOn ? Theme.accent : undefined,
+                        customColor: root.nightLightOn ? Theme.accentFg : undefined,
+                        customBorder: root.nightLightOn ? Theme.accent : undefined,
                         action: function() {
-                            NotificationService.toggleDnd()
+                            root.toggleNightLight()
                         }
                     },
                     {
@@ -2138,6 +2214,8 @@ Item {
                     strokeColor: "#FFFFFF"
                     fillColor: "transparent"
                     capStyle: ShapePath.RoundCap
+                    startX: 27
+                    startY: 0
                     PathAngleArc {
                         centerX: 27
                         centerY: 27
@@ -2164,6 +2242,8 @@ Item {
                     strokeColor: "#FFFFFF"
                     fillColor: "transparent"
                     capStyle: ShapePath.RoundCap
+                    startX: 52
+                    startY: 0
                     PathAngleArc {
                         centerX: 52
                         centerY: 52
@@ -2210,7 +2290,7 @@ Item {
                         if (controlRing && controlRing.isOpen) return controlRing.centerReadoutText
                         return root.timeStr
                     }
-                    font.family: "Valley Sans"
+                    font.family: "Valley Sans, Rubik, sans-serif"
                     font.pixelSize: Theme.fontPx((controlRing && controlRing.isOpen) ? 15 : ((root.activeMode === "power") ? 11 : 13))
                     font.bold: true
                     color: "#0b0e14"
@@ -2363,41 +2443,41 @@ Item {
             readonly property real trackRadius: 50
             readonly property real currentAngleRad: -Math.PI / 2 + (2 * Math.PI * animProgress)
 
+            // 1. Faint Orbital Guide Ring (clean circular border, avoids Qt 360-degree arc chord glitch)
+            Rectangle {
+                anchors.centerIn: parent
+                width: 100
+                height: 100
+                radius: 50
+                color: "transparent"
+                border.width: 1.8
+                border.color: Qt.rgba(1, 1, 1, 0.14)
+            }
+
+            // 2. Neon Accent Progress Arc
             Shape {
                 id: progressShape
                 anchors.fill: parent
                 layer.enabled: true
                 layer.samples: 4
+                visible: musicProgressRing.animProgress > 0.001
 
-                // 1. Faint Orbital Guide Ring
-                ShapePath {
-                    strokeWidth: 2.0
-                    strokeColor: Qt.rgba(1, 1, 1, 0.14)
-                    fillColor: "transparent"
-                    capStyle: ShapePath.RoundCap
-                    PathAngleArc {
-                        centerX: 58
-                        centerY: 58
-                        radiusX: 50
-                        radiusY: 50
-                        startAngle: 0
-                        sweepAngle: 360
-                    }
-                }
-
-                // 2. Neon Accent Progress Arc
                 ShapePath {
                     strokeWidth: 2.6
                     strokeColor: root.colTeal
                     fillColor: "transparent"
                     capStyle: ShapePath.RoundCap
+                    startX: 58
+                    startY: 8
                     PathAngleArc {
                         centerX: 58
                         centerY: 58
                         radiusX: 50
                         radiusY: 50
                         startAngle: -90
-                        sweepAngle: Math.max(0.1, Math.min(359.9, musicProgressRing.animProgress * 360.0))
+                        sweepAngle: (musicProgressRing.animProgress > 0.001)
+                            ? Math.min(359.9, musicProgressRing.animProgress * 360.0)
+                            : 0.0
                     }
                 }
             }
@@ -3785,6 +3865,8 @@ Item {
                             strokeColor: powerOrbItem.modelData.holdColor
                             fillColor: "transparent"
                             capStyle: ShapePath.RoundCap
+                            startX: 24
+                            startY: 0
                             PathAngleArc {
                                 centerX: 24
                                 centerY: 24
@@ -4022,9 +4104,10 @@ Item {
     }
 
     /* ══════════════════════════════════════════════════════════════════════
-       PHASE 5.6: Modular Notification Panel (Stage 3 Mount)
-       Positioned ~60px to the left of the small bell sub-lobe,
-       constrained with >= 24px screen margin.
+       PHASE 5.6: Minimalist Notification Panel (296px Width)
+       Placed to the LEFT of Nucleus (right edge 176px left of Nucleus center,
+       top = Math.max(nucleusY - 225, 24)), blooms from Second Bell sub-lobe
+       (scale 0.28 -> 1.0, opacity 0 -> 1).
        ══════════════════════════════════════════════════════════════════════ */
     readonly property point bellSatelliteScreenPos: {
         if (!lobeAlerts) return Qt.point(root.width / 2, root.height / 2)
@@ -4036,7 +4119,7 @@ Item {
         const lobeRad = lobeDeg * (Math.PI / 180.0)
         // Small bell satellite is index 3 (angle: 72°)
         const satRad = 72.0 * (Math.PI / 180.0)
-        const satR = 66.0
+        const satR = 58.0
         // Satellite coordinates in lobe's local frame
         const localX = lobeAlerts.orbitalRadius + (satR * Math.cos(satRad))
         const localY = satR * Math.sin(satRad)
@@ -4055,31 +4138,37 @@ Item {
         property real panelProgress: open ? 1.0 : 0.0
         Behavior on panelProgress {
             NumberAnimation {
-                duration: 260
+                duration: 320
                 easing.type: Easing.OutBack
                 easing.overshoot: 1.15
             }
         }
 
-        opacity: Math.min(1.0, panelProgress * 1.4)
-        scale: 0.88 + (0.12 * panelProgress)
+        opacity: panelProgress
 
-        // Placement: panel's right edge is ~60px left of small bell sub-lobe.
-        // Clamped to at least 24px screen margin. If not enough space on left, flip to right.
-        readonly property real targetRightX: root.bellSatelliteScreenPos.x - 60
+        // Placement: Placed to the LEFT of Nucleus (right edge 176px left of Nucleus center, top = Math.max(nucleusY - 225, 24))
+        readonly property real nucleusX: root.width / 2
+        readonly property real nucleusY: (root.height / 2) + hubCenter.anchors.verticalCenterOffset
+        readonly property real targetRightX: nucleusX - 176
         readonly property real computedX: {
             if (targetRightX - width < 24) {
-                // If overflow on left, check right side of bell
-                const altX = root.bellSatelliteScreenPos.x + 60
-                return Math.min(root.width - width - 24, Math.max(24, altX))
+                // If near left edge, flip to right of Nucleus
+                return Math.min(root.width - width - 24, nucleusX + 176)
             }
             return Math.max(24, targetRightX - width)
         }
-        readonly property real computedY: Math.max(24, Math.min(root.height - height - 24, root.bellSatelliteScreenPos.y - (height / 2)))
+        readonly property real computedY: Math.max(24, Math.min(root.height - height - 24, nucleusY - 225))
 
-        // Gentle 14px slide towards small bell origin on open
-        x: computedX + ((1.0 - panelProgress) * 14.0)
+        x: computedX
         y: computedY
+
+        // Blooms from Second Bell sub-lobe (scale 0.28 -> 1.0)
+        transform: Scale {
+            origin.x: Math.max(0, Math.min(notifPanel.width, root.bellSatelliteScreenPos.x - notifPanel.x))
+            origin.y: Math.max(0, Math.min(notifPanel.height, root.bellSatelliteScreenPos.y - notifPanel.y))
+            xScale: 0.28 + (0.72 * notifPanel.panelProgress)
+            yScale: 0.28 + (0.72 * notifPanel.panelProgress)
+        }
 
         onCloseRequested: {
             root.notifPanelOpen = false

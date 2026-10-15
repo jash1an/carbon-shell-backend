@@ -7,27 +7,16 @@ import "../Singletons"
 /**
  * NotificationPanel.qml
  *
- * Requirements:
- * - Width 344px, height up to 480px.
- * - Glass panel styling:
- *   - Background rgba(15,20,22, 0.6)
- *   - Faint coral radial glow at top-right
- *   - Border 1px rgba(255,255,255, 0.11), radius 30px
- *   - Shadow 0 34px 90px rgba(0,0,0, 0.6), inner top highlight
- * - Header:
- *   - "Notifications" (19px, weight 800)
- *   - Subtitle: "N new", "All caught up", or "Do not disturb is on"
- *   - Two 34px round icon buttons:
- *     - DND (moon) - turns lavender (#c9d0ff, dark icon) when active
- *     - Clear all (trash)
- * - Tabs: All / Chat / System in a pill track with sliding indicator
- * - Scrollable list grouped under:
- *   - "New" (with "Mark all read" link in coral)
- *   - "Earlier"
- *   - Hide a group when it's empty. Fade top and bottom edges; hide scrollbar.
- * - Empty state:
- *   - Breathing round orb with a bell, "All quiet", and a one-line hint.
- * - Footer hint: "Click to expand, swipe sideways to dismiss"
+ * Slim Minimalist Vanish-Mode Notification Center (296px Width)
+ * - 296px width, height: Math.min(450, screenH - 48), radius: 26
+ * - Glass surface rgba(12, 15, 18, 0.78) with 28px blur & 1px rgba(255,255,255, 0.09) border
+ * - Header: "Notifications" (16px weight 800) + dynamic subtitle ("N unread", "All caught up", or "Do not disturb is on")
+ *   + Two 30px circular buttons (DND toggle & Clear All)
+ * - ReactBits Micro-Interaction 1: Rubber-Segment Category Pill (All / Chat / System) with OutBack and rubber stretch
+ * - ReactBits Micro-Interaction 2: Vertical Glide-Select Hover Follower behind cards with 2.5px coral left bar
+ * - Flickable scroll list with non-stealing gestures and smooth WheelHandler
+ * - Empty State: Centered 48px bell circle, "All quiet", "No new notifications right now"
+ * - Clear All: Staggers card slide-out by 50ms, dismisses daemon notifs, and transitions cleanly to empty state
  */
 Rectangle {
     id: root
@@ -35,39 +24,40 @@ Rectangle {
     property bool open: false
     signal closeRequested()
 
-    width: 344
-    implicitHeight: 480
-    radius: 30
-    color: Theme.m3surfaceContainer
+    width: 340
+    implicitWidth: 340
+    implicitHeight: Math.min(450, (root.parent ? root.parent.height : 768) - 48)
+    height: implicitHeight
+    radius: 26
+    color: Qt.rgba(Theme.m3surfaceContainer.r, Theme.m3surfaceContainer.g, Theme.m3surfaceContainer.b, 0.88)
     border.width: 1
-    border.color: Theme.m3outlineVariant
+    border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.35)
     clip: true
 
-    // MultiEffect Shadow & Blur container
+    // MultiEffect Shadow container (preserves crisp razor-sharp text)
     layer.enabled: true
     layer.effect: MultiEffect {
         shadowEnabled: true
         shadowColor: "#000000"
-        shadowOpacity: 0.60
-        shadowBlur: 0.90
-        shadowVerticalOffset: 34
+        shadowOpacity: 0.70
+        shadowBlur: 0.85
+        shadowVerticalOffset: 24
     }
 
-    // Inner Top Highlight
+    // Top VisionOS Specular Rim Highlight
     Rectangle {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.leftMargin: 20
-        anchors.rightMargin: 20
+        anchors.leftMargin: 24
+        anchors.rightMargin: 24
         height: 1
-        color: Qt.rgba(255/255, 255/255, 255/255, 0.20)
+        color: Qt.rgba(255/255, 255/255, 255/255, 0.16)
     }
 
-    // Active Tab State: 0 = "All", 1 = "Chat", 2 = "System"
+    // Tab state: 0 = "All", 1 = "Chat", 2 = "System"
     property int currentTab: 0
 
-    // Filtered lists
     readonly property var allItems: NotificationService.list || []
     readonly property var tabItems: {
         var res = []
@@ -84,152 +74,213 @@ Rectangle {
         return res
     }
 
-    // Subdivided into "New" (unread) and "Earlier" (read)
-    readonly property var newGroupItems: {
-        var g = []
-        for (var i = 0; i < tabItems.length; i++) {
-            if (tabItems[i].unread) g.push(tabItems[i])
-        }
-        return g
-    }
-
-    readonly property var earlierGroupItems: {
-        var g = []
-        for (var i = 0; i < tabItems.length; i++) {
-            if (!tabItems[i].unread) g.push(tabItems[i])
-        }
-        return g
-    }
-
     readonly property int totalCount: tabItems.length
-    readonly property int unreadCount: NotificationService.unreadCount
+    readonly property int unreadCount: {
+        var c = 0
+        for (var i = 0; i < tabItems.length; i++) {
+            if (tabItems[i].unread) c++
+        }
+        return c
+    }
 
-    // Subtitle text computation
     readonly property string subtitleText: {
         if (NotificationService.dnd) return "Do not disturb is on"
-        if (root.unreadCount > 0) return root.unreadCount + " new"
+        if (root.unreadCount > 0) return root.unreadCount + " unread"
         return "All caught up"
+    }
+
+    // Reference to currently hovered card for Vertical Glide-Select Follower
+    property var hoveredCardItem: null
+
+    function handleCardHovered(cardItem, hovered) {
+        if (hovered) {
+            root.hoveredCardItem = cardItem
+        } else if (root.hoveredCardItem === cardItem) {
+            root.hoveredCardItem = null
+        }
+    }
+
+    // ── Working Clear All with 50ms Stagger ──────────────────────────────────
+    function clearCurrentTab() {
+        if (root.totalCount === 0) return
+        var itemsSnapshot = [...root.tabItems]
+        var targetCat = (root.currentTab === 0) ? "all" : ((root.currentTab === 1) ? "chat" : "system")
+
+        // Trigger staggered slide-out on visible card delegates
+        for (var i = 0; i < cardRepeater.count; i++) {
+            var card = cardRepeater.itemAt(i)
+            if (card && typeof card.triggerClearAnimation === "function") {
+                card.triggerClearAnimation(i * 50)
+            }
+        }
+
+        // Timer to commit clearing in model after staggered slide completes
+        clearCommitTimer.targetCat = targetCat
+        clearCommitTimer.interval = (cardRepeater.count * 50) + 240
+        clearCommitTimer.restart()
+    }
+
+    Timer {
+        id: clearCommitTimer
+        property string targetCat: "all"
+        repeat: false
+        onTriggered: {
+            NotificationService.clearCategory(targetCat)
+            root.hoveredCardItem = null
+        }
     }
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 18
-        spacing: 12
+        anchors.margins: 14
+        spacing: 10
 
-        // ── 1. Header ────────────────────────────────────────────────────────
+        // ── 1. Minimal Header ────────────────────────────────────────────────
         RowLayout {
             Layout.fillWidth: true
-            spacing: 10
+            spacing: 8
 
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 2
+                spacing: 1
 
                 Text {
                     text: "Notifications"
                     font.family: "Manrope"
-                    font.pixelSize: 19
+                    font.pixelSize: 16
                     font.weight: Font.ExtraBold // 800
-                    color: "#f4f6f5"
+                    color: Theme.fg
                 }
 
                 Text {
                     text: root.subtitleText
                     font.family: "Manrope"
-                    font.pixelSize: 12
+                    font.pixelSize: 11
                     font.weight: Font.DemiBold
-                    color: NotificationService.dnd ? "#c9d0ff" : Qt.rgba(244/255, 246/255, 245/255, 0.66)
+                    color: NotificationService.dnd ? Theme.accent : Theme.fgDim
                 }
             }
 
-            // Top-Right Action Buttons: DND & Clear All (34px round buttons)
+            // Two 30px Circular Action Buttons
             RowLayout {
-                spacing: 8
+                spacing: 6
 
-                // DND Button (Moon)
+                // 1. DND Toggle Button (Moon)
                 Rectangle {
-                    width: 34
-                    height: 34
-                    radius: 17
-                    color: NotificationService.dnd 
-                           ? "#c9d0ff" 
-                           : (dndMouse.containsMouse ? Qt.rgba(255/255, 255/255, 255/255, 0.15) : Qt.rgba(255/255, 255/255, 255/255, 0.08))
+                    width: 30
+                    height: 30
+                    radius: 15
+                    color: NotificationService.dnd
+                        ? Theme.accent
+                        : (dndBtnMouse.containsMouse ? Theme.bgHover : Qt.rgba(255/255, 255/255, 255/255, 0.06))
                     border.width: 1
-                    border.color: NotificationService.dnd ? "#c9d0ff" : Qt.rgba(255/255, 255/255, 255/255, 0.12)
+                    border.color: NotificationService.dnd ? Theme.accent : Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.30)
+                    scale: dndBtnMouse.pressed ? 0.92 : (dndBtnMouse.containsMouse ? 1.08 : 1.0)
+                    Behavior on scale { NumberAnimation { duration: 120 } }
+                    Behavior on color { ColorAnimation { duration: 150 } }
 
                     Text {
                         anchors.centerIn: parent
-                        text: "nightlight"
+                        text: "notifications_off"
                         font.family: Theme.fontIcon
-                        font.pixelSize: 16
-                        color: NotificationService.dnd ? "#0f1416" : "#f4f6f5"
+                        font.pixelSize: 14
+                        color: NotificationService.dnd ? Theme.accentFg : Theme.fg
                     }
 
                     MouseArea {
-                        id: dndMouse
+                        id: dndBtnMouse
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            NotificationService.toggleDnd()
-                        }
+                        onClicked: NotificationService.toggleDnd()
                     }
                 }
 
-                // Clear All Button (Trash)
+                // 2. Clear All Button (Trash)
                 Rectangle {
-                    width: 34
-                    height: 34
-                    radius: 17
-                    color: clearMouse.containsMouse ? Qt.rgba(255/255, 255/255, 255/255, 0.15) : Qt.rgba(255/255, 255/255, 255/255, 0.08)
-                    border.width: 1
-                    border.color: Qt.rgba(255/255, 255/255, 255/255, 0.12)
+                    width: 30
+                    height: 30
+                    radius: 15
                     visible: root.totalCount > 0
+                    color: clearBtnMouse.containsMouse
+                        ? Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.25)
+                        : Qt.rgba(255/255, 255/255, 255/255, 0.06)
+                    border.width: 1
+                    border.color: clearBtnMouse.containsMouse ? Theme.err : Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.30)
+                    scale: clearBtnMouse.pressed ? 0.92 : (clearBtnMouse.containsMouse ? 1.08 : 1.0)
+                    Behavior on scale { NumberAnimation { duration: 120 } }
+                    Behavior on color { ColorAnimation { duration: 150 } }
 
                     Text {
                         anchors.centerIn: parent
                         text: "delete"
                         font.family: Theme.fontIcon
-                        font.pixelSize: 16
-                        color: "#f4f6f5"
+                        font.pixelSize: 14
+                        color: clearBtnMouse.containsMouse ? Theme.err : Theme.fg
                     }
 
                     MouseArea {
-                        id: clearMouse
+                        id: clearBtnMouse
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            NotificationService.clearAll()
-                        }
+                        onClicked: root.clearCurrentTab()
                     }
                 }
             }
         }
 
-        // ── 2. Tabs Track: All / Chat / System ──────────────────────────────
+        // ── 2. ReactBits Rubber-Segment Category Pill (All / Chat / System) ─
         Rectangle {
+            id: categoryTrack
             Layout.fillWidth: true
-            Layout.preferredHeight: 36
-            radius: 18
-            color: Theme.m3surfaceContainerLow
+            Layout.preferredHeight: 30
+            radius: 999
+            color: Theme.bgAlt
             border.width: 1
-            border.color: Theme.m3outlineVariant
+            border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.30)
 
-            // Sliding Indicator
+            readonly property real segmentWidth: (width - 6) / 3
+
+            // Sliding Rubber Indicator Pill
             Rectangle {
-                x: root.currentTab * ((parent.width - 6) / 3) + 3
+                id: rubberPill
+                x: 3 + (root.currentTab * categoryTrack.segmentWidth)
                 y: 3
-                width: (parent.width - 6) / 3
-                height: 30
-                radius: 15
-                color: Theme.m3surfaceContainerHigh
+                width: categoryTrack.segmentWidth
+                height: 24
+                radius: 999
+                color: Theme.accent
+                transformOrigin: Item.Center
 
                 Behavior on x {
                     NumberAnimation {
-                        duration: 220
-                        easing.type: Easing.OutCubic
+                        duration: 360
+                        easing.type: Easing.OutBack
+                        easing.overshoot: 1.15
                     }
+                }
+
+                // Rubber stretch animation on tab change
+                SequentialAnimation {
+                    id: rubberAnim
+                    ParallelAnimation {
+                        NumberAnimation { target: rubberPill; property: "scale"; to: 1.0; duration: 1 }
+                        NumberAnimation { target: rubberPillScale; property: "xScale"; to: 1.22; duration: 160; easing.type: Easing.OutQuad }
+                        NumberAnimation { target: rubberPillScale; property: "yScale"; to: 0.84; duration: 160; easing.type: Easing.OutQuad }
+                    }
+                    ParallelAnimation {
+                        NumberAnimation { target: rubberPillScale; property: "xScale"; to: 1.0; duration: 200; easing.type: Easing.OutBack }
+                        NumberAnimation { target: rubberPillScale; property: "yScale"; to: 1.0; duration: 200; easing.type: Easing.OutBack }
+                    }
+                }
+
+                transform: Scale {
+                    id: rubberPillScale
+                    origin.x: rubberPill.width / 2
+                    origin.y: rubberPill.height / 2
+                    xScale: 1.0
+                    yScale: 1.0
                 }
             }
 
@@ -240,7 +291,6 @@ Rectangle {
 
                 Repeater {
                     model: ["All", "Chat", "System"]
-
                     delegate: Item {
                         required property int index
                         required property string modelData
@@ -252,16 +302,20 @@ Rectangle {
                             anchors.centerIn: parent
                             text: modelData
                             font.family: "Manrope"
-                            font.pixelSize: 12
+                            font.pixelSize: 11
                             font.weight: root.currentTab === index ? Font.Bold : Font.Medium
-                            color: root.currentTab === index ? "#ffffff" : Qt.rgba(244/255, 246/255, 245/255, 0.66)
+                            color: root.currentTab === index ? Theme.accentFg : Theme.fgDim
                         }
 
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                root.currentTab = index
+                                if (root.currentTab !== index) {
+                                    root.currentTab = index
+                                    rubberAnim.restart()
+                                    root.hoveredCardItem = null
+                                }
                             }
                         }
                     }
@@ -269,57 +323,34 @@ Rectangle {
             }
         }
 
-        // ── 3. Scrollable List / Empty State ────────────────────────────────
+        // ── 3. Scrollable List & ReactBits Vertical Glide-Select Follower ───
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
 
-            // Empty State View
+            // Empty State
             ColumnLayout {
                 anchors.centerIn: parent
-                spacing: 12
+                spacing: 10
                 visible: root.totalCount === 0
 
-                // Breathing round orb with a bell
+                // Centered 48px Bell Circle
                 Rectangle {
-                    id: emptyOrb
                     Layout.alignment: Qt.AlignHCenter
-                    width: 68
-                    height: 68
-                    radius: 34
-                    color: Qt.rgba(255/255, 255/255, 255/255, 0.06)
+                    width: 48
+                    height: 48
+                    radius: 24
+                    color: Qt.rgba(255/255, 255/255, 255/255, 0.05)
                     border.width: 1
-                    border.color: Qt.rgba(255/255, 255/255, 255/255, 0.12)
-
-                    property real orbScale: 1.0
-                    scale: orbScale
-
-                    SequentialAnimation {
-                        running: root.totalCount === 0 && root.open
-                        loops: Animation.Infinite
-                        NumberAnimation {
-                            target: emptyOrb
-                            property: "orbScale"
-                            to: 1.08
-                            duration: 2200
-                            easing.type: Easing.InOutSine
-                        }
-                        NumberAnimation {
-                            target: emptyOrb
-                            property: "orbScale"
-                            to: 1.0
-                            duration: 2200
-                            easing.type: Easing.InOutSine
-                        }
-                    }
+                    border.color: Qt.rgba(255/255, 255/255, 255/255, 0.10)
 
                     Text {
                         anchors.centerIn: parent
                         text: "notifications"
                         font.family: Theme.fontIcon
-                        font.pixelSize: 28
-                        color: Qt.rgba(244/255, 246/255, 245/255, 0.50)
+                        font.pixelSize: 22
+                        color: Qt.rgba(244/255, 246/255, 245/255, 0.45)
                     }
                 }
 
@@ -327,18 +358,18 @@ Rectangle {
                     Layout.alignment: Qt.AlignHCenter
                     text: "All quiet"
                     font.family: "Manrope"
-                    font.pixelSize: 15
+                    font.pixelSize: 14
                     font.weight: Font.Bold
-                    color: "#f4f6f5"
+                    color: Theme.fg
                 }
 
                 Text {
                     Layout.alignment: Qt.AlignHCenter
                     text: "No new notifications right now"
                     font.family: "Manrope"
-                    font.pixelSize: 12
+                    font.pixelSize: 11
                     font.weight: Font.Medium
-                    color: Qt.rgba(244/255, 246/255, 245/255, 0.40)
+                    color: Theme.fgDim
                 }
             }
 
@@ -346,97 +377,100 @@ Rectangle {
             Flickable {
                 id: notifFlickable
                 anchors.fill: parent
-                contentHeight: listCol.implicitHeight
+                contentHeight: listContainer.implicitHeight
                 boundsBehavior: Flickable.StopAtBounds
-                visible: root.totalCount > 0
+                flickableDirection: Flickable.VerticalFlick
+                interactive: true
                 clip: true
+                visible: root.totalCount > 0
 
-                ColumnLayout {
-                    id: listCol
-                    width: parent.width
-                    spacing: 12
+                WheelHandler {
+                    target: notifFlickable
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                    onWheel: (event) => {
+                        var delta = -event.angleDelta.y * 0.75
+                        var maxY = Math.max(0, notifFlickable.contentHeight - notifFlickable.height)
+                        notifFlickable.contentY = Math.max(0, Math.min(maxY, notifFlickable.contentY + delta))
+                    }
+                }
 
-                    // ── Group "New" (Unread) ──
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        visible: root.newGroupItems.length > 0
+                Item {
+                    id: listContainer
+                    width: notifFlickable.width
+                    implicitHeight: cardColumn.implicitHeight + 8
 
-                        RowLayout {
-                            Layout.fillWidth: true
+                    // ReactBits Vertical Glide-Select Hover Follower
+                    Rectangle {
+                        id: hoverFollower
+                        z: 0
+                        x: 0
+                        width: parent.width
+                        radius: 16
+                        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.08)
+                        border.width: 1
+                        border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.20)
+                        visible: opacity > 0.01
+                        opacity: root.hoveredCardItem ? 1.0 : 0.0
+                        Behavior on opacity { NumberAnimation { duration: 180 } }
 
-                            Text {
-                                text: "New"
-                                font.family: "Manrope"
-                                font.pixelSize: 12
-                                font.weight: Font.Bold
-                                color: Qt.rgba(244/255, 246/255, 245/255, 0.66)
-                            }
+                        property real targetY: root.hoveredCardItem ? root.hoveredCardItem.y : 0
+                        property real targetH: root.hoveredCardItem ? root.hoveredCardItem.height : 0
 
-                            Item { Layout.fillWidth: true }
+                        y: targetY
+                        height: targetH
 
-                            Text {
-                                text: "Mark all read"
-                                font.family: "Manrope"
-                                font.pixelSize: 11
-                                font.weight: Font.Bold
-                                color: "#f2705f" // Coral
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        NotificationService.markAllRead()
-                                    }
-                                }
-                            }
+                        Behavior on y {
+                            NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
+                        }
+                        Behavior on height {
+                            NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
                         }
 
-                        Repeater {
-                            model: root.newGroupItems
-
-                            delegate: NotificationCard {
-                                notifItem: modelData
-                                cardIndex: index
-                                onDismissRequested: (item) => {
-                                    NotificationService.dismiss(item.id)
-                                }
-                                onActionInvoked: (item, actionObj) => {
-                                    NotificationService.invokeAction(item, actionObj)
-                                }
-                            }
+                        // 2.5px vertical indicator bar on left edge
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            anchors.topMargin: 8
+                            anchors.bottomMargin: 8
+                            anchors.leftMargin: 2
+                            width: 2.5
+                            radius: 1.25
+                            color: Theme.accent
                         }
                     }
 
-                    // ── Group "Earlier" (Read) ──
-                    ColumnLayout {
-                        Layout.fillWidth: true
+                    // Card List Column
+                    Column {
+                        id: cardColumn
+                        z: 1
+                        width: parent.width
                         spacing: 8
-                        visible: root.earlierGroupItems.length > 0
-
-                        RowLayout {
-                            Layout.fillWidth: true
-
-                            Text {
-                                text: "Earlier"
-                                font.family: "Manrope"
-                                font.pixelSize: 12
-                                font.weight: Font.Bold
-                                color: Qt.rgba(244/255, 246/255, 245/255, 0.40)
-                            }
-
-                            Item { Layout.fillWidth: true }
-                        }
 
                         Repeater {
-                            model: root.earlierGroupItems
+                            id: cardRepeater
+                            model: root.tabItems
 
                             delegate: NotificationCard {
+                                id: cardDelegate
+                                required property var modelData
+                                required property int index
+
                                 notifItem: modelData
                                 cardIndex: index
+                                width: cardColumn.width
+
+                                onCardHoveredChanged: (cardItem, hovered) => {
+                                    root.handleCardHovered(cardItem, hovered)
+                                }
+
                                 onDismissRequested: (item) => {
                                     NotificationService.dismiss(item.id)
+                                    if (root.hoveredCardItem === cardDelegate) {
+                                        root.hoveredCardItem = null
+                                    }
                                 }
+
                                 onActionInvoked: (item, actionObj) => {
                                     NotificationService.invokeAction(item, actionObj)
                                 }
@@ -446,41 +480,30 @@ Rectangle {
                 }
             }
 
-            // Top fade gradient
+            // Top and Bottom Smooth Fade Edges
             Rectangle {
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
-                height: 14
+                height: 12
                 gradient: Gradient {
-                    GradientStop { position: 0.0; color: Qt.rgba(15/255, 20/255, 22/255, 0.90) }
+                    GradientStop { position: 0.0; color: Qt.rgba(12/255, 15/255, 18/255, 0.95) }
                     GradientStop { position: 1.0; color: "transparent" }
                 }
                 visible: notifFlickable.visible && notifFlickable.contentY > 2
             }
 
-            // Bottom fade gradient
             Rectangle {
                 anchors.bottom: parent.bottom
                 anchors.left: parent.left
                 anchors.right: parent.right
-                height: 14
+                height: 12
                 gradient: Gradient {
                     GradientStop { position: 0.0; color: "transparent" }
-                    GradientStop { position: 1.0; color: Qt.rgba(15/255, 20/255, 22/255, 0.90) }
+                    GradientStop { position: 1.0; color: Qt.rgba(12/255, 15/255, 18/255, 0.95) }
                 }
                 visible: notifFlickable.visible
             }
-        }
-
-        // ── 4. Footer Hint ──────────────────────────────────────────────────
-        Text {
-            Layout.alignment: Qt.AlignHCenter
-            text: "Click to expand, swipe sideways to dismiss"
-            font.family: "Manrope"
-            font.pixelSize: 11
-            font.weight: Font.Medium
-            color: Qt.rgba(244/255, 246/255, 245/255, 0.35)
         }
     }
 }

@@ -31,6 +31,9 @@ hl.on("hyprland.start", function()
     -- switch-shells:START
     hl.exec_cmd("systemctl --user is-active --quiet carbon-quickshell.service || systemctl --user start carbon-quickshell.service")
     -- switch-shells:END
+
+    -- First boot welcome screen (auto-dismisses with 0 lingering RAM)
+    hl.exec_cmd("sh ~/.config/hypr/scripts/carbon-welcome.sh")
 end)
 
 -- Resizer listener
