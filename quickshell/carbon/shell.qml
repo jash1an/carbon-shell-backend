@@ -539,15 +539,46 @@ ShellRoot {
     property bool btHidden: true
 
     function openBt() {
-        root.closeAllPopupsExcept("bt")
-        if (!btProbe.running) btProbe.running = true
-        if (!btNameProbe.running) btNameProbe.running = true
-        root.btOpen = true
+        if (root.barMode === "pill") {
+            root.closeAllPopupsExcept("controls")
+            root.controlsPinned = true
+            root.controlsVisible = true
+            if (controlsItem) {
+                controlsItem.mode = 0
+                controlsItem.openBtDetails()
+            }
+        } else {
+            root.closeAllPopupsExcept("bt")
+            if (!btProbe.running) btProbe.running = true
+            if (!btNameProbe.running) btNameProbe.running = true
+            root.btOpen = true
+        }
     }
-    function closeBt() { root.btOpen = false; root.btPinned = false }
+    function closeBt() {
+        if (root.barMode === "pill") {
+            root.closeControls()
+        } else {
+            root.btOpen = false
+            root.btPinned = false
+        }
+    }
     function toggleBt() {
-        if (root.btOpen) { root.closeBt() }
-        else { root.closeAllPopupsExcept("bt"); root.btPinned = true; root.btOpen = true }
+        if (root.barMode === "pill") {
+            if (root.controlsVisible && controlsItem && controlsItem.btPopupOpen) {
+                root.closeControls()
+            } else {
+                root.closeAllPopupsExcept("controls")
+                root.controlsPinned = true
+                root.controlsVisible = true
+                if (controlsItem) {
+                    controlsItem.mode = 0
+                    controlsItem.openBtDetails()
+                }
+            }
+        } else {
+            if (root.btOpen) { root.closeBt() }
+            else { root.closeAllPopupsExcept("bt"); root.btPinned = true; root.btOpen = true }
+        }
     }
 
     onBtOpenChanged: {
@@ -3572,7 +3603,7 @@ ShellRoot {
             right: true
         }
 
-        visible: (root.btOpen || btItem.animatingOut) && root.mainBarEdge !== "left"
+        visible: (root.btOpen || btItem.animatingOut) && root.mainBarEdge !== "left" && root.barMode !== "pill"
 
         Item {
             anchors.fill: parent

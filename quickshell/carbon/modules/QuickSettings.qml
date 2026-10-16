@@ -648,6 +648,10 @@ Item {
             anchors.margins: 12
             spacing: 8
             z: 1
+            opacity: (root.wifiPopupOpen || root.btPopupOpen || root.audioPopupOpen) ? 0.0 : 1.0
+            visible: opacity > 0.0
+            enabled: !root.wifiPopupOpen && !root.btPopupOpen && !root.audioPopupOpen
+            Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
 
             /* ── Header: Clock & Action Shortcuts (Screen recorder removed) ── */
             RowLayout {
@@ -2894,28 +2898,18 @@ Item {
         Item {
             id: detailContainer
             anchors.fill: parent
-            anchors.margins: 4
             clip: true
             z: 100
             visible: root.wifiPopupOpen || root.btPopupOpen || root.audioPopupOpen || vanishPicker.isOpen || (vanishPicker.transitionProgress > 0.001)
             opacity: (root.wifiPopupOpen || root.btPopupOpen || root.audioPopupOpen) ? 1.0 : 0.0
             Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
-            // Backdrop glass
-            Rectangle {
-                anchors.fill: parent
-                radius: 18
-                color: Theme.isDark ? Qt.rgba(0.04, 0.05, 0.08, 0.96) : Qt.rgba(0.96, 0.97, 0.98, 0.96)
-                border.width: 1
-                border.color: Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.35)
-            }
-
             ConnectivityOrbitPicker {
                 id: vanishPicker
                 standaloneMode: true
                 visible: (root.wifiPopupOpen || root.btPopupOpen) && !root.audioPopupOpen
                 anchors.centerIn: parent
-                anchors.verticalCenterOffset: 16
+                anchors.verticalCenterOffset: 0
                 onBackRequested: {
                     root.wifiPopupOpen = false
                     root.btPopupOpen = false
@@ -2926,7 +2920,6 @@ Item {
                 id: audioPicker
                 visible: root.audioPopupOpen
                 anchors.fill: parent
-                anchors.margins: 6
                 onBackRequested: {
                     root.audioPopupOpen = false
                 }
