@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import Quickshell.Services.Pam
 import M3Shapes
 import "../../Singletons"
@@ -164,8 +165,22 @@ Item {
         if (buffer.length > 0 && !isAuthenticating) {
             isAuthenticating = true
             isError = false
+            idleHideTimer.stop()
             submitKickAnim.restart()
-            passwd.start()
+            authTimeoutTimer.restart()
+            if (!passwd.start()) {
+                authTimeoutTimer.stop()
+                console.warn("[PasswordCard] Failed to start PAM context")
+                isAuthenticating = false
+                isError = true
+                buffer = ""
+                if (logoComponent && typeof logoComponent.wrong === "function") {
+                    logoComponent.wrong()
+                }
+                shakeAnim.restart()
+                errorTimer.restart()
+                restartIdleTimer(1400)
+            }
         }
     }
 
@@ -281,11 +296,39 @@ Item {
         onTriggered: cardRoot.isError = false
     }
 
+    Timer {
+        id: authTimeoutTimer
+        interval: 10000
+        repeat: false
+        onTriggered: {
+            if (cardRoot.isAuthenticating) {
+                console.warn("[PasswordCard] PAM authentication timed out after 10s")
+                if (passwd.active) passwd.abort()
+                cardRoot.isAuthenticating = false
+                cardRoot.isError = true
+                cardRoot.buffer = ""
+                if (cardRoot.logoComponent && typeof cardRoot.logoComponent.wrong === "function") {
+                    cardRoot.logoComponent.wrong()
+                }
+                shakeAnim.restart()
+                errorTimer.restart()
+                cardRoot.restartIdleTimer(1400)
+            }
+        }
+    }
+
+    FileView {
+        id: hyprlockPamFile
+        path: "/etc/pam.d/hyprlock"
+        blockLoading: true
+        printErrors: false
+    }
+
     /* ── PAM Authentication Context ──────────────────────────────────────── */
     PamContext {
         id: passwd
-        config: "hyprlock"
-        user: Quickshell.env("USER")
+        config: hyprlockPamFile.loaded ? "hyprlock" : "system-auth"
+        user: Quickshell.env("USER") || ""
 
         onResponseRequiredChanged: {
             if (responseRequired) {
@@ -295,6 +338,7 @@ Item {
         }
 
         onCompleted: (res) => {
+            authTimeoutTimer.stop()
             cardRoot.isAuthenticating = false
             if (res === PamResult.Success) {
                 cardRoot.isSuccess = true
@@ -313,17 +357,33 @@ Item {
                 cardRoot.restartIdleTimer(1400)
             }
         }
+
+        onError: (err) => {
+            authTimeoutTimer.stop()
+            console.warn("[PasswordCard] PAM error:", PamError.toString(err))
+            cardRoot.isAuthenticating = false
+            cardRoot.isError = true
+            cardRoot.buffer = ""
+            if (cardRoot.logoComponent && typeof cardRoot.logoComponent.wrong === "function") {
+                cardRoot.logoComponent.wrong()
+            }
+            shakeAnim.restart()
+            errorTimer.restart()
+            cardRoot.restartIdleTimer(1400)
+        }
     }
 
     Connections {
         target: LockTransition
         function onPhaseChanged() {
             if (LockTransition.phase === "idle" || LockTransition.phase === "locking") {
+                authTimeoutTimer.stop()
                 cardRoot.revealed = false
                 cardRoot.buffer = ""
                 cardRoot.isSuccess = false
                 cardRoot.isError = false
                 cardRoot.isAuthenticating = false
+                if (passwd.active) passwd.abort()
             }
         }
     }
