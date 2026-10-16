@@ -6,10 +6,11 @@ import "VerciGlyphMap.js" as GlyphMap
 
 /**
  * VerciLyricEngine:
- * High-speed MPRIS synchronized lyrics parser with mandatory micro-chunking.
+ * High-speed MPRIS synchronized lyrics parser with mandatory 3-word max chunking.
  *
- * Never displays long sentences at once. Subdivides every lyric line into
- * rapid 1-to-2 word micro-beats and feeds them into the 3-slot convex lens stack.
+ * Keeps at most 3 words in every line that appears on screen.
+ * Subdivides each line's duration smoothly across the chunks so they match
+ * the singing tempo and never rush ahead of the music.
  */
 Item {
     id: root
@@ -27,13 +28,6 @@ Item {
     property var slotCBeat: null // Exiting top (index 2)
     property int currentBeatIndex: -1
 
-    readonly property var weakWords: ({
-        "of": true, "a": true, "an": true, "to": true, "in": true, "on": true,
-        "the": true, "my": true, "so": true, "or": true, "and": true, "at": true,
-        "by": true, "for": true, "if": true, "is": true, "it": true, "as": true,
-        "be": true, "we": true, "up": true, "do": true, "no": true
-    })
-
     function chunkLyrics() {
         var rawLines = LyricsService.lines || []
         if (!rawLines || rawLines.length === 0) {
@@ -48,56 +42,66 @@ Item {
         var beats = []
         for (var i = 0; i < rawLines.length; i++) {
             var cur = rawLines[i]
-            var nextTime = (i + 1 < rawLines.length) ? rawLines[i + 1].time : (cur.time + 4.0)
-            var lineWindow = Math.max(0.6, nextTime - cur.time)
+            var nextTime = (i + 1 < rawLines.length) ? rawLines[i + 1].time : (cur.time + 3.8)
+            var lineDuration = Math.max(0.6, nextTime - cur.time)
 
-            // 1. Split line by whitespace
+            // 1. Split line by whitespace into words
             var words = cur.text.trim().split(/\s+/).filter(function(w) { return w.length > 0 })
             if (words.length === 0) continue
 
-            // 2. Group weak prepositions/articles
-            var microBeats = []
-            for (var w = 0; w < words.length; w++) {
-                var word = words[w]
-                var stripped = GlyphMap.stripWord(word)
-                var isWeak = Boolean(root.weakWords[stripped])
-
-                if (isWeak && (w + 1 < words.length)) {
-                    var nextWord = words[w + 1]
-                    var combined = word + " " + nextWord
-                    if (combined.length <= 9) {
-                        microBeats.push(combined)
-                        w++ // skip paired word
-                        continue
-                    }
+            // 2. Strict chunking: at most 3 words per chunk
+            var chunks = []
+            var w = 0
+            while (w < words.length) {
+                var remaining = words.length - w
+                var take = 3
+                if (remaining === 4) {
+                    take = 2
+                } else if (remaining < 3) {
+                    take = remaining
                 }
-                microBeats.push(word)
+                chunks.push(words.slice(w, w + take).join(" "))
+                w += take
             }
 
-            // 3. Subdivide line's time window across micro-beats
+            // 3. Singing duration calculation:
+            // For normal lines (<= 5.5s), sing throughout the line window.
+            // For longer lines with instrumental gaps (>5.5s), clamp to realistic singing length.
+            var singingDuration = lineDuration
+            if (lineDuration > 5.5) {
+                singingDuration = Math.min(lineDuration, Math.max(1.8, chunks.length * 1.35))
+            }
+
+            // Distribute singingDuration proportionally across chunks weighted by character length
             var weights = []
             var totalWeight = 0
-            for (var b = 0; b < microBeats.length; b++) {
-                var wt = Math.max(3, microBeats[b].length)
+            for (var b = 0; b < chunks.length; b++) {
+                var wt = Math.max(4, chunks[b].length)
                 weights.push(wt)
                 totalWeight += wt
             }
 
             var curBeatTime = cur.time
-            for (var b = 0; b < microBeats.length; b++) {
+            for (var b = 0; b < chunks.length; b++) {
                 var frac = weights[b] / Math.max(1, totalWeight)
-                var beatDur = lineWindow * frac
-                // Clamped between 180ms and 650ms
-                beatDur = Math.max(0.180, Math.min(0.650, beatDur))
+                var beatDur = singingDuration * frac
 
-                var beatText = microBeats[b]
+                var beatText = chunks[b]
                 var parts = beatText.split(" ")
-                var cleanFirst = GlyphMap.stripWord(parts[0])
-                var cleanLast = GlyphMap.stripWord(parts[parts.length - 1])
-                var glyph = GlyphMap.lookupGlyph(cleanLast) || GlyphMap.lookupGlyph(cleanFirst) || null
 
-                // Angled cutout tape block for highlighted punch words
-                var isPunch = (glyph !== null) || (beatText.length >= 7) || ((b % 3 === 0) && beatText.length >= 4)
+                // Check EVERY word in the 3-word chunk for a matching glyph
+                var glyph = null
+                for (var p = 0; p < parts.length; p++) {
+                    var g = GlyphMap.lookupGlyph(parts[p])
+                    if (g) {
+                        glyph = g
+                        break
+                    }
+                }
+
+                // Angled cutout tape block for punch words:
+                // punch if matched glyph, or first beat of multi-beat line, or length >= 8
+                var isPunch = (glyph !== null) || (beatText.length >= 8) || (b === 0 && chunks.length > 1)
 
                 beats.push({
                     "id": i + "_" + b,
@@ -128,9 +132,9 @@ Item {
         }
     }
 
-    // High-precision 40ms position poller while playing
+    // High-precision 30ms position poller while playing
     Timer {
-        interval: 40
+        interval: 30
         repeat: true
         running: root.isPlaying && root.hasTrack
         onTriggered: {
@@ -150,8 +154,8 @@ Item {
             return
         }
 
-        // 180ms lookahead for audio/render latency compensation
-        var pos = root.currentPosition + 0.18
+        // Precision lookahead: 60ms (0.06s) for human visual perception latency
+        var pos = root.currentPosition + 0.06
 
         // If before first beat
         if (pos < root.allBeats[0].time) {

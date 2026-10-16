@@ -15,6 +15,7 @@ import "VerciGlyphMap.js" as GlyphMap
  *   - Pure #000000 pitch-black background.
  *   - Top ReactBits Aurora Shader.
  *   - Center 3-Slot Convex Lens Stack (Fisheye Visual + Split-Text Rise).
+ *   - Max 3 words per line, balanced typography, visible full-color emojis.
  *   - Single-Enter Instant Unlock (500ms radial iris reveal centered at 683, 383).
  */
 Item {
@@ -65,15 +66,15 @@ Item {
         }
     }
 
-    // Capture Return / Enter key for instant unlock
+    // Capture Return / Enter / Space key for instant unlock
     Keys.onPressed: (event) => {
-        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
             event.accepted = true
             root.triggerUnlock()
         }
     }
 
-    // Mouse click also triggers unlock if desired
+    // Mouse click also triggers unlock if clicked
     MouseArea {
         anchors.fill: parent
         z: 10
@@ -91,19 +92,19 @@ Item {
     Item {
         id: stageContainer
         anchors.centerIn: parent
-        width: Math.min(1180, root.width * 0.86)
-        height: 480
+        width: Math.min(1180, root.width * 0.88)
+        height: 440
         z: 1
         visible: lyricEngine.hasLyrics && root.irisRadius < 900
         opacity: root.unlocking ? Math.max(0.0, 1.0 - root.irisRadius / 400.0) : 1.0
 
-        // Slot C — Exiting Top (yOffset: -154px)
+        // Slot C — Exiting Top (yOffset: -132px)
         Item {
             id: slotCContainer
             anchors.centerIn: parent
-            y: parent.height / 2 - 154
+            y: parent.height / 2 - 132
             width: parent.width
-            height: 90
+            height: 60
             visible: lyricEngine.slotCBeat !== null
             opacity: 0.0 // fading out completely as it rolls off
 
@@ -128,21 +129,21 @@ Item {
                 text: lyricEngine.slotCBeat ? lyricEngine.slotCBeat.text : ""
                 font.family: "Google Sans Flex, Plus Jakarta Sans, Manrope, sans-serif"
                 font.weight: Font.ExtraBold
-                font.letterSpacing: -3.5
-                font.pixelSize: 80
+                font.letterSpacing: -2.5
+                font.pixelSize: 36
                 color: Theme.m3secondary
             }
         }
 
-        // Slot B — Just Passed / Shortening (yOffset: -74px)
+        // Slot B — Just Passed / Shortening (yOffset: -64px)
         Item {
             id: slotBContainer
             anchors.centerIn: parent
-            y: parent.height / 2 - 74
+            y: parent.height / 2 - 64
             width: parent.width
-            height: 120
+            height: 80
             visible: lyricEngine.slotBBeat !== null
-            opacity: lyricEngine.slotBBeat ? 0.75 : 0.0
+            opacity: lyricEngine.slotBBeat ? 0.70 : 0.0
 
             Behavior on y {
                 NumberAnimation { duration: 190; easing.type: Easing.OutCubic }
@@ -168,20 +169,20 @@ Item {
 
             Row {
                 anchors.centerIn: parent
-                spacing: 18
+                spacing: 14
 
-                // Companion emoji/icon if present (left side)
+                // Companion emoji icon with visible full color (zero border/card)
                 Text {
                     text: (lyricEngine.slotBBeat && lyricEngine.slotBBeat.glyph) ? lyricEngine.slotBBeat.glyph : ""
                     visible: text.length > 0
-                    font.pixelSize: 68
+                    font.family: "Noto Color Emoji, sans-serif"
+                    font.pixelSize: 42
                     anchors.verticalCenter: parent.verticalCenter
-                    color: "transparent" // emoji renders its own glyph colors; zero background
                 }
 
                 Item {
-                    width: slotBText.width + 36
-                    height: slotBText.height + 20
+                    width: slotBText.width + 30
+                    height: slotBText.height + 16
                     anchors.verticalCenter: parent.verticalCenter
 
                     // Drained tape block for Slot B
@@ -198,8 +199,13 @@ Item {
                         text: lyricEngine.slotBBeat ? lyricEngine.slotBBeat.text : ""
                         font.family: "Google Sans Flex, Plus Jakarta Sans, Manrope, sans-serif"
                         font.weight: Font.ExtraBold
-                        font.letterSpacing: -3.5
-                        font.pixelSize: 84
+                        font.letterSpacing: -2.5
+                        font.pixelSize: {
+                            var len = (text || "").length
+                            if (len > 18) return 38
+                            if (len > 12) return 44
+                            return 52
+                        }
                         color: (lyricEngine.slotBBeat && lyricEngine.slotBBeat.isTape)
                             ? Qt.rgba(Theme.m3onPrimary.r, Theme.m3onPrimary.g, Theme.m3onPrimary.b, 0.85)
                             : Theme.m3secondary
@@ -208,13 +214,13 @@ Item {
             }
         }
 
-        // Slot A — Active Present (front-and-center at yOffset: +22px)
+        // Slot A — Active Present (front-and-center at yOffset: +20px)
         Item {
             id: slotAContainer
             anchors.centerIn: parent
-            y: parent.height / 2 + 22
+            y: parent.height / 2 + 20
             width: parent.width
-            height: 190
+            height: 140
             visible: lyricEngine.slotABeat !== null
 
             // Split-Text Horizon Rise Entry Animation
@@ -239,7 +245,7 @@ Item {
                 NumberAnimation {
                     target: slotAContainer
                     property: "riseY"
-                    from: 85.0
+                    from: 70.0
                     to: 0.0
                     duration: 180
                     easing.type: Easing.OutExpo
@@ -247,7 +253,7 @@ Item {
                 NumberAnimation {
                     target: slotAContainer
                     property: "riseScale"
-                    from: 0.90
+                    from: 0.92
                     to: 1.0
                     duration: 180
                     easing.type: Easing.OutExpo
@@ -267,26 +273,26 @@ Item {
             // Italic safety container padding so slanted/bold glyphs are never clipped
             Item {
                 anchors.centerIn: parent
-                width: slotARow.width + 56
-                height: slotARow.height + 24
+                width: slotARow.width + 48
+                height: slotARow.height + 20
 
                 Row {
                     id: slotARow
                     anchors.centerIn: parent
-                    spacing: 18
+                    spacing: 16
 
-                    // Inline companion icon (68px–88px) with strictly zero background, zero border
+                    // Inline companion icon (60px) in full color with strictly zero background, zero border
                     Text {
                         text: (lyricEngine.slotABeat && lyricEngine.slotABeat.glyph) ? lyricEngine.slotABeat.glyph : ""
                         visible: text.length > 0
-                        font.pixelSize: 84
+                        font.family: "Noto Color Emoji, sans-serif"
+                        font.pixelSize: 60
                         anchors.verticalCenter: parent.verticalCenter
-                        color: "transparent" // pure naked glyph
                     }
 
                     Item {
-                        width: slotAText.width + 48
-                        height: slotAText.height + 22
+                        width: slotAText.width + 38
+                        height: slotAText.height + 18
                         anchors.verticalCenter: parent.verticalCenter
 
                         // Angled Cutout Tape Block behind punch words
@@ -298,20 +304,21 @@ Item {
                             visible: opened
                         }
 
-                        // Front-and-center kinetic text
+                        // Front-and-center kinetic text (max 3 words)
                         Text {
                             id: slotAText
                             anchors.centerIn: parent
                             text: lyricEngine.slotABeat ? lyricEngine.slotABeat.text : ""
                             font.family: "Google Sans Flex, Plus Jakarta Sans, Manrope, sans-serif"
                             font.weight: Font.ExtraBold
-                            font.letterSpacing: -3.5
+                            font.letterSpacing: -3.0
                             font.italic: lyricEngine.slotABeat ? lyricEngine.slotABeat.isTape : false
                             font.pixelSize: {
                                 var len = (text || "").length
-                                if (len > 14) return 96
-                                if (len > 8) return 118
-                                return 146
+                                if (len > 18) return 56
+                                if (len > 12) return 66
+                                if (len > 6) return 78
+                                return 88
                             }
                             fontSizeMode: Text.HorizontalFit
                             color: (lyricEngine.slotABeat && lyricEngine.slotABeat.isTape)
