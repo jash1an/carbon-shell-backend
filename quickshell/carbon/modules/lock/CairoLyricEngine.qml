@@ -117,21 +117,27 @@ Item {
             var chunks = root.chunkTokens(rawTokens)
             if (chunks.length === 0) continue
 
-            // Interpolate timed micro-beats across (nextLineTime - lineStartTime) * 0.92
-            var singingDuration = lineDuration * 0.92
-            if (lineDuration > 6.0) {
-                singingDuration = Math.min(lineDuration - 0.8, Math.max(2.4, chunks.length * 1.5))
-            } else if (lineDuration < 1.4) {
-                singingDuration = Math.max(0.45, lineDuration - 0.10)
-            }
-
-            // Distribute singing duration across chunks weighted by character length
+            // Calculate natural syllable-based vocal duration for this line
+            var expectedTotal = 0
             var weights = []
             var totalWeight = 0
             for (var c = 0; c < chunks.length; c++) {
-                var wt = Math.max(3, chunks[c].text.length)
+                var chunkLen = chunks[c].text.length
+                var wt = Math.max(3, chunkLen)
                 weights.push(wt)
                 totalWeight += wt
+                // Natural singing rate: ~0.28s baseline + ~0.065s per character
+                expectedTotal += (0.28 + chunkLen * 0.065)
+            }
+
+            // Tempo-adaptive vocal singing duration:
+            // Fast rap: takes full available line without artificial gaps
+            // Slow ballad: caps vocal span to natural singing speed so words do not lag into instrumental pauses
+            var singingDuration
+            if (lineDuration <= expectedTotal * 1.15) {
+                singingDuration = Math.max(0.45, lineDuration - 0.08)
+            } else {
+                singingDuration = Math.min(lineDuration - 0.35, Math.max(0.70, expectedTotal * 1.20))
             }
 
             var curChunkTime = cur.time
@@ -192,8 +198,8 @@ Item {
             return
         }
 
-        // Audio lookahead: 90ms
-        var pos = root.currentPosition + 0.09
+        // Audio lookahead: 50ms (balances D-Bus event interval with sharp on-beat delivery)
+        var pos = root.currentPosition + 0.05
 
         if (pos < root.allWords[0].time) {
             root.row0Word = null

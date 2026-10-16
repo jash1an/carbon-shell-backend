@@ -13,13 +13,13 @@ import "CairoHinglishMap.js" as GlyphMap
  * Visual Features:
  *   - 100% Pure Pitch-Black Stage (#000000) with zero shaders, zero horizon lines, zero UI chrome.
  *   - 5 Persistent Word Delegates in a True Upward-Gliding 3D Barrel.
- *   - Single-Word Highlight Pacing: in 2-word rows, only the currently active spoken word
- *     is highlighted at a time with the angled cutout tape, seamlessly stepping from word0 to word1.
- *   - Tape wipes open horizontally (scaleX: 0.0 -> 1.0, 200ms Easing.OutQuart).
- *   - Tape fill = Qt.darker(Theme.m3primary, 1.2) blended 25% with #9e6b74.
- *   - Text inside active tape = bright pale cream/blush (#f7ebed), NEVER black (#000000).
- *   - Stage 1: Tape polygon dims, text transitions to warm muted bronze (#9c6e54).
- *   - 18 Custom Angular SVG Vector Glyphs with GPU CurveRenderer anti-aliasing.
+ *   - Flat Rectangular Highlighter (Word Document Style): clean 90-degree untilted rectangle
+ *     wrapping strictly the active word with natural padding and smooth horizontal wipe.
+ *   - High-contrast text: crisp dark ink (#08090d) on luminous highlights, pale cream on deep tones.
+ *   - Wallpaper Theme Palette: auto-boosts saturation on pale/pastel wallpapers to maintain vibrancy.
+ *   - Precision Audio-Synchronized Sub-Word Stepping: locked to microsecond MPRIS position so
+ *     words stay tightly synced on fast rap songs and slow ballads alike.
+ *   - 18 Custom Angular SVG Vector Glyphs with native GPU CurveRenderer anti-aliasing.
  *   - Instant single-Enter unlock with radial iris reveal.
  */
 Item {
@@ -32,31 +32,53 @@ Item {
     readonly property real cx: root.width / 2
     readonly property real cy: root.height / 2
 
-    // ── Tape & Text Palette Tokens ─────────────────────────────────────────
-    readonly property color tapeFillColor: {
-        var p = Theme.m3primary || Theme.accent || Qt.rgba(0.75, 0.77, 0.93, 1.0)
-        var darkP = Qt.darker(p, 1.2)
-        var blush = Qt.color("#9e6b74")
-        return Qt.rgba(
-            darkP.r * 0.75 + blush.r * 0.25,
-            darkP.g * 0.75 + blush.g * 0.25,
-            darkP.b * 0.75 + blush.b * 0.25,
-            1.0
-        )
+    // ── Wallpaper Theme Palette Saturation Booster ─────────────────────────
+    function getVibrantThemeColor() {
+        var c = Theme.m3primary || Theme.accent || Qt.rgba(0.46, 0.81, 0.97, 1.0)
+        var r = c.r, g = c.g, b = c.b
+        var max = Math.max(r, g, b), min = Math.min(r, g, b)
+        var d = max - min
+        var h = 0
+        if (d > 0.0001) {
+            if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6
+            else if (max === g) h = ((b - r) / d + 2) / 6
+            else h = ((r - g) / d + 4) / 6
+        }
+        var s = max === 0 ? 0 : d / max
+        var v = max
+        var boostS = Math.max(s, 0.78)
+        var boostV = Math.max(0.75, Math.min(v, 0.95))
+        return Qt.hsva(h, boostS, boostV, 1.0)
     }
 
-    readonly property color activeTextColor: "#f7ebed"
+    readonly property color vibrantPrimary: getVibrantThemeColor()
+    readonly property color highlightColor: root.vibrantPrimary
+
+    readonly property real highlightLuminance: 0.299 * highlightColor.r + 0.587 * highlightColor.g + 0.114 * highlightColor.b
+    readonly property color highlightedTextColor: highlightLuminance > 0.42 ? "#08090d" : "#f7ebed"
 
     readonly property color bronzeColor: {
         var sec = Theme.m3secondary || Qt.rgba(0.77, 0.77, 0.87, 1.0)
         var dSec = Qt.darker(sec, 1.15)
         var b = Qt.color("#9c6e54")
         return Qt.rgba(
-            dSec.r * 0.50 + b.r * 0.50,
-            dSec.g * 0.50 + b.g * 0.50,
-            dSec.b * 0.50 + b.b * 0.50,
+            dSec.r * 0.40 + b.r * 0.60,
+            dSec.g * 0.40 + b.g * 0.60,
+            dSec.b * 0.40 + b.b * 0.60,
             1.0
         )
+    }
+
+    // Live continuous audio position for instant sub-word stepping
+    readonly property real liveAudioPosition: lyricEngine.currentPosition
+
+    onLiveAudioPositionChanged: {
+        var pos = root.liveAudioPosition + 0.05
+        for (var i = 0; i < delegates.length; i++) {
+            if (delegates[i].stage === 0) {
+                delegates[i].updateSubWord(pos)
+            }
+        }
     }
 
     // ── 1. Pure Pitch-Black Stage (0% Shaders / 0% Chrome) ────────────────
@@ -131,13 +153,14 @@ Item {
     component CairoWordDelegate: Item {
         id: delegateRoot
         width: root.width
-        height: 150
+        height: 140
         x: (root.width - width) / 2
 
         property int stage: 4 // -1: pre-entry, 0: active bottom, 1: middle, 2: top, 3: exiting, 4: idle
         property string chunkText: ""
         property string glyphMotif: ""
         property real currentDuration: 1.0
+        property real chunkStartTime: 0.0
 
         // Parse individual words
         readonly property var words: {
@@ -149,18 +172,30 @@ Item {
         readonly property string word1: words.length > 1 ? words[1] : ""
         readonly property bool hasSecondWord: word1.length > 0
 
-        // Single-word highlight stepping: tracks which word is highlighted (0 or 1)
+        readonly property real word0Ratio: {
+            if (!hasSecondWord) return 1.0
+            var len0 = Math.max(1, word0.length)
+            var len1 = Math.max(1, word1.length)
+            return Math.min(0.70, Math.max(0.30, (len0 + 0.5) / (len0 + len1 + 1.0)))
+        }
+
+        readonly property real word1StartTime: chunkStartTime + (currentDuration * word0Ratio)
+
+        // Single-word highlight stepping
         property int activeWordSubIndex: 0
+
+        function updateSubWord(pos) {
+            if (stage !== 0 || !hasSecondWord) return
+            if (chunkStartTime > 0.0 && pos >= word1StartTime) {
+                if (activeWordSubIndex !== 1) activeWordSubIndex = 1
+            } else if (chunkStartTime > 0.0 && pos < word1StartTime) {
+                if (activeWordSubIndex !== 0) activeWordSubIndex = 0
+            }
+        }
 
         Timer {
             id: subWordTimer
-            interval: {
-                if (!delegateRoot.hasSecondWord) return 1000
-                var len0 = Math.max(1, delegateRoot.word0.length)
-                var len1 = Math.max(1, delegateRoot.word1.length)
-                var ratio0 = Math.min(0.70, Math.max(0.30, (len0 + 1.0) / (len0 + len1 + 2.0)))
-                return Math.max(150, Math.round(delegateRoot.currentDuration * 1000 * ratio0))
-            }
+            interval: Math.max(120, Math.round(delegateRoot.currentDuration * 1000 * delegateRoot.word0Ratio))
             running: delegateRoot.stage === 0 && delegateRoot.hasSecondWord && delegateRoot.activeWordSubIndex === 0
             repeat: false
             onTriggered: {
@@ -293,14 +328,14 @@ Item {
             CairoGlyph {
                 id: glyphItem
                 motif: delegateRoot.glyphMotif
-                glyphColor: Theme.m3primary || Theme.accent || "#c0c4ee"
+                glyphColor: root.vibrantPrimary
                 anchors.verticalCenter: parent.verticalCenter
                 width: 86
                 height: 86
                 visible: motif.length > 0
             }
 
-            // Words Row: renders individual words with independent single-word highlighting
+            // Words Row: renders individual words with clean Word document rectangular highlighting
             Row {
                 id: wordsRow
                 anchors.verticalCenter: parent.verticalCenter
@@ -311,44 +346,25 @@ Item {
                     id: wordBox0
                     visible: delegateRoot.word0.length > 0
                     readonly property bool isHighlighted: delegateRoot.stage === 0 && delegateRoot.activeWordSubIndex === 0
-                    width: wordText0.contentWidth + 48
-                    height: Math.max(80, wordText0.contentHeight + 18)
+                    width: wordText0.contentWidth + 28
+                    height: wordText0.contentHeight + 10
                     anchors.verticalCenter: parent.verticalCenter
 
-                    Item {
-                        id: tapeContainer0
+                    // Word Document Rectangular Highlighter (Untilted, radius: 4)
+                    Rectangle {
+                        id: highlightRect0
                         anchors.fill: parent
-                        rotation: -1.4
+                        radius: 4
+                        color: root.highlightColor
                         transformOrigin: Item.Left
-                        opacity: wordBox0.isHighlighted ? 1.0 : (delegateRoot.stage === 1 ? 0.14 : 0.0)
                         scale: wordBox0.isHighlighted ? 1.0 : 0.0
+                        opacity: wordBox0.isHighlighted ? 1.0 : 0.0
 
-                        Behavior on opacity {
-                            NumberAnimation { duration: 240; easing.type: Easing.OutQuint }
-                        }
                         Behavior on scale {
-                            NumberAnimation { duration: 200; easing.type: Easing.OutQuart }
+                            NumberAnimation { duration: 180; easing.type: Easing.OutQuart }
                         }
-
-                        Shape {
-                            id: tapeShape0
-                            anchors.fill: parent
-                            asynchronous: true
-                            preferredRendererType: Shape.CurveRenderer
-                            antialiasing: true
-                            smooth: true
-
-                            ShapePath {
-                                fillColor: root.tapeFillColor
-                                strokeWidth: 0
-                                strokeColor: "transparent"
-                                startX: tapeShape0.width * 0.015
-                                startY: tapeShape0.height * 0.04
-                                PathLine { x: tapeShape0.width * 1.000; y: 0 }
-                                PathLine { x: tapeShape0.width * 0.985; y: tapeShape0.height * 0.96 }
-                                PathLine { x: 0;                        y: tapeShape0.height * 1.000 }
-                                PathLine { x: tapeShape0.width * 0.015; y: tapeShape0.height * 0.04 }
-                            }
+                        Behavior on opacity {
+                            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
                         }
                     }
 
@@ -358,13 +374,12 @@ Item {
                         text: delegateRoot.word0
                         font.family: "Plus Jakarta Sans, Manrope, sans-serif"
                         font.weight: Font.ExtraBold
-                        font.italic: wordBox0.isHighlighted
-                        font.letterSpacing: -3.0
+                        font.letterSpacing: -2.8
                         font.pixelSize: delegateRoot.calcFontSize(delegateRoot.chunkText)
-                        color: wordBox0.isHighlighted ? root.activeTextColor : root.bronzeColor
+                        color: wordBox0.isHighlighted ? root.highlightedTextColor : (delegateRoot.stage === 0 ? root.vibrantPrimary : root.bronzeColor)
 
                         Behavior on color {
-                            ColorAnimation { duration: 240; easing.type: Easing.OutQuint }
+                            ColorAnimation { duration: 180; easing.type: Easing.OutCubic }
                         }
                     }
                 }
@@ -374,44 +389,25 @@ Item {
                     id: wordBox1
                     visible: delegateRoot.hasSecondWord
                     readonly property bool isHighlighted: delegateRoot.stage === 0 && delegateRoot.activeWordSubIndex === 1
-                    width: wordText1.contentWidth + 48
-                    height: Math.max(80, wordText1.contentHeight + 18)
+                    width: wordText1.contentWidth + 28
+                    height: wordText1.contentHeight + 10
                     anchors.verticalCenter: parent.verticalCenter
 
-                    Item {
-                        id: tapeContainer1
+                    // Word Document Rectangular Highlighter (Untilted, radius: 4)
+                    Rectangle {
+                        id: highlightRect1
                         anchors.fill: parent
-                        rotation: -1.4
+                        radius: 4
+                        color: root.highlightColor
                         transformOrigin: Item.Left
-                        opacity: wordBox1.isHighlighted ? 1.0 : (delegateRoot.stage === 1 ? 0.14 : 0.0)
                         scale: wordBox1.isHighlighted ? 1.0 : 0.0
+                        opacity: wordBox1.isHighlighted ? 1.0 : 0.0
 
-                        Behavior on opacity {
-                            NumberAnimation { duration: 240; easing.type: Easing.OutQuint }
-                        }
                         Behavior on scale {
-                            NumberAnimation { duration: 200; easing.type: Easing.OutQuart }
+                            NumberAnimation { duration: 180; easing.type: Easing.OutQuart }
                         }
-
-                        Shape {
-                            id: tapeShape1
-                            anchors.fill: parent
-                            asynchronous: true
-                            preferredRendererType: Shape.CurveRenderer
-                            antialiasing: true
-                            smooth: true
-
-                            ShapePath {
-                                fillColor: root.tapeFillColor
-                                strokeWidth: 0
-                                strokeColor: "transparent"
-                                startX: tapeShape1.width * 0.015
-                                startY: tapeShape1.height * 0.04
-                                PathLine { x: tapeShape1.width * 1.000; y: 0 }
-                                PathLine { x: tapeShape1.width * 0.985; y: tapeShape1.height * 0.96 }
-                                PathLine { x: 0;                        y: tapeShape1.height * 1.000 }
-                                PathLine { x: tapeShape1.width * 0.015; y: tapeShape1.height * 0.04 }
-                            }
+                        Behavior on opacity {
+                            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
                         }
                     }
 
@@ -421,13 +417,12 @@ Item {
                         text: delegateRoot.word1
                         font.family: "Plus Jakarta Sans, Manrope, sans-serif"
                         font.weight: Font.ExtraBold
-                        font.italic: wordBox1.isHighlighted
-                        font.letterSpacing: -3.0
+                        font.letterSpacing: -2.8
                         font.pixelSize: delegateRoot.calcFontSize(delegateRoot.chunkText)
-                        color: wordBox1.isHighlighted ? root.activeTextColor : root.bronzeColor
+                        color: wordBox1.isHighlighted ? root.highlightedTextColor : (delegateRoot.stage === 0 ? root.vibrantPrimary : root.bronzeColor)
 
                         Behavior on color {
-                            ColorAnimation { duration: 240; easing.type: Easing.OutQuint }
+                            ColorAnimation { duration: 180; easing.type: Easing.OutCubic }
                         }
                     }
                 }
@@ -486,6 +481,7 @@ Item {
         nextD.chunkText = beat.text
         nextD.glyphMotif = beat.glyph || ""
         nextD.currentDuration = beat.duration || 1.0
+        nextD.chunkStartTime = beat.time || 0.0
         nextD.setStage(-1)
 
         // 4. Animate immediately into Stage 0
@@ -517,6 +513,7 @@ Item {
             d2.chunkText = w2.text
             d2.glyphMotif = w2.glyph || ""
             d2.currentDuration = w2.duration || 1.0
+            d2.chunkStartTime = w2.time || 0.0
             d2.setStage(2)
         }
         if (idx >= 1) {
@@ -524,12 +521,14 @@ Item {
             d1.chunkText = w1.text
             d1.glyphMotif = w1.glyph || ""
             d1.currentDuration = w1.duration || 1.0
+            d1.chunkStartTime = w1.time || 0.0
             d1.setStage(1)
         }
         var w0 = lyricEngine.allWords[idx]
         d0.chunkText = w0.text
         d0.glyphMotif = w0.glyph || ""
         d0.currentDuration = w0.duration || 1.0
+        d0.chunkStartTime = w0.time || 0.0
         d0.setStage(0)
 
         poolPointer = 3
@@ -569,7 +568,7 @@ Item {
 
             CairoGlyph {
                 motif: "dhun_play"
-                glyphColor: Theme.m3primary || Theme.accent || "#c0c4ee"
+                glyphColor: root.vibrantPrimary
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: 72
                 height: 72
@@ -582,7 +581,7 @@ Item {
                 font.weight: Font.ExtraBold
                 font.letterSpacing: 4.0
                 font.pixelSize: 22
-                color: Theme.m3primary || Theme.accent || "#c0c4ee"
+                color: root.vibrantPrimary
                 opacity: 0.88
             }
 
