@@ -1,0 +1,164 @@
+{
+    "layer": "top",
+    "width": 1000,
+    "margin-top": 8,
+    "margin-right": 10,
+    "margin-left": 10,
+    "modules-left": [
+        "pulseaudio",
+        "cava"
+    ],
+    "modules-center": [
+        "clock",
+        "hyprland/workspaces",
+        "clock#right"
+    ],
+    "modules-right": [
+        "mpris",
+        "network",
+        "battery"
+    ],
+    "clock": {
+        "format": "{:%H}",
+        "on-click": "/home/zily/.config/carbon/scripts/carbon-ipc.sh dashboard"
+    },
+    "clock#right": {
+        "format": "{:%M}",
+        "on-click": "/home/zily/.config/carbon/scripts/carbon-ipc.sh dashboard"
+    },
+    "hyprland/workspaces": {
+        "format": "{icon}",
+        "format-icons": {
+            "1": "",
+            "2": "",
+            "3": "",
+            "4": "",
+            "5": "",
+            "6": "",
+            "7": "",
+            "8": "",
+            "9": "",
+            "10": ""
+        },
+        "persistent-workspaces": {
+            "*": 5, // 5 workspaces by default on every monitor
+            "HDMI-A-1": 3 // but only three on HDMI-A-1
+        }
+    },
+    "network": {
+        "format": "{icon}",
+        "format-wifi": "  ({signalStrength}%)",
+        "format-ethernet": "{ifname} ",
+        "format-disconnected": "-", //An empty format will hide the module.
+        "tooltip-format": "{ifname}",
+        "tooltip-format-wifi": "({signalStrength}%) ",
+        "tooltip-format-ethernet": "{ifname} ",
+        "tooltip-format-disconnected": "Disconnected",
+        "max-length": 50,
+        "on-click": "/home/zily/.config/carbon/scripts/carbon-ipc.sh wifi",
+        "on-click-right": "kitty -e nmtui"
+    },
+    "battery": {
+        "interval": 10,
+        "format": " {icon} {capacity}%",
+        "format-icons": {
+            "default": [
+                "󰂎",
+                "󰁺",
+                "󰁻",
+                "󰁼",
+                "󰁽",
+                "󰁾",
+                "󰁿",
+                "󰂀",
+                "󰂁",
+                "󰂂",
+                "󰁹"
+            ],
+            "charging": [
+                "󰢟",
+                "󰢜",
+                "󰂆",
+                "󰂇",
+                "󰂈",
+                "󰢝",
+                "󰂉",
+                "󰢞",
+                "󰂊",
+                "󰂋",
+                "󰂅"
+            ]
+        },
+        "on-click": "/home/zily/.config/carbon/scripts/carbon-ipc.sh battery"
+    },
+    "pulseaudio": {
+        "format": "{icon} {volume}%",
+        "format-bluetooth": "{icon} {volume}%",
+        "format-muted": "",
+        "format-icons": {
+            "headphone": "󰋋",
+            "hands-free": "󰂑",
+            "headset": "󰂑",
+            "phone": "",
+            "phone-muted": "",
+            "portable": "",
+            "car": "",
+            "default": [
+                "󰖀",
+                "󰕾"
+            ]
+        },
+        "scroll-step": 1,
+        "on-click": "/home/zily/.config/carbon/scripts/carbon-ipc.sh mixer",
+        "on-click-right": "pavucontrol"
+    },
+    "cava": {
+        // "cava_config": "$XDG_CONFIG_HOME/cava/cava.conf",
+        "framerate": 30,
+        "autosens": 0,
+        "sensitivity": 0.01,
+        "bars": 14,
+        "lower_cutoff_freq": 50,
+        "higher_cutoff_freq": 10000,
+        "hide_on_silence": false,
+        // "format_silent": "quiet",
+        "method": "pulse",
+        "source": "auto",
+        "stereo": true,
+        "reverse": false,
+        "bar_delimiter": 0,
+        "monstercat": false,
+        "waves": false,
+        "noise_reduction": 0.27,
+        "input_delay": 2,
+        "format-icons": [
+            "▁",
+            "▂",
+            "▂",
+            "▃",
+            "▄",
+            "▅",
+            "▆",
+            "▇",
+            "█"
+        ],
+        "actions": {
+            "on-click-right": "mode"
+        }
+    },
+    "mpris": {
+        "format": "{player_icon} {title} - {artist}",
+        "format-paused": "{status_icon} <i>{title} - {artist}</i>",
+        "player-icons": {
+            "default": "🎵",
+            "spotify": "",
+            "mpv": "🎬"
+        },
+        "status-icons": {
+            "paused": "⏸"
+        },
+        "max-length": 30,
+        "interval": 1,
+        "on-click": "/home/zily/.config/carbon/scripts/carbon-ipc.sh small-music"
+    }
+}

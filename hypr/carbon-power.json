@@ -1,0 +1,14 @@
+{
+  "profile": "balanced",
+  "powerButtonAction": "ignore",
+  "sleepButtonAction": "suspend",
+  "lidActionBattery": "suspend",
+  "lidActionAC": "suspend",
+  "sleepMode": "suspend",
+  "hibernationEnabled": true,
+  "dimEnabled": true,
+  "dimTimeout": 180,
+  "dimBrightnessPercent": 20,
+  "screenOffTimeout": 300,
+  "autoSuspendTimeout": 900
+}

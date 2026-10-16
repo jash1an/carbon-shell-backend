@@ -399,7 +399,7 @@ Item {
             onClicked: mouse => {
                 root.forceActiveFocus()
                 if (mouse.button === Qt.RightButton) {
-                    if (root.activePlayer) root.activePlayer.togglePlaying()
+                    root.toggleControls()
                 } else if (mouse.button === Qt.MiddleButton) {
                     root.toggleSpotlight()
                 } else {

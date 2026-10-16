@@ -104,6 +104,27 @@ Item {
         }
     }
 
+    function activateAndRedirect() {
+        if (root.notifItem && root.notifItem.unread) {
+            NotificationService.markRead(root.notifItem.id)
+        }
+        var app = root.notifItem ? String(root.notifItem.appName || "").trim() : ""
+        var icon = root.notifItem ? String(root.notifItem.appIcon || "").trim() : ""
+        var term = app.toLowerCase()
+        if (term) {
+            Quickshell.execDetached(["sh", "-c",
+                "target=\"" + term + "\"; " +
+                "addr=$(hyprctl clients -j | jq -r --arg t \"$target\" '.[] | select((.class | ascii_downcase | contains($t)) or (.initialClass | ascii_downcase | contains($t)) or (.title | ascii_downcase | contains($t))) | .address' | head -n1); " +
+                "if [ -n \"$addr\" ] && [ \"$addr\" != \"null\" ]; then " +
+                "  hyprctl dispatch focuswindow address:$addr; " +
+                "else " +
+                "  gtk-launch \"$target\" 2>/dev/null || gtk-launch \"" + icon + "\" 2>/dev/null || \"$target\" & " +
+                "fi"
+            ])
+        }
+        root.isExpanded = !root.isExpanded
+    }
+
     /* ── 1. Behind-the-card Commit Pill Track (revealed on horizontal swipe) ── */
     Rectangle {
         id: commitTrack
@@ -237,10 +258,7 @@ Item {
 
             onClicked: (mouse) => {
                 if (!isHorizontalDrag && Math.abs(cardBody.x) < 5) {
-                    if (root.notifItem && root.notifItem.unread) {
-                        NotificationService.markRead(root.notifItem.id)
-                    }
-                    root.isExpanded = !root.isExpanded
+                    root.activateAndRedirect()
                 }
             }
         }
@@ -256,10 +274,59 @@ Item {
             anchors.bottomMargin: 11
             spacing: 5
 
-            // ── Top Row: 6px coral dot + App Name (10.5px bold uppercase) + Relative Timestamp ──
+            // ── Top Row: App Icon + 6px coral dot + App Name (11px bold uppercase) + Relative Timestamp ──
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6
+
+                // App Icon (18px x 18px)
+                Rectangle {
+                    Layout.preferredWidth: 18
+                    Layout.preferredHeight: 18
+                    radius: 5
+                    color: Qt.rgba(Theme.m3surfaceVariant.r, Theme.m3surfaceVariant.g, Theme.m3surfaceVariant.b, 0.40)
+                    border.width: 1
+                    border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.20)
+                    clip: true
+
+                    Image {
+                        id: iconImg
+                        anchors.centerIn: parent
+                        width: 14
+                        height: 14
+                        fillMode: Image.PreserveAspectFit
+                        source: {
+                            var icon = root.notifItem ? (root.notifItem.appIcon || "") : ""
+                            if (icon.indexOf("/") !== -1 || icon.startsWith("file:")) return icon
+                            if (icon) {
+                                var p = Quickshell.iconPath(icon, "")
+                                if (p) return p
+                            }
+                            var app = root.notifItem ? (root.notifItem.appName || "") : ""
+                            if (app) {
+                                var pApp = Quickshell.iconPath(app.toLowerCase(), "")
+                                if (pApp) return pApp
+                                var pDash = Quickshell.iconPath(app.toLowerCase().replace(/\s+/g, "-"), "")
+                                if (pDash) return pDash
+                            }
+                            return ""
+                        }
+                        visible: status === Image.Ready && source !== ""
+                    }
+
+                    Text {
+                        anchors.centerIn: parent
+                        visible: !iconImg.visible
+                        text: {
+                            var n = root.notifItem ? (root.notifItem.appName || "") : ""
+                            return n.length > 0 ? n.charAt(0).toUpperCase() : "•"
+                        }
+                        font.family: "Manrope"
+                        font.pixelSize: 10
+                        font.weight: Font.Bold
+                        color: Theme.accent
+                    }
+                }
 
                 // 6px Unread Accent Dot
                 Rectangle {

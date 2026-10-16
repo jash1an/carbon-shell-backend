@@ -147,6 +147,13 @@ Item {
         width: parent.width
         height: parent.height
 
+        /* Swallow clicks on the popup card background so they don't dismiss the window */
+        MouseArea {
+            anchors.fill: parent
+            z: -1
+            onClicked: {}
+        }
+
         Shape {
             id: cardBgShape
             anchors.fill: parent

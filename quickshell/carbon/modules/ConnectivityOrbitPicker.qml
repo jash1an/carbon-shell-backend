@@ -28,6 +28,7 @@ Item {
     property string pickerMode: "none"
     // state: "list" | "pass" | "busy" | "passkey"
     property string state: "list"
+    property bool standaloneMode: false
 
     readonly property bool isOpen: root.pickerMode === "wifi" || root.pickerMode === "bluetooth"
     readonly property bool reducedMotion: Boolean(Theme.reducedMotion)
@@ -233,6 +234,18 @@ Item {
         startBtBackend()
     }
 
+    function rescanBluetooth() {
+        root.scanAnimRunning = true
+        if (btBackendProc.running) {
+            try {
+                btBackendProc.write(JSON.stringify({ action: "power_on" }) + "\n")
+            } catch (e) {}
+        } else {
+            startBtBackend()
+        }
+        manualScanTimer.restart()
+    }
+
     function goBack() {
         if (root.state === "pass" || root.state === "passkey") {
             root.state = "list"
@@ -310,9 +323,68 @@ Item {
         savedWifiProc.running = true
     }
 
+    function parseWifiScanOutput(raw) {
+        if (!raw) return
+        const lines = raw.split("\n")
+        const seen = {}
+        const list = []
+
+        for (let i = 0; i < lines.length; i++) {
+            const parts = lines[i].split(":")
+            if (parts.length >= 3) {
+                const inUse = (parts[0].trim() === "*")
+                const ssid = parts[1].trim()
+                const signal = parseInt(parts[2].trim(), 10) || 0
+                const security = parts.length >= 4 ? parts.slice(3).join(":").trim() : ""
+
+                if (ssid.length > 0 && !seen[ssid]) {
+                    seen[ssid] = true
+                    const isSaved = root.savedConnections.indexOf(ssid) !== -1
+                    list.push({
+                        ssid: ssid,
+                        name: ssid,
+                        signal: signal,
+                        security: security,
+                        connected: inUse,
+                        saved: isSaved,
+                        deviceType: "wifi"
+                    })
+                }
+            }
+        }
+
+        // Sort: connected first, then saved, then by signal descending
+        list.sort((a, b) => {
+            if (a.connected && !b.connected) return -1
+            if (!a.connected && b.connected) return 1
+            if (a.saved && !b.saved) return -1
+            if (!a.saved && b.saved) return 1
+            return b.signal - a.signal
+        })
+
+        root.wifiList = list
+        if (root.selectedIndex >= list.length) {
+            root.selectedIndex = Math.max(0, list.length - 1)
+            root.scrollOffset = root.selectedIndex
+        }
+    }
+
+    Process {
+        id: wifiCachedProc
+        command: ["nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "dev", "wifi", "list", "--rescan", "no"]
+        running: false
+        stdout: StdioCollector {
+            id: wifiCachedCol
+            waitForEnd: true
+        }
+        onExited: {
+            root.parseWifiScanOutput(String(wifiCachedCol.text || "").trim())
+        }
+    }
+
     Process {
         id: wifiScanProc
-        command: ["nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "dev", "wifi", "list"]
+        command: ["nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "dev", "wifi", "list", "--rescan", "yes"]
         running: false
         stdout: StdioCollector {
             id: wifiScanCol
@@ -321,54 +393,13 @@ Item {
         onExited: {
             root.wifiScanning = false
             root.scanAnimRunning = false
-            const raw = String(wifiScanCol.text || "").trim()
-            if (!raw) return
-            const lines = raw.split("\n")
-            const seen = {}
-            const list = []
-
-            for (let i = 0; i < lines.length; i++) {
-                const parts = lines[i].split(":")
-                if (parts.length >= 3) {
-                    const inUse = (parts[0].trim() === "*")
-                    const ssid = parts[1].trim()
-                    const signal = parseInt(parts[2].trim(), 10) || 0
-                    const security = parts.length >= 4 ? parts.slice(3).join(":").trim() : ""
-
-                    if (ssid.length > 0 && !seen[ssid]) {
-                        seen[ssid] = true
-                        const isSaved = root.savedConnections.indexOf(ssid) !== -1
-                        list.push({
-                            ssid: ssid,
-                            name: ssid,
-                            signal: signal,
-                            security: security,
-                            connected: inUse,
-                            saved: isSaved,
-                            deviceType: "wifi"
-                        })
-                    }
-                }
-            }
-
-            // Sort: connected first, then saved, then by signal descending
-            list.sort((a, b) => {
-                if (a.connected && !b.connected) return -1
-                if (!a.connected && b.connected) return 1
-                if (a.saved && !b.saved) return -1
-                if (!a.saved && b.saved) return 1
-                return b.signal - a.signal
-            })
-
-            root.wifiList = list
-            if (root.selectedIndex >= list.length) {
-                root.selectedIndex = Math.max(0, list.length - 1)
-                root.scrollOffset = root.selectedIndex
-            }
+            root.parseWifiScanOutput(String(wifiScanCol.text || "").trim())
         }
     }
 
     function rescanWifi() {
+        wifiCachedProc.running = false
+        wifiCachedProc.running = true
         if (wifiScanProc.running) return
         root.wifiScanning = true
         wifiScanProc.running = false
@@ -686,9 +717,209 @@ Item {
        ══════════════════════════════════════════════════════════════════════ */
     visible: root.transitionProgress > 0.001
 
+    // ── 0. STANDALONE HEADER & FROSTED SURFACE (When opened from Control Center) ──
+    Item {
+        id: standaloneHeader
+        visible: root.standaloneMode
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: -178
+        width: 360
+        height: 32
+
+        RowLayout {
+            anchors.fill: parent
+            spacing: 8
+
+            Rectangle {
+                width: 28
+                height: 28
+                radius: 14
+                color: standaloneBackHov.containsMouse ? (Theme.isDark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.10)) : "transparent"
+                border.width: 1
+                border.color: standaloneBackHov.containsMouse ? Theme.accent : Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.3)
+                Behavior on color { ColorAnimation { duration: 120 } }
+                Behavior on border.color { ColorAnimation { duration: 120 } }
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "arrow_back"
+                    font.family: Theme.fontIcon
+                    font.pixelSize: 15
+                    color: standaloneBackHov.containsMouse ? Theme.accent : Theme.fg
+                }
+
+                MouseArea {
+                    id: standaloneBackHov
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.goBack()
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 1
+
+                Text {
+                    text: root.pickerMode === "wifi" ? "Wi-Fi Networks" : "Bluetooth Devices"
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(11)
+                    font.weight: Font.Bold
+                    color: Theme.fg
+                }
+
+                Text {
+                    text: root.pickerMode === "wifi"
+                          ? (root.wifiScanning ? "Scanning wireless networks…" : (root.wifiList.length + " networks in range"))
+                          : (!root.btPowered ? "Bluetooth turned off" : (root.btScanning ? "Scanning nearby devices…" : (root.btList.length + " devices available")))
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(7.5)
+                    color: Theme.fgDim
+                }
+            }
+
+            /* Pill Tab Switcher: Wi-Fi | BT */
+            Rectangle {
+                height: 28
+                radius: 14
+                color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.08)
+                border.width: 1
+                border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.25)
+                Layout.preferredWidth: 112
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 2
+                    spacing: 2
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        radius: 12
+                        color: root.pickerMode === "wifi" ? Theme.accent : "transparent"
+                        Behavior on color { ColorAnimation { duration: 140 } }
+
+                        RowLayout {
+                            anchors.centerIn: parent
+                            spacing: 3
+                            Text {
+                                text: "wifi"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: 12
+                                color: root.pickerMode === "wifi" ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                            }
+                            Text {
+                                text: "Wi-Fi"
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(7)
+                                font.weight: root.pickerMode === "wifi" ? Font.Bold : Font.Normal
+                                color: root.pickerMode === "wifi" ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.switchTab("wifi")
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        radius: 12
+                        color: root.pickerMode === "bluetooth" ? Theme.accent : "transparent"
+                        Behavior on color { ColorAnimation { duration: 140 } }
+
+                        RowLayout {
+                            anchors.centerIn: parent
+                            spacing: 3
+                            Text {
+                                text: "bluetooth"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: 12
+                                color: root.pickerMode === "bluetooth" ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                            }
+                            Text {
+                                text: "BT"
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(7)
+                                font.weight: root.pickerMode === "bluetooth" ? Font.Bold : Font.Normal
+                                color: root.pickerMode === "bluetooth" ? (Theme.isDark ? "#101116" : "#ffffff") : Theme.fgDim
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.switchTab("bluetooth")
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                width: 28
+                height: 28
+                radius: 14
+                color: standaloneRescanHov.containsMouse ? (Theme.isDark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.10)) : "transparent"
+                border.width: 1
+                border.color: standaloneRescanHov.containsMouse ? Theme.accent : Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.3)
+                Behavior on color { ColorAnimation { duration: 120 } }
+                Behavior on border.color { ColorAnimation { duration: 120 } }
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "refresh"
+                    font.family: Theme.fontIcon
+                    font.pixelSize: 15
+                    color: (root.wifiScanning || root.btScanning || standaloneRescanHov.containsMouse) ? Theme.accent : Theme.fgDim
+                }
+
+                MouseArea {
+                    id: standaloneRescanHov
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (root.pickerMode === "wifi") root.rescanWifi()
+                        else root.rescanBluetooth()
+                    }
+                }
+            }
+        }
+    }
+
+    // Inner Frosted Card Surface for Standalone Control Center Mode
+    Rectangle {
+        id: standaloneCardSurface
+        visible: root.standaloneMode
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: -136
+        width: 360
+        height: 314
+        radius: 16
+        color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.04) : Qt.rgba(0, 0, 0, 0.04)
+        border.width: 1
+        border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.25)
+
+        // Subtle ambient accent halo behind the selected orbit item
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: 90 - height / 2
+            width: 140
+            height: 140
+            radius: 70
+            color: Theme.accent
+            opacity: Theme.isDark ? 0.07 : 0.05
+        }
+    }
+
     // ── 1. TWO TAB SLOTS ON NUCLEUS HORIZONTAL LINE (y = 0) ──
     Item {
         id: tabsContainer
+        visible: !root.standaloneMode
         anchors.centerIn: parent
         width: 1
         height: 1
@@ -705,8 +936,8 @@ Item {
             height: 40
             radius: 20
             readonly property bool isActive: root.pickerMode === "wifi"
-            color: isActive ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0.04, 0.05, 0.08, 0.92)
-            border.color: isActive ? "#FFFFFF" : Qt.rgba(1, 1, 1, 0.40)
+            color: isActive ? Theme.accent : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.92)
+            border.color: isActive ? Theme.accentLit : Theme.outline
             border.width: isActive ? 2.0 : 1.2
 
             Behavior on color { ColorAnimation { duration: 140 } }
@@ -717,7 +948,7 @@ Item {
                 text: "wifi"
                 font.family: Theme.fontIcon
                 font.pixelSize: 18
-                color: "#FFFFFF"
+                color: parent.isActive ? (Theme.isDark ? "#101116" : "#FFFFFF") : Theme.fg
             }
 
             MouseArea {
@@ -736,8 +967,8 @@ Item {
             height: 40
             radius: 20
             readonly property bool isActive: root.pickerMode === "bluetooth"
-            color: isActive ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0.04, 0.05, 0.08, 0.92)
-            border.color: isActive ? "#FFFFFF" : Qt.rgba(1, 1, 1, 0.40)
+            color: isActive ? Theme.accent : Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.92)
+            border.color: isActive ? Theme.accentLit : Theme.outline
             border.width: isActive ? 2.0 : 1.2
 
             Behavior on color { ColorAnimation { duration: 140 } }
@@ -748,7 +979,7 @@ Item {
                 text: "bluetooth"
                 font.family: Theme.fontIcon
                 font.pixelSize: 18
-                color: "#FFFFFF"
+                color: parent.isActive ? (Theme.isDark ? "#101116" : "#FFFFFF") : Theme.fg
             }
 
             MouseArea {
@@ -769,35 +1000,35 @@ Item {
         opacity: visible ? 1.0 : 0.0
         Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
-        // When busy (connecting/pairing): center at (0, 104) around selected item
-        // When scanning: center at (0, 0) around nucleus
-        readonly property real targetCenterY: (root.state === "busy") ? 104.0 : 0.0
+        // When busy (connecting/pairing): center around selected item
+        // When scanning: center around nucleus (or -46 in standalone mode)
+        readonly property real targetCenterY: root.standaloneMode ? -46.0 : ((root.state === "busy") ? 104.0 : 0.0)
         readonly property real targetRadius: (root.state === "busy") ? 44.0 : 40.0
 
         y: targetCenterY
 
-        // Orb 1 (Radius 4.0, diameter 8.0, white)
+        // Orb 1 (Radius 4.0, diameter 8.0, theme accent)
         Rectangle {
             x: (rotatingOrbsLayer.targetRadius * Math.cos(root.scanOrbAngle)) - (width / 2)
             y: (rotatingOrbsLayer.targetRadius * Math.sin(root.scanOrbAngle)) - (height / 2)
             width: 8.0
             height: 8.0
             radius: 4.0
-            color: "#FFFFFF"
+            color: Theme.accentLit
         }
 
-        // Orb 2 (Radius 4.0, diameter 8.0, white, opposite side +PI)
+        // Orb 2 (Radius 4.0, diameter 8.0, theme accent, opposite side +PI)
         Rectangle {
             x: (rotatingOrbsLayer.targetRadius * Math.cos(root.scanOrbAngle + Math.PI)) - (width / 2)
             y: (rotatingOrbsLayer.targetRadius * Math.sin(root.scanOrbAngle + Math.PI)) - (height / 2)
             width: 8.0
             height: 8.0
             radius: 4.0
-            color: "#FFFFFF"
+            color: Theme.accentLit
         }
     }
 
-    // ── 3. HORIZONTAL ROUND ITEM ROW (y = +104px) ──
+    // ── 3. HORIZONTAL ROUND ITEM ROW (y = +104px in Nucleus, -46px in Control Center) ──
     Item {
         id: listRowLayer
         anchors.horizontalCenter: parent.horizontalCenter
@@ -805,14 +1036,14 @@ Item {
         height: 1
 
         // Transition: fly from nucleus center (0, 0) to (0, 104) starting at 25% of transition
-        readonly property real listProgress: Math.max(0.0, Math.min(1.0, (root.transitionProgress - 0.25) / 0.75))
-        y: 104.0 * listProgress
+        readonly property real listProgress: root.standaloneMode ? root.transitionProgress : Math.max(0.0, Math.min(1.0, (root.transitionProgress - 0.25) / 0.75))
+        y: root.standaloneMode ? -46.0 : (104.0 * listProgress)
         opacity: listProgress
 
         // Input Capture Area for Wheel & Drag Scroll
         MouseArea {
             anchors.centerIn: parent
-            width: 440
+            width: root.standaloneMode ? 356 : 440
             height: 90
             hoverEnabled: true
 
@@ -855,20 +1086,22 @@ Item {
 
                 // Distance from current scroll position
                 readonly property real dist: Math.abs(index - root.scrollOffset)
-                visible: dist <= 4.2
+                visible: dist <= (root.standaloneMode ? 2.5 : 4.2)
 
                 // Layout formula: spacing 66px, max radius 36, shrinks by 13px per slot, min radius 11px
                 readonly property real itemRadius: Math.max(11.0, 36.0 - 13.0 * dist)
-                readonly property real itemAlpha: Math.max(0.0, Math.min(1.0, 1.3 - 0.32 * dist))
+                readonly property real itemAlpha: root.standaloneMode
+                    ? Math.max(0.0, Math.min(1.0, 1.25 - 0.45 * dist))
+                    : Math.max(0.0, Math.min(1.0, 1.3 - 0.32 * dist))
                 readonly property bool isSelected: Math.abs(index - root.selectedIndex) < 0.5
                 readonly property bool isSavedOrPaired: Boolean(modelData.saved || modelData.paired)
                 readonly property bool isConnected: Boolean(modelData.connected)
 
-                // Fly from nucleus center (0, 0) with stagger
+                // Fly from center with stagger
                 readonly property real slotTargetX: (index - root.scrollOffset) * 66.0
                 readonly property real itemAnimP: Math.max(0.0, Math.min(1.0, (listRowLayer.listProgress - (dist * 0.08)) / Math.max(0.01, 1.0 - (dist * 0.08))))
                 readonly property real curX: slotTargetX * itemAnimP
-                readonly property real curY: (-104.0 * (1.0 - itemAnimP))
+                readonly property real curY: root.standaloneMode ? (10.0 * (1.0 - itemAnimP)) : (-104.0 * (1.0 - itemAnimP))
 
                 x: curX - itemRadius
                 y: curY - itemRadius
@@ -884,7 +1117,7 @@ Item {
                     height: width
                     radius: width / 2
                     color: "transparent"
-                    border.color: "#FFFFFF"
+                    border.color: Theme.accentLit
                     border.width: 2.0
                     opacity: root.successPulseAlpha
                 }
@@ -893,9 +1126,21 @@ Item {
                 Rectangle {
                     anchors.fill: parent
                     radius: width / 2
-                    color: isConnected ? "#FFFFFF" : Qt.rgba(0.04, 0.05, 0.08, 0.95)
-                    border.color: isSelected ? "#FFFFFF" : (isSavedOrPaired ? Qt.rgba(1, 1, 1, 0.70) : Qt.rgba(1, 1, 1, 0.30))
+                    color: isConnected
+                           ? Theme.accent
+                           : (isSelected
+                              ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, Theme.isDark ? 0.22 : 0.16)
+                              : (Theme.isDark ? Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.92) : Qt.rgba(0, 0, 0, 0.07)))
+                    border.color: isConnected
+                                  ? Theme.accentLit
+                                  : (isSelected
+                                     ? Theme.accent
+                                     : (isSavedOrPaired
+                                        ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.55)
+                                        : Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.45)))
                     border.width: isSelected ? 2.4 : 1.2
+                    Behavior on color { ColorAnimation { duration: 150 } }
+                    Behavior on border.color { ColorAnimation { duration: 150 } }
 
                     // Icon inside circle
                     Text {
@@ -920,7 +1165,9 @@ Item {
                         }
                         font.family: Theme.fontIcon
                         font.pixelSize: Math.max(9, Math.round(itemDelegate.itemRadius * 0.52))
-                        color: isConnected ? "#0b0e14" : "#FFFFFF"
+                        color: isConnected
+                               ? (Theme.isDark ? "#101116" : "#FFFFFF")
+                               : (isSelected ? Theme.accentLit : Theme.fg)
                     }
 
                     // Small Lock Badge for secured Wi-Fi
@@ -932,7 +1179,7 @@ Item {
                         text: "lock"
                         font.family: Theme.fontIcon
                         font.pixelSize: Math.max(8, Math.round(itemDelegate.itemRadius * 0.32))
-                        color: Qt.rgba(1, 1, 1, 0.75)
+                        color: isSelected ? Theme.accentLit : Theme.fgDim
                     }
                 }
 
@@ -956,23 +1203,24 @@ Item {
     Item {
         id: labelsLayer
         anchors.horizontalCenter: parent.horizontalCenter
-        width: 380
-        height: 50
-        y: 160
+        width: 344
+        height: 48
+        y: root.standaloneMode ? 12.0 : 160.0
         opacity: listRowLayer.listProgress
 
         ColumnLayout {
             anchors.centerIn: parent
             spacing: 3
 
-            // Line 1: Name (16px bold)
+            // Line 1: Name
             Text {
                 Layout.alignment: Qt.AlignHCenter
+                Layout.maximumWidth: 336
                 text: root.currentItem ? (root.currentItem.name || root.currentItem.ssid || "") : (root.pickerMode === "wifi" ? (root.wifiScanning ? "Scanning for networks…" : "No networks found") : (root.btScanning ? "Discovering devices…" : "No devices found"))
-                font.family: "Valley Sans, Rubik, sans-serif"
-                font.pixelSize: 16
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(12)
                 font.bold: true
-                color: "#FFFFFF"
+                color: Theme.fg
                 elide: Text.ElideRight
                 maximumLineCount: 1
             }
@@ -987,29 +1235,29 @@ Item {
                         const savedStr = root.currentItem.saved ? "saved" : ""
                         const sigStr = "signal " + (root.currentItem.signal || 0) + "%"
                         const posStr = (root.selectedIndex + 1) + "/" + root.wifiList.length
-                        return secStr + (savedStr ? " - " + savedStr : "") + " - " + sigStr + " - " + posStr
+                        return secStr + (savedStr ? " · " + savedStr : "") + " · " + sigStr + " · " + posStr
                     } else {
                         const typeStr = root.currentItem.deviceType || "device"
                         const stateStr = root.currentItem.connected ? "connected" : (root.currentItem.paired ? "paired" : "nearby")
                         const batStr = (root.currentItem.battery !== undefined && root.currentItem.battery >= 0) ? ("battery " + root.currentItem.battery + "%") : ""
                         const posStr = (root.selectedIndex + 1) + "/" + root.btList.length
-                        return typeStr + " - " + stateStr + (batStr ? " - " + batStr : "") + " - " + posStr
+                        return typeStr + " · " + stateStr + (batStr ? " · " + batStr : "") + " · " + posStr
                     }
                 }
-                font.family: "Valley Sans, Rubik, sans-serif"
-                font.pixelSize: 12
-                color: Qt.rgba(1, 1, 1, 0.60)
+                font.family: "JetBrainsMono Nerd Font"
+                font.pixelSize: Theme.fontPx(8.5)
+                color: Theme.fgDim
             }
         }
     }
 
-    // ── 5. ACTION ROW (y = +236px from nucleus center) ──
+    // ── 5. ACTION ROW ──
     Item {
         id: actionRowLayer
         anchors.horizontalCenter: parent.horizontalCenter
-        width: 380
-        height: 60
-        y: 236
+        width: 344
+        height: 64
+        y: root.standaloneMode ? 74.0 : 236.0
         opacity: listRowLayer.listProgress
 
         // A. Normal List / Busy State
@@ -1023,9 +1271,10 @@ Item {
             // Primary Pill Button
             Rectangle {
                 Layout.preferredWidth: parent.hasForget ? 130 : 170
-                Layout.preferredHeight: 38
-                radius: 19
-                color: "#FFFFFF"
+                Layout.preferredHeight: 36
+                radius: 18
+                color: primaryBtnHov.containsMouse ? Theme.accentLit : Theme.accent
+                Behavior on color { ColorAnimation { duration: 120 } }
 
                 Text {
                     anchors.centerIn: parent
@@ -1042,14 +1291,16 @@ Item {
                             return "Pair"
                         }
                     }
-                    font.family: "Valley Sans, Rubik, sans-serif"
-                    font.pixelSize: 13
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(9.5)
                     font.bold: true
-                    color: "#0b0e14"
+                    color: Theme.isDark ? "#101116" : "#FFFFFF"
                 }
 
                 MouseArea {
+                    id: primaryBtnHov
                     anchors.fill: parent
+                    hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.runPrimaryAction()
                 }
@@ -1059,23 +1310,27 @@ Item {
             Rectangle {
                 visible: parent.hasForget
                 Layout.preferredWidth: 84
-                Layout.preferredHeight: 38
-                radius: 19
-                color: Qt.rgba(1, 1, 1, 0.08)
-                border.color: root.forgetPending ? "#F87171" : Qt.rgba(1, 1, 1, 0.35)
+                Layout.preferredHeight: 36
+                radius: 18
+                color: forgetBtnHov.containsMouse ? Theme.bgHover : (Theme.isDark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.06))
+                border.color: root.forgetPending ? Theme.err : (forgetBtnHov.containsMouse ? Theme.accent : Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.45))
                 border.width: 1.2
+                Behavior on color { ColorAnimation { duration: 120 } }
+                Behavior on border.color { ColorAnimation { duration: 120 } }
 
                 Text {
                     anchors.centerIn: parent
                     text: root.forgetPending ? "Sure?" : "Forget"
-                    font.family: "Valley Sans, Rubik, sans-serif"
-                    font.pixelSize: 12
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(9)
                     font.bold: root.forgetPending
-                    color: root.forgetPending ? "#F87171" : "#FFFFFF"
+                    color: root.forgetPending ? Theme.err : Theme.fg
                 }
 
                 MouseArea {
+                    id: forgetBtnHov
                     anchors.fill: parent
+                    hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         if (!root.forgetPending) {
@@ -1104,10 +1359,10 @@ Item {
                 // 214px Password Pill
                 Rectangle {
                     Layout.preferredWidth: 214
-                    Layout.preferredHeight: 38
-                    radius: 19
-                    color: Qt.rgba(0.04, 0.05, 0.08, 0.95)
-                    border.color: root.wrongPasswordFlash > 0.01 ? "#F87171" : Qt.rgba(1, 1, 1, 0.40)
+                    Layout.preferredHeight: 36
+                    radius: 18
+                    color: Theme.isDark ? Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.92) : Qt.rgba(0, 0, 0, 0.06)
+                    border.color: root.wrongPasswordFlash > 0.01 ? Theme.err : Theme.accent
                     border.width: 1.2
 
                     RowLayout {
@@ -1120,7 +1375,7 @@ Item {
                             text: "lock"
                             font.family: Theme.fontIcon
                             font.pixelSize: 15
-                            color: Qt.rgba(1, 1, 1, 0.60)
+                            color: Theme.fgDim
                         }
 
                         Item {
@@ -1132,9 +1387,10 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
                                 visible: root.passwordInput.length === 0
                                 text: "password"
-                                font.family: "Valley Sans, Rubik, sans-serif"
-                                font.pixelSize: 13
-                                color: Qt.rgba(1, 1, 1, 0.35)
+                                font.family: "JetBrainsMono Nerd Font"
+                                font.pixelSize: Theme.fontPx(9.5)
+                                color: Theme.fgDim
+                                opacity: 0.6
                             }
 
                             // Password Text / Masked Dots with Caret
@@ -1144,17 +1400,17 @@ Item {
 
                                 Text {
                                     text: root.showPassword ? root.passwordInput : "●".repeat(root.passwordInput.length)
-                                    font.family: "Valley Sans, Rubik, sans-serif"
-                                    font.pixelSize: root.showPassword ? 13 : 10
-                                    color: "#FFFFFF"
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: root.showPassword ? Theme.fontPx(9.5) : 10
+                                    color: Theme.fg
                                 }
 
                                 Text {
                                     visible: root.caretVisible
                                     text: "|"
-                                    font.family: "Valley Sans, Rubik, sans-serif"
+                                    font.family: "JetBrainsMono Nerd Font"
                                     font.pixelSize: 14
-                                    color: "#FFFFFF"
+                                    color: Theme.accentLit
                                 }
                             }
                         }
@@ -1164,7 +1420,7 @@ Item {
                             text: root.showPassword ? "visibility" : "visibility_off"
                             font.family: Theme.fontIcon
                             font.pixelSize: 16
-                            color: Qt.rgba(1, 1, 1, 0.65)
+                            color: Theme.fgDim
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
@@ -1179,14 +1435,14 @@ Item {
                     Layout.preferredWidth: 34
                     Layout.preferredHeight: 34
                     radius: 17
-                    color: "#FFFFFF"
+                    color: Theme.accent
 
                     Text {
                         anchors.centerIn: parent
                         text: "arrow_forward"
                         font.family: Theme.fontIcon
                         font.pixelSize: 18
-                        color: "#0b0e14"
+                        color: Theme.isDark ? "#101116" : "#FFFFFF"
                     }
 
                     MouseArea {
@@ -1201,18 +1457,18 @@ Item {
             Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: 84
-                Layout.preferredHeight: 28
-                radius: 14
-                color: Qt.rgba(1, 1, 1, 0.08)
-                border.color: Qt.rgba(1, 1, 1, 0.25)
+                Layout.preferredHeight: 26
+                radius: 13
+                color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.06)
+                border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.4)
                 border.width: 1.0
 
                 Text {
                     anchors.centerIn: parent
                     text: "Cancel"
-                    font.family: "Valley Sans, Rubik, sans-serif"
-                    font.pixelSize: 11
-                    color: Qt.rgba(1, 1, 1, 0.80)
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(8)
+                    color: Theme.fgDim
                 }
 
                 MouseArea {
@@ -1236,19 +1492,19 @@ Item {
             Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: 190
-                Layout.preferredHeight: 38
-                radius: 19
-                color: Qt.rgba(0.04, 0.05, 0.08, 0.95)
-                border.color: Qt.rgba(1, 1, 1, 0.40)
+                Layout.preferredHeight: 36
+                radius: 18
+                color: Theme.isDark ? Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.92) : Qt.rgba(0, 0, 0, 0.06)
+                border.color: Theme.accent
                 border.width: 1.2
 
                 Text {
                     anchors.centerIn: parent
                     text: root.pendingPasskey
-                    font.family: "JetBrains Mono, monospace"
-                    font.pixelSize: 18
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(13)
                     font.bold: true
-                    color: "#FFFFFF"
+                    color: Theme.fg
                 }
             }
 
@@ -1258,16 +1514,16 @@ Item {
 
                 Rectangle {
                     Layout.preferredWidth: 90
-                    Layout.preferredHeight: 32
-                    radius: 16
-                    color: "#FFFFFF"
+                    Layout.preferredHeight: 30
+                    radius: 15
+                    color: Theme.accent
                     Text {
                         anchors.centerIn: parent
                         text: "Confirm"
-                        font.family: "Valley Sans, Rubik, sans-serif"
-                        font.pixelSize: 12
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(8.5)
                         font.bold: true
-                        color: "#0b0e14"
+                        color: Theme.isDark ? "#101116" : "#FFFFFF"
                     }
                     MouseArea {
                         anchors.fill: parent
@@ -1280,17 +1536,17 @@ Item {
 
                 Rectangle {
                     Layout.preferredWidth: 80
-                    Layout.preferredHeight: 32
-                    radius: 16
-                    color: Qt.rgba(1, 1, 1, 0.08)
-                    border.color: Qt.rgba(1, 1, 1, 0.30)
+                    Layout.preferredHeight: 30
+                    radius: 15
+                    color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.06)
+                    border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.4)
                     border.width: 1.0
                     Text {
                         anchors.centerIn: parent
                         text: "Cancel"
-                        font.family: "Valley Sans, Rubik, sans-serif"
-                        font.pixelSize: 12
-                        color: "#FFFFFF"
+                        font.family: "JetBrainsMono Nerd Font"
+                        font.pixelSize: Theme.fontPx(8.5)
+                        color: Theme.fg
                     }
                     MouseArea {
                         anchors.fill: parent
@@ -1309,16 +1565,17 @@ Item {
     Text {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: actionRowLayer.bottom
-        anchors.topMargin: 8
+        anchors.topMargin: 4
         opacity: listRowLayer.listProgress
         text: root.statusText
-        font.family: "Valley Sans, Rubik, sans-serif"
-        font.pixelSize: 12
-        color: root.isStatusError ? "#F87171" : Qt.rgba(1, 1, 1, 0.55)
+        font.family: "JetBrainsMono Nerd Font"
+        font.pixelSize: Theme.fontPx(8.5)
+        color: root.isStatusError ? Theme.err : Theme.fgDim
     }
 
     // ── 7. SCAN BUTTON (Bottom-Right of Picker) ──
     RowLayout {
+        visible: !root.standaloneMode
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.horizontalCenterOffset: 154
         y: 240
@@ -1329,8 +1586,8 @@ Item {
             Layout.preferredWidth: 30
             Layout.preferredHeight: 30
             radius: 15
-            color: Qt.rgba(1, 1, 1, 0.08)
-            border.color: Qt.rgba(1, 1, 1, 0.30)
+            color: Qt.rgba(Theme.bgAlt.r, Theme.bgAlt.g, Theme.bgAlt.b, 0.85)
+            border.color: Theme.outline
             border.width: 1.0
 
             Text {
@@ -1338,7 +1595,7 @@ Item {
                 text: "refresh"
                 font.family: Theme.fontIcon
                 font.pixelSize: 15
-                color: "#FFFFFF"
+                color: Theme.fg
             }
 
             MouseArea {
@@ -1358,9 +1615,9 @@ Item {
 
         Text {
             text: "scan"
-            font.family: "Valley Sans, Rubik, sans-serif"
-            font.pixelSize: 11
-            color: Qt.rgba(1, 1, 1, 0.60)
+            font.family: "JetBrainsMono Nerd Font"
+            font.pixelSize: Theme.fontPx(8)
+            color: Theme.fgDim
         }
     }
 }

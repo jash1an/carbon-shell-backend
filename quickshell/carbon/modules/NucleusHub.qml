@@ -42,11 +42,24 @@ Item {
     property bool hubOpen: false
     property bool isClosingHub: false
     property bool nucleusExpanded: false
-    property string activeMode: "hub" // "hub" | "wallpapers" | "appsearch" | "wifi" | "bluetooth" | "power" | "calendar"
+    property string activeMode: "hub" // "hub" | "wallpapers" | "appsearch" | "wifi" | "bluetooth" | "battery" | "power" | "calendar"
     property string focusedLobe: ""    // "" | "connect" | "launch" | "spaces" | "alerts"
     property bool nightLightOn: false
     property bool justOpenedPower: false
     property bool notifPanelOpen: false
+
+    readonly property var hubBattery: UPower.displayDevice
+    readonly property real hubBatteryPct: hubBattery ? hubBattery.percentage : 1.0
+    readonly property bool hubIsCharging: hubBattery ? (hubBattery.state === UPowerDeviceState.Charging) : false
+    readonly property string batteryIconName: {
+        if (root.hubIsCharging) return "battery_charging_full"
+        if (root.hubBatteryPct >= 0.90) return "battery_full"
+        if (root.hubBatteryPct >= 0.70) return "battery_6_bar"
+        if (root.hubBatteryPct >= 0.50) return "battery_5_bar"
+        if (root.hubBatteryPct >= 0.30) return "battery_3_bar"
+        if (root.hubBatteryPct >= 0.15) return "battery_2_bar"
+        return "battery_alert"
+    }
 
     function toggleNotifPanel() {
         root.notifPanelOpen = !root.notifPanelOpen
@@ -271,6 +284,28 @@ Item {
     function closeConnectivityPicker() {
         if (connectivityPicker) connectivityPicker.closePicker()
         else root.activeMode = "hub"
+    }
+
+    function openBatteryMode() {
+        closeFinishTimer.stop()
+        nucleusShrinkTimer.stop()
+        root.isClosingHub = false
+        if (!root.hubOpen) {
+            root.randomizeOrbitalPositions()
+            root.hubOpen = true
+            root.nucleusExpanded = true
+        }
+        root.activeMode = "battery"
+        root.focusedLobe = ""
+        if (batteryOrbitSection) batteryOrbitSection.openSection()
+    }
+
+    function closeBatteryMode() {
+        if (batteryOrbitSection) batteryOrbitSection.closeSection()
+        else {
+            root.activeMode = "hub"
+            root.focusedLobe = "connect"
+        }
     }
 
     function openWallpaperMode() {
@@ -1297,6 +1332,8 @@ Item {
                 controlRing.closeRing()
             } else if (root.activeMode === "wifi" || root.activeMode === "bluetooth") {
                 if (connectivityPicker) connectivityPicker.goBack()
+            } else if (root.activeMode === "battery") {
+                root.closeBatteryMode()
             } else if (root.activeMode === "power") {
                 if (root.cancelPowerAction()) return
                 root.close()
@@ -1721,9 +1758,9 @@ Item {
                             required property int index
                             required property var modelData
 
-                            // Angles -72°, -24°, 24°, 72° relative to lobe ray
-                            readonly property var satAngles: [-72, -24, 24, 72]
-                            readonly property real relDeg: satAngles[index]
+                            // Angles relative to lobe ray: 5 satellites (-72°..+72°) or 4 satellites
+                            readonly property var satAngles: (lobeItem.satelliteModel.length === 5) ? [-72, -36, 0, 36, 72] : [-72, -24, 24, 72]
+                            readonly property real relDeg: (index < satAngles.length) ? satAngles[index] : 0
                             readonly property real relRad: relDeg * (Math.PI / 180.0)
                             readonly property real satRadius: 58
 
@@ -1877,6 +1914,14 @@ Item {
                         isActive: root.activeMode === "bluetooth",
                         action: function() {
                             root.openBluetoothMode()
+                        }
+                    },
+                    {
+                        icon: root.batteryIconName,
+                        isFontIcon: true,
+                        isActive: root.activeMode === "battery",
+                        action: function() {
+                            root.openBatteryMode()
                         }
                     },
                     {
@@ -2901,7 +2946,7 @@ Item {
 
                 Text {
                     anchors.centerIn: parent
-                    text: connectivityPicker ? connectivityPicker.captionText : ""
+                    text: (connectivityPicker && connectivityPicker.captionText) ? connectivityPicker.captionText : ""
                     font.family: "JetBrainsMono Nerd Font"
                     font.pixelSize: Theme.fontPx(12)
                     font.bold: true
@@ -3788,6 +3833,20 @@ Item {
             anchors.centerIn: parent
             visible: root.hubOpen && (root.activeMode === "wifi" || root.activeMode === "bluetooth") && (transitionProgress > 0.001)
             opacity: visible ? 1.0 : 0.0
+
+            onBackRequested: {
+                root.activeMode = "hub"
+                root.focusedLobe = "connect"
+            }
+        }
+
+        /* ══════════════════════════════════════════════════════════════════════
+           PHASE 5.5: Battery Orbit Section & Power Profile Switcher
+           ══════════════════════════════════════════════════════════════════════ */
+        BatteryOrbitSection {
+            id: batteryOrbitSection
+            anchors.centerIn: parent
+            z: 2
 
             onBackRequested: {
                 root.activeMode = "hub"

@@ -272,18 +272,30 @@ Item {
     /* ----------------------------- visuals ----------------------------- */
     Item {
         id: sheet
-        width: parent.width
-        height: parent.height
+        anchors.fill: parent
+
+        Rectangle {
+            id: cardBgRect
+            anchors.fill: parent
+            visible: root.barMode !== "notch"
+            radius: 16
+            color: Theme.isDark ? Qt.rgba(0.06, 0.07, 0.09, 0.98) : Qt.rgba(Theme.m3surfaceContainer.r, Theme.m3surfaceContainer.g, Theme.m3surfaceContainer.b, 0.98)
+            border.width: 1
+            border.color: root.open ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.40) : Theme.outline
+        }
 
         Shape {
             id: cardBgShape
             anchors.fill: parent
-            preferredRendererType: Shape.GeometryRenderer
+            visible: root.barMode === "notch"
+            preferredRendererType: Shape.CurveRenderer
             antialiasing: true
             asynchronous: false
+            layer.enabled: true
+            layer.smooth: true
 
             ShapePath {
-                fillColor: root.barMode === "notch" ? (Theme.isDark ? Qt.rgba(0.04, 0.04, 0.06, root.notchOpacity) : Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, root.notchOpacity)) : Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, Theme.shellOpacity)
+                fillColor: Theme.isDark ? Qt.rgba(0.04, 0.04, 0.06, root.notchOpacity) : Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, root.notchOpacity)
                 strokeColor: "transparent"
                 strokeWidth: 0
                 PathSvg { path: root.fillPath }
@@ -340,7 +352,7 @@ Item {
                 text: "wifi"
                 font.family: Theme.fontIcon
                 font.pixelSize: 18
-                color: Theme.accentLit
+                color: Theme.accent
             }
             Text {
                 text: "Wi-Fi"
@@ -354,9 +366,10 @@ Item {
                 text: root.wifiName.length > 0 ? root.wifiName : (root.powerOn ? "Not connected" : "Off")
                 font.family: "JetBrainsMono Nerd Font"
                 font.pixelSize: Theme.fontPx(12)
+                font.weight: root.wifiName.length > 0 ? Font.Bold : Font.Normal
                 elide: Text.ElideRight
                 horizontalAlignment: Text.AlignRight
-                color: root.wifiName.length > 0 ? Theme.accentLit : Theme.fgFaint
+                color: root.wifiName.length > 0 ? Theme.accent : Theme.fgFaint
             }
             Rectangle {
                 Layout.preferredWidth: 30
@@ -380,14 +393,23 @@ Item {
                     Behavior on x { NumberAnimation { duration: Theme.motionDurationShort3 } }
                 }
             }
-            Text {
-                text: "close"
-                font.family: Theme.fontIcon
-                font.pixelSize: 16
-                color: Theme.fgDim
+            Rectangle {
+                Layout.preferredWidth: 22
+                Layout.preferredHeight: 22
+                Layout.alignment: Qt.AlignVCenter
+                radius: 11
+                color: closeHov.containsMouse ? Theme.bgHover : "transparent"
+                Text {
+                    anchors.centerIn: parent
+                    text: "close"
+                    font.family: Theme.fontIcon
+                    font.pixelSize: 15
+                    color: closeHov.containsMouse ? Theme.fg : Theme.fgDim
+                }
                 MouseArea {
+                    id: closeHov
                     anchors.fill: parent
-                    anchors.margins: -4
+                    hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.requestedClose()
                 }
@@ -459,6 +481,7 @@ Item {
                             text: model.ssid
                             font.family: "JetBrainsMono Nerd Font"
                             font.pixelSize: Theme.fontPx(14)
+                            font.weight: model.inUse ? Font.Bold : Font.Normal
                             color: model.inUse ? Theme.accentLit : Theme.fg
                         }
                         Text {
@@ -468,7 +491,8 @@ Item {
                             text: model.inUse ? "Connected" : (model.isSaved ? "Saved" : "")
                             font.family: "JetBrainsMono Nerd Font"
                             font.pixelSize: Theme.fontPx(11)
-                            color: Theme.fgDim
+                            font.weight: model.inUse ? Font.DemiBold : Font.Normal
+                            color: model.inUse ? Theme.accent : Theme.fgDim
                         }
                     }
 

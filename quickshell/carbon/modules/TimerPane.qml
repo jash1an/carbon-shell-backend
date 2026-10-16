@@ -88,7 +88,8 @@ Item {
             cycles: root.cycles
         }
         const jsonStr = JSON.stringify(stateObj)
-        Quickshell.execDetached(["sh", "-c", "python3 -c 'import json, os, sys; p = sys.argv[1]; d = json.loads(sys.argv[2]); f = open(p, \"r+\") if os.path.exists(p) else open(p, \"w+\"); cur = json.load(f) if f.seek(0) or f.tell() != 0 else {}; cur.update(d); f.seek(0); json.dump(cur, f, indent=2); f.truncate(); f.close()' " + root.filePath + " '" + jsonStr.replace(/'/g, "'\\''") + "'"])
+        const pyScript = "import json, os, sys; p = sys.argv[1]; d = json.loads(sys.argv[2]); cur = {}; (os.path.exists(p) and cur.update(json.load(open(p, 'r', encoding='utf-8')))); cur.update(d); open(p, 'w', encoding='utf-8').write(json.dumps(cur, indent=2)); alt = p.replace('/.config/hypr/', '/.config/carbon/') if '/.config/hypr/' in p else p.replace('/.config/carbon/', '/.config/hypr/'); os.path.isdir(os.path.dirname(alt)) and open(alt, 'w', encoding='utf-8').write(json.dumps(cur, indent=2))"
+        Quickshell.execDetached(["python3", "-c", pyScript, root.filePath, jsonStr])
     }
 
     function tick() {
@@ -99,11 +100,14 @@ Item {
                     root.onBreak = false
                     root.longBreak = false
                     root.remaining = root.workSec
+                    Quickshell.execDetached(["notify-send", "-a", "Carbon Focus", "⚡ Focus Period Ready", "Break finished! Ready to concentrate on your next session?"])
                 } else {
                     root.cycles++
                     root.longBreak = root.cycles % 4 === 0
                     root.onBreak = true
                     root.remaining = root.longBreak ? root.longBreakSec : root.breakSec
+                    const msg = root.longBreak ? "Pomodoro completed! Take a well-deserved 15-minute long break." : "Pomodoro session complete! Time for a short break."
+                    Quickshell.execDetached(["notify-send", "-a", "Carbon Focus", "☕ Break Period Ready", msg])
                 }
             }
         } else {

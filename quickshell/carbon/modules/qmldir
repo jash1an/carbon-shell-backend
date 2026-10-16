@@ -51,3 +51,5 @@ WorkspaceOsd WorkspaceOsd.qml
 NotificationCard NotificationCard.qml
 NotificationPanel NotificationPanel.qml
 NotificationToast NotificationToast.qml
+BatteryOrbitSection BatteryOrbitSection.qml
+AudioDevicePicker AudioDevicePicker.qml

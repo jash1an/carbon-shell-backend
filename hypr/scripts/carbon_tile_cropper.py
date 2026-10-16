@@ -27,7 +27,7 @@ BLANK_TILE_HYPR_CROP_PATH = os.path.join(HYPR_DIR, "blank-tile-crop.png")
 
 
 class ImageCropDialog(Gtk.Window):
-    def __init__(self, parent_window, image_path, initial_rect=None, accent_hex="#5eead4", on_apply=None):
+    def __init__(self, parent_window, image_path, initial_rect=None, accent_hex="#e1b68e", on_apply=None):
         super().__init__(title="Select Region for Blank Tile", transient_for=parent_window, modal=True)
         self.set_default_size(920, 680)
         self.image_path = os.path.abspath(image_path)

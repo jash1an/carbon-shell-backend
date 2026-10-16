@@ -42,6 +42,10 @@ NotchContainer {
     signal openTray()
     signal closeTray()
     signal toggleTray()
+    signal openNotif()
+    signal closeNotif()
+    signal toggleNotif()
+    signal toggleControls()
     signal openPower()
 
     /* ── Audio Sink State ────────────────────────────────────────────── */
@@ -133,31 +137,34 @@ NotchContainer {
     /* ── Content Inside Notch ────────────────────────────────────────── */
     content: [
         /* 0. System Telemetry Badge (CPU & RAM) - Mirrors Left Bar Desktop Badge */
+        /* 0. System Telemetry Badge (CPU & RAM) - Simple outline on hover */
         Item {
             id: telemetryBadge
-            implicitWidth: telemRow.implicitWidth
+            implicitWidth: telemRow.implicitWidth + 8
             implicitHeight: 24
             anchors.verticalCenter: parent.verticalCenter
             readonly property bool isHovered: telemMouse.containsMouse
 
-            scale: isHovered ? 1.05 : 1.0
-            Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
+            Rectangle {
+                anchors.fill: parent
+                radius: 6
+                color: "transparent"
+                border.color: telemetryBadge.isHovered ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45) : "transparent"
+                border.width: 1
+                Behavior on border.color { ColorAnimation { duration: 120 } }
+            }
 
             Row {
                 id: telemRow
                 spacing: 6
-                anchors.verticalCenter: parent.verticalCenter
+                anchors.centerIn: parent
 
-                MaterialShape {
-                    width: 15
-                    height: 15
+                Rectangle {
+                    width: 7
+                    height: 7
+                    radius: 3.5
                     anchors.verticalCenter: parent.verticalCenter
-                    shape: telemetryBadge.isHovered ? MaterialShape.Diamond : MaterialShape.Gem
-                    animationDuration: 280
-                    animationEasing: Easing.OutBack
                     color: root.cpuUsage > 75 || root.ramPct > 85 ? Theme.warn : Theme.accent
-                    rotation: telemetryBadge.isHovered ? 45 : 0
-                    Behavior on rotation { NumberAnimation { duration: 280; easing.type: Easing.OutBack } }
                 }
 
                 Column {
@@ -220,7 +227,7 @@ NotchContainer {
             anchors.verticalCenter: parent.verticalCenter
             color: Qt.alpha(Theme.fg, 0.18)
         },
-        /* 0. System Tray Overflow: Windows-style Up Arrow (Chevron) */
+        /* 0. System Tray Overflow: Windows-style Up Arrow (Chevron) - Simple outline on hover */
         Item {
             id: trayBadge
             width: 22
@@ -229,16 +236,13 @@ NotchContainer {
             visible: true
             readonly property bool isHovered: trayMouse.containsMouse
 
-            scale: isHovered ? 1.15 : 1.0
-            Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
-
             Rectangle {
                 anchors.fill: parent
                 radius: 6
-                color: trayBadge.isHovered ? Theme.bgHover : "transparent"
-                border.color: trayBadge.isHovered ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4) : "transparent"
+                color: "transparent"
+                border.color: trayBadge.isHovered ? Theme.accent : "transparent"
                 border.width: 1
-                Behavior on color { ColorAnimation { duration: Motion.fast } }
+                Behavior on border.color { ColorAnimation { duration: 120 } }
             }
 
             Text {
@@ -254,8 +258,6 @@ NotchContainer {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onEntered: root.openTray()
-                onExited: root.closeTray()
                 onClicked: root.toggleTray()
             }
         },
@@ -269,209 +271,107 @@ NotchContainer {
             visible: true
         },
 
-        /* 1. Volume (Speaker glyph) */
+        /* 7. Notification Bell Badge */
         Item {
-            id: volBadge
-            width: 22
+            id: notifBadge
+            width: root.notifCount > 0 ? (notifRow.implicitWidth + 12) : 22
             height: 22
             anchors.verticalCenter: parent.verticalCenter
-            readonly property bool isHovered: volMouse.containsMouse
+            readonly property bool isHovered: notifMouse.containsMouse
 
-            scale: isHovered ? 1.18 : 1.0
-            y: isHovered ? -2 : 0
-            Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }
-            Behavior on y { NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }
-
-            // Ambient glowing halo morphing into unique Flower shape
-            MaterialShape {
-                anchors.centerIn: parent
-                width: parent.width + 8
-                height: parent.height + 8
-                shape: volBadge.isHovered ? MaterialShape.Flower : MaterialShape.Circle
-                animationDuration: 260
-                animationEasing: Easing.OutBack
-                color: volBadge.isHovered ? (root.muted ? Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.25) : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25)) : "transparent"
-                scale: volBadge.isHovered ? 1.12 : 0.6
-                opacity: volBadge.isHovered ? 1.0 : 0.0
-                rotation: volBadge.isHovered ? -4 : 0
-                Behavior on opacity { NumberAnimation { duration: 180 } }
-                Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutBack } }
-                Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
-            }
-
-            // Tactile highlight chip morphing into unique Flower shape
-            MaterialShape {
+            Rectangle {
                 anchors.fill: parent
-                shape: volBadge.isHovered ? MaterialShape.Flower : MaterialShape.Circle
-                animationDuration: 260
-                animationEasing: Easing.OutBack
-                color: volBadge.isHovered ? Theme.bgHover : "transparent"
-                strokeColor: volBadge.isHovered ? (root.muted ? Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.45) : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35)) : "transparent"
-                strokeWidth: 1.2
-                rotation: volBadge.isHovered ? -4 : 0
-                Behavior on color { ColorAnimation { duration: 120 } }
-                Behavior on strokeColor { ColorAnimation { duration: 120 } }
-                Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
+                radius: 6
+                color: "transparent"
+                border.color: notifBadge.isHovered ? Theme.accent : (root.notifCount > 0 ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : "transparent")
+                border.width: 1
+                Behavior on border.color { ColorAnimation { duration: 120 } }
             }
 
-            Text {
+            RowLayout {
+                id: notifRow
                 anchors.centerIn: parent
-                text: root.volumeGlyph
-                font.family: Theme.fontIcon
-                font.pixelSize: 15
-                color: root.muted ? Theme.err : (volBadge.isHovered ? Theme.accent : Theme.fg)
-                scale: volBadge.isHovered ? 1.12 : 1.0
-                Behavior on scale { NumberAnimation { duration: Theme.motionDurationShort3; easing.type: Theme.easingEmphasized } }
+                spacing: 3
+
+                Text {
+                    text: root.notifCount > 0 ? "notifications_active" : "notifications"
+                    font.family: Theme.fontIcon
+                    font.pixelSize: 15
+                    color: root.notifCount > 0 ? Theme.accentLit : (notifBadge.isHovered ? Theme.accent : Theme.fg)
+                }
+
+                Text {
+                    visible: root.notifCount > 0
+                    text: String(root.notifCount)
+                    font.family: "JetBrainsMono Nerd Font"
+                    font.pixelSize: Theme.fontPx(7.5)
+                    font.weight: Font.Bold
+                    color: Theme.accentLit
+                }
             }
 
             MouseArea {
-                id: volMouse
+                id: notifMouse
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onEntered: root.openMixer()
-                onExited: root.closeMixer()
-                onClicked: root.toggleMixer()
+                onClicked: root.toggleNotif()
             }
         },
 
-        /* 2. Display Brightness Icon (Sun glyph, hover/click to open brightness) */
-        Item {
-            id: brightBadge
-            width: 22
-            height: 22
+        /* Divider after notifications */
+        Rectangle {
+            width: 1
+            height: 14
             anchors.verticalCenter: parent.verticalCenter
-            readonly property bool isHovered: brightMouse.containsMouse
-
-            scale: isHovered ? 1.18 : 1.0
-            y: isHovered ? -2 : 0
-            Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }
-            Behavior on y { NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }
-
-            // Ambient glowing halo morphing into unique Sunny shape
-            MaterialShape {
-                anchors.centerIn: parent
-                width: parent.width + 8
-                height: parent.height + 8
-                shape: brightBadge.isHovered ? MaterialShape.Sunny : MaterialShape.Circle
-                animationDuration: 260
-                animationEasing: Easing.OutBack
-                color: brightBadge.isHovered ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.25) : "transparent"
-                scale: brightBadge.isHovered ? 1.12 : 0.6
-                opacity: brightBadge.isHovered ? 1.0 : 0.0
-                rotation: brightBadge.isHovered ? 15 : 0
-                Behavior on opacity { NumberAnimation { duration: 180 } }
-                Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutBack } }
-                Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
-            }
-
-            // Tactile highlight chip morphing into unique Sunny shape
-            MaterialShape {
-                anchors.fill: parent
-                shape: brightBadge.isHovered ? MaterialShape.Sunny : MaterialShape.Circle
-                animationDuration: 260
-                animationEasing: Easing.OutBack
-                color: brightBadge.isHovered ? Theme.bgHover : "transparent"
-                strokeColor: brightBadge.isHovered ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.45) : "transparent"
-                strokeWidth: 1.2
-                rotation: brightBadge.isHovered ? 15 : 0
-                Behavior on color { ColorAnimation { duration: 120 } }
-                Behavior on strokeColor { ColorAnimation { duration: 120 } }
-                Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
-            }
-
-            Text {
-                anchors.centerIn: parent
-                text: "light_mode"
-                font.family: Theme.fontIcon
-                font.pixelSize: 15
-                color: brightBadge.isHovered ? Theme.accentLit : Theme.fg
-                scale: brightBadge.isHovered ? 1.12 : 1.0
-                rotation: brightBadge.isHovered ? 25 : 0
-                Behavior on scale { NumberAnimation { duration: Theme.motionDurationShort3; easing.type: Theme.easingEmphasized } }
-                Behavior on rotation { NumberAnimation { duration: Theme.motionDurationMedium2; easing.type: Theme.easingEmphasized } }
-            }
-
-            MouseArea {
-                id: brightMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onEntered: root.openBrightness()
-                onExited: root.closeBrightness()
-                onClicked: root.toggleBrightness()
-            }
+            color: Qt.alpha(Theme.fg, 0.15)
+            visible: true
         },
 
-
-        /* 8. Battery Pill Icon */
+        /* 8. Control Center Button (Simple clean outline on hover) */
         Item {
-            id: batBadge
+            id: controlsBadge
             width: 24
-            height: 20
+            height: 24
             anchors.verticalCenter: parent.verticalCenter
-            visible: root.hasBattery
-            readonly property bool isHovered: batMouse.containsMouse
+            readonly property bool isHovered: controlsMouse.containsMouse
 
-            scale: isHovered ? 1.18 : 1.0
-            y: isHovered ? -2 : 0
-            Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }
-            Behavior on y { NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }
-
-            // Ambient glowing halo morphing into unique Gem shape
-            MaterialShape {
-                anchors.centerIn: parent
-                width: parent.width + 8
-                height: parent.height + 8
-                shape: batBadge.isHovered ? MaterialShape.Gem : MaterialShape.Circle
-                animationDuration: 260
-                animationEasing: Easing.OutBack
-                color: batBadge.isHovered ? (root.isCharging ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.25) : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25)) : "transparent"
-                scale: batBadge.isHovered ? 1.12 : 0.6
-                opacity: batBadge.isHovered ? 1.0 : 0.0
-                rotation: batBadge.isHovered ? 8 : 0
-                Behavior on opacity { NumberAnimation { duration: 180 } }
-                Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutBack } }
-                Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
-            }
-
-            // Tactile highlight chip morphing into unique Gem shape
-            MaterialShape {
+            Rectangle {
                 anchors.fill: parent
-                shape: batBadge.isHovered ? MaterialShape.Gem : MaterialShape.Circle
-                animationDuration: 260
-                animationEasing: Easing.OutBack
-                color: batBadge.isHovered ? Theme.bgHover : "transparent"
-                strokeColor: batBadge.isHovered ? (root.isCharging ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.45) : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.40)) : "transparent"
-                strokeWidth: 1.2
-                rotation: batBadge.isHovered ? 8 : 0
-                Behavior on color { ColorAnimation { duration: 120 } }
-                Behavior on strokeColor { ColorAnimation { duration: 120 } }
-                Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
+                radius: 6
+                color: "transparent"
+                border.color: controlsBadge.isHovered ? Theme.accent : "transparent"
+                border.width: 1
+                Behavior on border.color { ColorAnimation { duration: 120 } }
             }
 
             Text {
                 anchors.centerIn: parent
-                text: root.batteryGlyph
+                text: "tune"
                 font.family: Theme.fontIcon
                 font.pixelSize: 15
-                color: root.isCharging ? Theme.accentLit : (root.batteryPct < 0.2 ? Theme.err : (batBadge.isHovered ? Theme.accent : Theme.fg))
-                scale: batBadge.isHovered ? 1.12 : 1.0
-                Behavior on scale { NumberAnimation { duration: Theme.motionDurationShort3; easing.type: Theme.easingEmphasized } }
+                color: controlsBadge.isHovered ? Theme.accentLit : Theme.fg
             }
 
             MouseArea {
-                id: batMouse
+                id: controlsMouse
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onEntered: root.openBattery()
-                onExited: root.closeBattery()
-                onClicked: root.toggleBattery()
+                onClicked: root.toggleControls()
             }
         },
 
-        /* 9. Power Menu Button */
+        /* Divider after controls */
+        Rectangle {
+            width: 1
+            height: 14
+            anchors.verticalCenter: parent.verticalCenter
+            color: Qt.alpha(Theme.fg, 0.15)
+            visible: true
+        },
+
+        /* 9. Power Menu Button (Simple clean outline on hover) */
         Item {
             id: pwrBadge
             width: 24
@@ -479,41 +379,13 @@ NotchContainer {
             anchors.verticalCenter: parent.verticalCenter
             readonly property bool isHovered: pwrMouse.containsMouse
 
-            scale: isHovered ? 1.18 : 1.0
-            y: isHovered ? -2 : 0
-            Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }
-            Behavior on y { NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }
-
-            // Ambient glowing halo morphing into unique SoftBurst energy shape
-            MaterialShape {
-                anchors.centerIn: parent
-                width: parent.width + 8
-                height: parent.height + 8
-                shape: pwrBadge.isHovered ? MaterialShape.SoftBurst : MaterialShape.Circle
-                animationDuration: 260
-                animationEasing: Easing.OutBack
-                color: pwrBadge.isHovered ? Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.28) : "transparent"
-                scale: pwrBadge.isHovered ? 1.12 : 0.6
-                opacity: pwrBadge.isHovered ? 1.0 : 0.0
-                rotation: pwrBadge.isHovered ? 45 : 0
-                Behavior on opacity { NumberAnimation { duration: 180 } }
-                Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutBack } }
-                Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
-            }
-
-            // Tactile highlight chip morphing into unique SoftBurst energy shape
-            MaterialShape {
+            Rectangle {
                 anchors.fill: parent
-                shape: pwrBadge.isHovered ? MaterialShape.SoftBurst : MaterialShape.Circle
-                animationDuration: 260
-                animationEasing: Easing.OutBack
-                color: pwrBadge.isHovered ? Qt.alpha(Theme.err, 0.22) : "transparent"
-                strokeColor: pwrBadge.isHovered ? Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.45) : "transparent"
-                strokeWidth: 1.2
-                rotation: pwrBadge.isHovered ? 45 : 0
-                Behavior on color { ColorAnimation { duration: 120 } }
-                Behavior on strokeColor { ColorAnimation { duration: 120 } }
-                Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.OutBack } }
+                radius: 6
+                color: "transparent"
+                border.color: pwrBadge.isHovered ? Theme.err : "transparent"
+                border.width: 1
+                Behavior on border.color { ColorAnimation { duration: 120 } }
             }
 
             Text {
@@ -522,8 +394,6 @@ NotchContainer {
                 font.family: Theme.fontIcon
                 font.pixelSize: 15
                 color: pwrBadge.isHovered ? Theme.err : Theme.fgDim
-                scale: pwrBadge.isHovered ? 1.12 : 1.0
-                Behavior on scale { NumberAnimation { duration: Theme.motionDurationShort3; easing.type: Theme.easingEmphasized } }
             }
 
             MouseArea {

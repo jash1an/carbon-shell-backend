@@ -26,7 +26,7 @@ Item {
     readonly property bool hovered: (rootHover && rootHover.hovered) || (mainCardHover && mainCardHover.hovered)
     signal closeRequested()
 
-    implicitWidth: root.minimalCalendarOnly ? 310 : 860
+    implicitWidth: root.minimalCalendarOnly ? 310 : 820
     implicitHeight: root.minimalCalendarOnly ? 276 : 260
     width: implicitWidth
     height: implicitHeight
@@ -58,7 +58,39 @@ Item {
     /* ── Live Clock State ────────────────────────────────────────────── */
     property var currentDate: new Date()
     property int currentHourRaw: currentDate.getHours()
-    property string hourStr: (currentHourRaw < 10 ? "0" : "") + currentHourRaw
+    property string clockFormat: "12"
+    property bool showDateInClock: true
+
+    FileView {
+        id: dashClockCfg
+        path: (Quickshell.env("HOME") || "") + "/.config/hypr/carbon-clock-style.json"
+        watchChanges: true
+        blockLoading: true
+        printErrors: false
+        onLoaded: root.applyClockCfg(dashClockCfg.text())
+        onFileChanged: reload()
+    }
+
+    function applyClockCfg(txt) {
+        if (!txt) return
+        try {
+            var parsed = JSON.parse(txt)
+            if (parsed && parsed.format) {
+                root.clockFormat = parsed.format
+            }
+            if (parsed && parsed.showDate !== undefined) {
+                root.showDateInClock = Boolean(parsed.showDate)
+            }
+        } catch (e) {}
+    }
+
+    property string hourStr: {
+        let h = root.currentHourRaw
+        if (root.clockFormat !== "24") {
+            h = h % 12 || 12
+        }
+        return (h < 10 ? "0" : "") + h
+    }
     property string minStr: {
         let m = currentDate.getMinutes()
         return (m < 10 ? "0" : "") + m
@@ -1222,6 +1254,7 @@ Item {
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: root.fullDateStr
+                        visible: root.showDateInClock
                         font.family: "JetBrainsMono Nerd Font"
                         font.pixelSize: Theme.fontPx(9)
                         font.weight: Font.DemiBold

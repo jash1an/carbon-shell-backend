@@ -16,22 +16,33 @@ Item {
     id: root
 
     property string clockStyle: "titan"
-    property string hourStr: Qt.formatTime(new Date(), "hh")
-    property string minStr: Qt.formatTime(new Date(), "mm")
+    property string clockFormat: "12"
+    property bool showDate: true
+    property string hourStr: "12"
+    property string minStr: "00"
 
     implicitHeight: mainLayout.implicitHeight
     implicitWidth: mainLayout.implicitWidth
+
+    function updateTime() {
+        var now = new Date()
+        if (root.clockFormat === "24") {
+            var h24 = now.getHours()
+            root.hourStr = (h24 < 10 ? "0" : "") + h24
+        } else {
+            var h12 = now.getHours() % 12 || 12
+            root.hourStr = (h12 < 10 ? "0" : "") + h12
+        }
+        var m = now.getMinutes()
+        root.minStr = (m < 10 ? "0" : "") + m
+    }
 
     Timer {
         interval: 1000
         repeat: true
         running: true
         triggeredOnStart: true
-        onTriggered: {
-            var now = new Date()
-            root.hourStr = Qt.formatTime(now, "hh")
-            root.minStr = Qt.formatTime(now, "mm")
-        }
+        onTriggered: root.updateTime()
     }
 
     FileView {
@@ -51,6 +62,13 @@ Item {
             if (parsed && parsed.style) {
                 root.clockStyle = parsed.style
             }
+            if (parsed && parsed.format) {
+                root.clockFormat = parsed.format
+            }
+            if (parsed && parsed.showDate !== undefined) {
+                root.showDate = Boolean(parsed.showDate)
+            }
+            root.updateTime()
         } catch (e) {}
     }
 
@@ -70,8 +88,11 @@ Item {
                     case "stacked":      return compStacked
                     case "mono_glow":    return compMonoGlow
                     case "split_pill":   return compSplitPill
-                    case "orbitron":     return compOrbitron
-                    case "minimal_pill": return compMinimalPill
+                    case "orbitron":
+                    case "digital":      return compOrbitron
+                    case "minimal_pill":
+                    case "minimal":
+                    case "valley":       return compMinimalPill
                     case "titan":
                     default:             return compTitan
                 }

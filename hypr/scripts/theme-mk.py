@@ -185,9 +185,15 @@ def extract_wallpaper_palette(img_path):
     r, g, b = colorsys.hls_to_rgb(h_pri, 0.28, min(0.30, bg_sat * 0.90))
     outline_hex = hexs((r * 255, g * 255, b * 255))
 
+    # Tertiary: Harmonious secondary hue (+55° hue shift) for vibrant multi-color accents
+    h_ter = (h_pri + 0.15) % 1.0
+    r, g, b = colorsys.hls_to_rgb(h_ter, 0.76, min(0.85, sat * 0.90))
+    tertiary_hex = hexs((r * 255, g * 255, b * 255))
+
     return {
         "accent": accent_hex,
         "accentLit": accent_lit_hex,
+        "tertiary": tertiary_hex,
         "onAccent": on_accent_hex,
         "bg": bg_hex,
         "bgAlt": bg_alt_hex,
@@ -256,6 +262,55 @@ def update_gtk_theme(accent_hex, on_accent_hex):
             pass
 
 
+def update_waybar_theme(accent_hex, accent_lit_hex, on_accent_hex, bg_hex, bg_alt_hex, fg_hex, outline_hex, tertiary_hex):
+    def hex_to_rgb(h):
+        h = h.lstrip("#")
+        if len(h) == 6:
+            return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        return 25, 20, 16
+
+    opacity = 0.88
+    try:
+        bar_pos_path = os.path.expanduser("~/.config/carbon/carbon-bar-position.json")
+        if os.path.isfile(bar_pos_path):
+            with open(bar_pos_path, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                if "shellOpacity" in d:
+                    opacity = max(0.1, min(1.0, float(d["shellOpacity"])))
+    except Exception:
+        pass
+
+    bg_r, bg_g, bg_b = hex_to_rgb(bg_hex)
+    bga_r, bga_g, bga_b = hex_to_rgb(bg_alt_hex)
+    out_r, out_g, out_b = hex_to_rgb(outline_hex)
+    acc_r, acc_g, acc_b = hex_to_rgb(accent_hex)
+
+    css_content = f"""@define-color background rgba({bg_r}, {bg_g}, {bg_b}, {opacity:.2f});
+@define-color surface rgba({bga_r}, {bga_g}, {bga_b}, 0.75);
+@define-color surface-container rgba({bga_r}, {bga_g}, {bga_b}, 0.90);
+@define-color text {fg_hex};
+@define-color primary {accent_hex};
+@define-color secondary {accent_lit_hex};
+@define-color tertiary {tertiary_hex};
+@define-color primary-container rgba({acc_r}, {acc_g}, {acc_b}, 0.25);
+@define-color on-primary {on_accent_hex};
+@define-color border rgba({out_r}, {out_g}, {out_b}, 0.45);
+@define-color shadow rgba(0, 0, 0, 0.4);
+"""
+    for wb_dir in [os.path.expanduser("~/.config/waybar"), os.path.expanduser("~/carbon-shell/waybar")]:
+        os.makedirs(wb_dir, exist_ok=True)
+        colors_file = os.path.join(wb_dir, "colors.css")
+        try:
+            with open(colors_file, "w", encoding="utf-8") as f:
+                f.write(css_content)
+        except Exception:
+            pass
+
+    subprocess.run(["pkill", "-SIGUSR2", "-f", "waybar"], capture_output=True)
+    subprocess.run(["pkill", "-SIGUSR2", "-x", "waybar-bin"], capture_output=True)
+    subprocess.run(["pkill", "-SIGUSR2", "-x", "waybar"], capture_output=True)
+
+
 def main():
     src_wp = resolve_source_wallpaper()
     if not src_wp or not os.path.exists(src_wp):
@@ -272,6 +327,7 @@ def main():
     if is_mono:
         accent_hex = "#E2E2E8"
         accent_lit_hex = "#FFFFFF"
+        tertiary_hex = "#D4D4DC"
         on_accent_hex = "#141418"
         bg_hex = "#121215"
         bg_alt_hex = "#1A1A1F"
@@ -281,6 +337,7 @@ def main():
         pal = extract_wallpaper_palette(analysis_img)
         accent_hex = pal["accent"]
         accent_lit_hex = pal["accentLit"]
+        tertiary_hex = pal["tertiary"]
         on_accent_hex = pal["onAccent"]
         bg_hex = pal["bg"]
         bg_alt_hex = pal["bgAlt"]
@@ -297,6 +354,7 @@ def main():
         "fgFaint": alpha(fg_hex, 0.42),
         "accent": accent_hex,
         "accentLit": accent_lit_hex,
+        "tertiary": tertiary_hex,
         "onAccent": on_accent_hex,
         "outline": alpha(outline_hex, 0.40),
         "ok": OK,
@@ -327,6 +385,7 @@ def main():
             "onPrimary": on_accent_hex.lstrip("#"),
             "primaryContainer": accent_lit_hex.lstrip("#"),
             "onPrimaryContainer": on_accent_hex.lstrip("#"),
+            "accentLit": accent_lit_hex.lstrip("#"),
             "surface": bg_hex.lstrip("#"),
             "onSurface": fg_hex.lstrip("#"),
             "surfaceContainer": bg_hex.lstrip("#"),
@@ -335,7 +394,7 @@ def main():
             "outline": outline_hex.lstrip("#"),
             "outlineVariant": outline_hex.lstrip("#"),
             "success": OK.lstrip("#"),
-            "tertiary": WARN.lstrip("#"),
+            "tertiary": tertiary_hex.lstrip("#"),
             "error": ERR.lstrip("#")
         }
     }
@@ -366,7 +425,10 @@ def main():
         f"rgba({h_acc}ee) rgba({h_lit}aa) 45deg"
     ], capture_output=True)
 
-    # 5. Notify Carbon Quickshell to reload Theme singleton immediately
+    # 5. Update Waybar CSS theme
+    update_waybar_theme(accent_hex, accent_lit_hex, on_accent_hex, bg_hex, bg_alt_hex, fg_hex, outline_hex, tertiary_hex)
+
+    # 6. Notify Carbon Quickshell to reload Theme singleton immediately
     try:
         ipc_path = os.path.join(CARBON_CONFIG_DIR, "scripts", "carbon-ipc.sh")
         if not os.path.isfile(ipc_path):

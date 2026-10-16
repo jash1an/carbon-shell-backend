@@ -20,7 +20,7 @@ NotchContainer {
     clip: true
     bottomRadius: isExpanded ? 20 : 14
     implicitHeight: isExpanded ? 270 : 32
-    implicitWidth: isExpanded ? 860 : (contentImplicitWidth + (leftFillet ? filletRadius : 0) + (rightFillet ? filletRadius : 0) + (horizontalPadding * 2))
+    implicitWidth: isExpanded ? 820 : (contentImplicitWidth + (leftFillet ? filletRadius : 0) + (rightFillet ? filletRadius : 0) + (horizontalPadding * 2))
 
     earWidth: 20
     contentSpacing: 8
@@ -34,28 +34,27 @@ NotchContainer {
     signal openCenterDashboard()
     signal closeCenterDashboard()
 
+    property bool showVinylDisc: true
+    property bool showEqualizer: true
+
     readonly property bool hudActive: HudService.active
 
     focus: root.isExpanded
     Keys.enabled: root.isExpanded
     Keys.onPressed: (event) => {
         if (event.key === Qt.Key_Escape) {
-            console.log("[NotchCenter] ESCAPE PRESSED - closing center dashboard")
             root.closeCenterDashboard()
             event.accepted = true
         }
     }
     Keys.onEscapePressed: (event) => {
-        console.log("[NotchCenter] onEscapePressed - closing center dashboard")
         root.closeCenterDashboard()
         event.accepted = true
     }
 
     onIsExpandedChanged: {
-        console.log("[NotchCenter] isExpanded: " + root.isExpanded + ", hasActiveFocus before: " + root.activeFocus)
         if (root.isExpanded) {
             root.forceActiveFocus()
-            console.log("[NotchCenter] hasActiveFocus after: " + root.activeFocus)
         }
     }
 
@@ -227,6 +226,7 @@ NotchContainer {
                     border.width: 1.5
                     anchors.verticalCenter: parent.verticalCenter
                     clip: true
+                    visible: root.showVinylDisc
 
                     MouseArea {
                         anchors.fill: parent
@@ -264,7 +264,7 @@ NotchContainer {
                     id: eqWaveform
                     spacing: 2
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: root.hasTrack
+                    visible: root.showEqualizer && root.hasTrack
 
                     Repeater {
                         model: [
@@ -340,7 +340,7 @@ NotchContainer {
         anchors.top: parent.top
         anchors.topMargin: 4
         anchors.horizontalCenter: parent.horizontalCenter
-        width: 860
+        width: 820
         height: 260
         showBackground: false
         open: root.isExpanded
@@ -356,4 +356,3 @@ NotchContainer {
         onCloseRequested: root.closeCenterDashboard()
     }
 }
-

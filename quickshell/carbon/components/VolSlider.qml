@@ -1,14 +1,10 @@
 import QtQuick
 
 /**
- * Carbon volume/level slider in "wavy line" style:
- *   · the filled portion (0..value) is a smooth, continuously-rippling sine
- *     wave whose amplitude & frequency grow with the value (silent/lower =
- *     flatter line, louder/higher = bigger swell),
- *   · the remainder is a faint static track line,
- *   · a thin drag handle marks the current value.
- * `changed(value)` fires live while dragging so the caller can push the value
- * straight into the sink clamp.
+ * Carbon volume/level slider in clean, sleek linear style:
+ *   · smooth linear track with rounded capsule pill fill,
+ *   · elegant draggable knob marking the current value,
+ *   · responsive mouse drag and wheel interaction.
  */
 Item {
     id: root
@@ -21,8 +17,8 @@ Item {
     property color knob: "#F6F4F4"
     property bool interactive: true
     property bool active: true
-    property real handleWidth: 4
-    property real handleHeight: 18
+    property real handleWidth: 8
+    property real handleHeight: 14
 
     signal changed(real value)
 
@@ -31,14 +27,10 @@ Item {
     readonly property real effectiveValue: isPressed ? dragValue : value
 
     /* Live-bound: recomputes as `effectiveValue` moves without breaking bindings. */
-    property real ratio: (root.effectiveValue - root.minValue) / Math.max(0.0001, root.maxValue - root.minValue)
+    property real ratio: Math.max(0, Math.min(1.0, (root.effectiveValue - root.minValue) / Math.max(0.0001, root.maxValue - root.minValue)))
 
-    implicitHeight: 24
+    implicitHeight: 22
     implicitWidth: 160
-
-    /* Waviness grows with the value — Ambxst-style mapping. */
-    readonly property real wavyAmp: 1.5 * root.ratio
-    readonly property real wavyFreq: 8 * root.ratio
 
     function setFromMouse(mx) {
         var w = Math.max(1, root.width)
@@ -48,36 +40,33 @@ Item {
         root.changed(v)
     }
 
-    /* Remaining (unfilled) track: static faint line. */
+    /* Track background */
     Rectangle {
-        anchors.left: knob.right
-        anchors.leftMargin: 3
+        id: bgTrack
+        anchors.left: parent.left
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        height: 2
-        radius: 1
-        color: root.track
-        visible: root.ratio < 0.99
+        height: 6
+        radius: 3
+        color: Qt.rgba(root.track.r, root.track.g, root.track.b, Math.max(0.22, root.track.a))
     }
 
-    /* Filled portion: the animated wavy line, up to the handle. */
-    WavyLine {
-        id: waveFill
+    /* Filled active progress bar */
+    Rectangle {
+        id: fillBar
         anchors.left: parent.left
-        anchors.right: knob.left
-        anchors.rightMargin: 3
         anchors.verticalCenter: parent.verticalCenter
-        height: 16
-        visible: root.ratio > 0.004
+        height: 6
+        radius: 3
+        width: Math.max(0, Math.min(parent.width, parent.width * root.ratio))
         color: root.fill
-        lineWidth: 3
-        amplitudeMultiplier: root.wavyAmp
-        frequency: root.wavyFreq
-        fullLength: Math.max(1, root.width)
-        running: root.active && root.visible && (Window.window ? Window.window.visible : true)
+        Behavior on width {
+            enabled: !root.isPressed
+            NumberAnimation { duration: 80; easing.type: Easing.OutCubic }
+        }
     }
 
-    /* Drag handle marking the current level. */
+    /* Drag knob handle */
     Rectangle {
         id: knob
         width: root.handleWidth
@@ -85,13 +74,18 @@ Item {
         radius: root.handleWidth / 2
         anchors.verticalCenter: parent.verticalCenter
         color: root.knob
+        border.width: 1
+        border.color: Qt.rgba(0, 0, 0, 0.25)
         x: Math.max(0, Math.min(parent.width - width, root.ratio * (parent.width - width)))
+        scale: area.pressed ? 1.2 : (area.containsMouse ? 1.1 : 1.0)
+        Behavior on scale { NumberAnimation { duration: 100 } }
     }
 
     MouseArea {
         id: area
         anchors.fill: parent
         enabled: root.interactive
+        hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onPressed: (m) => root.setFromMouse(m.x)
         onPositionChanged: (m) => { if (area.pressed) root.setFromMouse(m.x) }

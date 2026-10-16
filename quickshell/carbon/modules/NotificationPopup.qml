@@ -1,16 +1,18 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Effects
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Services.Notifications
 import "../Singletons"
 
 /**
  * Animated Notification Panel Popup:
- *   - Clean glassmorphic card with smooth opacity, slide, and scale transitions
  *   - Displays active notifications tracked by NotificationServer
+ *   - App icons resolved cleanly with freedesktop icon theme fallback
+ *   - Clickable notification cards that redirect directly to the running application
  *   - Includes header with unread badge, "Clear all" button, and close action
- *   - Individual card dismiss on click with slide-out animation
+ *   - Individual card dismiss on hover X button
  *   - Polished empty state when all notifications are cleared
  */
 Item {
@@ -19,6 +21,7 @@ Item {
     required property var server
     property bool open: false
     property string barEdge: "top"
+    property string barMode: "notch"
     property bool hovered: false
 
     readonly property var notifs: server && server.trackedNotifications ? server.trackedNotifications : null
@@ -26,11 +29,27 @@ Item {
 
     signal requestClose()
 
-    implicitWidth: 320
+    implicitWidth: 324
     implicitHeight: 360
 
     HoverHandler {
         onHoveredChanged: root.hovered = hovered
+    }
+
+    property bool animatingOut: false
+    onOpenChanged: {
+        if (root.open) {
+            root.animatingOut = false
+            animatingOutTimer.stop()
+        } else {
+            root.animatingOut = true
+            animatingOutTimer.restart()
+        }
+    }
+    Timer {
+        id: animatingOutTimer
+        interval: 220
+        onTriggered: root.animatingOut = false
     }
 
     function dismissAll() {
@@ -51,16 +70,34 @@ Item {
         }
     }
 
+    function getAppIcon(modelData) {
+        if (!modelData) return ""
+        var raw = String(modelData.appIcon || "").trim()
+        if (raw.startsWith("/") || raw.startsWith("file:")) return raw
+        if (raw.length > 0) {
+            var p = Quickshell.iconPath(raw, "")
+            if (p) return p
+        }
+        var appName = String(modelData.appName || "").toLowerCase().trim()
+        if (appName.length > 0) {
+            var pName = Quickshell.iconPath(appName, "")
+            if (pName) return pName
+            var pDash = Quickshell.iconPath(appName.replace(/\s+/g, "-"), "")
+            if (pDash) return pDash
+        }
+        return ""
+    }
+
     Rectangle {
         id: card
         width: parent.width
         height: parent.height
         radius: 16
-        color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.90)
+        color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.94)
         border.color: root.open ? Qt.rgba(Theme.accentLit.r, Theme.accentLit.g, Theme.accentLit.b, 0.45) : Qt.rgba(1, 1, 1, 0.12)
         border.width: 1
 
-        /* VisionOS Specular Rim highlight */
+        /* Specular rim highlight */
         Rectangle {
             anchors.fill: parent
             anchors.margins: 1
@@ -74,34 +111,28 @@ Item {
         opacity: root.open ? 1 : 0
         x: root.open ? 0 : (root.barEdge === "left" ? -28 : (root.barEdge === "right" ? 28 : 0))
         y: root.open ? 0 : (root.barEdge === "top" ? -20 : (root.barEdge === "bottom" ? 20 : 0))
-        scale: root.open ? 1.0 : 0.88
-        transformOrigin: root.barEdge === "left" ? Item.BottomLeft :
-                         (root.barEdge === "right" ? Item.BottomRight :
-                         (root.barEdge === "bottom" ? Item.BottomRight : Item.TopRight))
+        scale: root.open ? 1.0 : 0.90
 
         Behavior on border.color { ColorAnimation { duration: 200 } }
         Behavior on opacity {
-            NumberAnimation { duration: root.open ? 220 : 140; easing.type: Easing.OutCubic }
+            NumberAnimation { duration: root.open ? 200 : 140; easing.type: Easing.OutCubic }
         }
         Behavior on x {
             NumberAnimation {
-                duration: root.open ? 320 : 160
+                duration: root.open ? 280 : 150
                 easing.type: root.open ? Easing.OutBack : Easing.OutCubic
-                easing.overshoot: 1.35
             }
         }
         Behavior on y {
             NumberAnimation {
-                duration: root.open ? 320 : 160
+                duration: root.open ? 280 : 150
                 easing.type: root.open ? Easing.OutBack : Easing.OutCubic
-                easing.overshoot: 1.35
             }
         }
         Behavior on scale {
             NumberAnimation {
-                duration: root.open ? 300 : 150
+                duration: root.open ? 280 : 150
                 easing.type: root.open ? Easing.OutBack : Easing.OutCubic
-                easing.overshoot: 1.38
             }
         }
 
@@ -110,27 +141,32 @@ Item {
             anchors.margins: 12
             spacing: 8
             opacity: root.open ? 1.0 : 0.0
-            y: root.open ? 0 : 8
-            Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-            Behavior on y { NumberAnimation { duration: 300; easing.type: Easing.OutBack; easing.overshoot: 1.2 } }
+            Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
 
             /* ── Header ─────────────────────────────────────────────── */
             RowLayout {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 24
+                Layout.preferredHeight: 26
                 spacing: 6
 
-                Text {
-                    text: "notifications"
-                    font.family: Theme.fontIcon
-                    font.pixelSize: 15
-                    color: Theme.accent
+                Rectangle {
+                    width: 24; height: 24; radius: 6
+                    color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
+                    border.width: 1
+                    border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35)
+                    Text {
+                        anchors.centerIn: parent
+                        text: "notifications"
+                        font.family: Theme.fontIcon
+                        font.pixelSize: 14
+                        color: Theme.accent
+                    }
                 }
 
                 Text {
                     text: "Notifications"
                     font.family: "JetBrainsMono Nerd Font"
-                    font.pixelSize: Theme.fontPx(13)
+                    font.pixelSize: Theme.fontPx(11)
                     font.weight: Font.Bold
                     color: Theme.fg
                 }
@@ -148,9 +184,9 @@ Item {
                         anchors.centerIn: parent
                         text: String(root.total)
                         font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: Theme.fontPx(10)
+                        font.pixelSize: Theme.fontPx(7.5)
                         font.weight: Font.Bold
-                        color: "#0e0e12"
+                        color: Theme.isDark ? "#101116" : "#ffffff"
                     }
                 }
 
@@ -160,39 +196,32 @@ Item {
                 Rectangle {
                     visible: root.total > 0
                     Layout.preferredHeight: 22
-                    Layout.preferredWidth: clearRow.implicitWidth + 12
+                    Layout.preferredWidth: clearText.implicitWidth + 12
                     radius: 11
-                    color: clearHov.containsMouse ? Theme.bgHover : "transparent"
-                    border.color: clearHov.containsMouse ? Theme.accent : Theme.outline
+                    color: clearMouse.containsMouse ? Theme.bgHover : "transparent"
+                    border.color: clearMouse.containsMouse ? Theme.accent : Theme.outline
                     border.width: 1
 
-                    Behavior on color { ColorAnimation { duration: Theme.motionDurationShort3 } }
-
-                    Row {
-                        id: clearRow
+                    RowLayout {
+                        id: clearText
                         anchors.centerIn: parent
-                        spacing: 4
-
+                        spacing: 3
                         Text {
-                            anchors.verticalCenter: parent.verticalCenter
                             text: "delete_sweep"
                             font.family: Theme.fontIcon
-                            font.pixelSize: 13
-                            color: clearHov.containsMouse ? Theme.accent : Theme.fgDim
+                            font.pixelSize: 12
+                            color: clearMouse.containsMouse ? Theme.accent : Theme.fgDim
                         }
-
                         Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "Clear all"
+                            text: "Clear"
                             font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: Theme.fontPx(10)
-                            font.weight: Font.Medium
-                            color: clearHov.containsMouse ? Theme.accent : Theme.fgDim
+                            font.pixelSize: Theme.fontPx(7.5)
+                            color: clearMouse.containsMouse ? Theme.accent : Theme.fgDim
                         }
                     }
 
                     MouseArea {
-                        id: clearHov
+                        id: clearMouse
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
@@ -200,25 +229,23 @@ Item {
                     }
                 }
 
-                /* Close Button */
+                /* Close button */
                 Rectangle {
-                    Layout.preferredWidth: 22
-                    Layout.preferredHeight: 22
+                    width: 22
+                    height: 22
                     radius: 11
-                    color: closeHov.containsMouse ? Theme.bgHover : "transparent"
-
-                    Behavior on color { ColorAnimation { duration: Theme.motionDurationShort3 } }
+                    color: closeMouse.containsMouse ? Theme.bgHover : "transparent"
 
                     Text {
                         anchors.centerIn: parent
                         text: "close"
                         font.family: Theme.fontIcon
                         font.pixelSize: 13
-                        color: closeHov.containsMouse ? Theme.fg : Theme.fgFaint
+                        color: closeMouse.containsMouse ? Theme.fg : Theme.fgFaint
                     }
 
                     MouseArea {
-                        id: closeHov
+                        id: closeMouse
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
@@ -230,14 +257,13 @@ Item {
             Rectangle {
                 Layout.fillWidth: true
                 height: 1
-                color: Theme.outline
+                color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08)
             }
 
-            /* ── Content Area ───────────────────────────────────────── */
+            /* ── Content View ────────────────────────────────────────── */
             Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                clip: true
 
                 /* Empty state */
                 ColumnLayout {
@@ -247,26 +273,26 @@ Item {
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: "notifications"
+                        text: "notifications_paused"
                         font.family: Theme.fontIcon
-                        font.pixelSize: 36
-                        color: Qt.alpha(Theme.fg, 0.15)
+                        font.pixelSize: 32
+                        color: Qt.alpha(Theme.fg, 0.25)
                     }
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
                         text: "No Notifications"
                         font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: Theme.fontPx(13)
+                        font.pixelSize: Theme.fontPx(10)
                         font.weight: Font.DemiBold
                         color: Theme.fgDim
                     }
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: "You are all caught up!"
+                        text: "You're all caught up!"
                         font.family: "JetBrainsMono Nerd Font"
-                        font.pixelSize: Theme.fontPx(10)
+                        font.pixelSize: Theme.fontPx(7.5)
                         color: Theme.fgFaint
                     }
                 }
@@ -312,27 +338,25 @@ Item {
                         property bool dying: false
                         x: dying ? width + 50 : 0
                         opacity: dying ? 0 : 1
-                        scale: dying ? 0.85 : (itemMouse.pressed ? 0.96 : (itemMouse.containsMouse ? 1.02 : Math.max(0.96, 1.0 - cardItem.index * 0.015)))
+                        scale: dying ? 0.85 : (itemMouse.pressed ? 0.97 : (itemMouse.containsMouse ? 1.01 : 1.0))
 
                         Behavior on x {
                             NumberAnimation {
-                                duration: 200
+                                duration: 180
                                 easing.type: Easing.InBack
-                                easing.overshoot: 1.15
                             }
                         }
-                        Behavior on opacity { NumberAnimation { duration: 180 } }
+                        Behavior on opacity { NumberAnimation { duration: 160 } }
                         Behavior on scale {
                             NumberAnimation {
-                                duration: 180
+                                duration: 160
                                 easing.type: Easing.OutBack
-                                easing.overshoot: 1.25
                             }
                         }
 
                         Timer {
                             id: exitTimer
-                            interval: 200
+                            interval: 180
                             onTriggered: {
                                 if (cardItem.modelData) cardItem.modelData.dismiss()
                             }
@@ -344,12 +368,39 @@ Item {
                             exitTimer.start()
                         }
 
+                        function activateAndRedirect(m) {
+                            if (!m) return
+                            if (m.defaultAction) {
+                                try { m.defaultAction.invoke() } catch (e) {}
+                            } else if (m.actions && m.actions.length > 0) {
+                                try { m.actions[0].invoke() } catch (e) {}
+                            }
+
+                            var app = String(m.appName || "").trim()
+                            var icon = String(m.appIcon || "").trim()
+                            var term = app.toLowerCase()
+                            if (term) {
+                                Quickshell.execDetached(["sh", "-c",
+                                    "target=\"" + term + "\"; " +
+                                    "addr=$(hyprctl clients -j | jq -r --arg t \"$target\" '.[] | select((.class | ascii_downcase | contains($t)) or (.initialClass | ascii_downcase | contains($t)) or (.title | ascii_downcase | contains($t))) | .address' | head -n1); " +
+                                    "if [ -n \"$addr\" ] && [ \"$addr\" != \"null\" ]; then " +
+                                    "  hyprctl dispatch focuswindow address:$addr; " +
+                                    "else " +
+                                    "  gtk-launch \"$target\" 2>/dev/null || gtk-launch \"" + icon + "\" 2>/dev/null || \"$target\" & " +
+                                    "fi"
+                                ])
+                            }
+
+                            cardItem.dismissCard()
+                            root.requestClose()
+                        }
+
                         MouseArea {
                             id: itemMouse
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: cardItem.dismissCard()
+                            onClicked: cardItem.activateAndRedirect(cardItem.modelData)
                         }
 
                         RowLayout {
@@ -359,24 +410,24 @@ Item {
 
                             /* App / Sender Icon */
                             Rectangle {
-                                Layout.preferredWidth: 26
-                                Layout.preferredHeight: 26
+                                Layout.preferredWidth: 28
+                                Layout.preferredHeight: 28
                                 Layout.alignment: Qt.AlignTop
-                                radius: 6
+                                radius: 7
                                 color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.15)
                                 border.color: Theme.outline
                                 border.width: 1
                                 clip: true
 
                                 Image {
+                                    id: notifIconImg
                                     anchors.fill: parent
-                                    anchors.margins: 3
-                                    source: {
-                                        const icon = String(cardItem.modelData ? (cardItem.modelData.appIcon || "") : "")
-                                        return (icon.startsWith("/") || icon.startsWith("file:")) ? icon : ""
-                                    }
-                                    sourceSize: Qt.size(48, 48)
+                                    anchors.margins: 2
+                                    source: root.getAppIcon(cardItem.modelData)
+                                    sourceSize: Qt.size(32, 32)
                                     fillMode: Image.PreserveAspectFit
+                                    smooth: true
+                                    mipmap: true
                                     visible: status === Image.Ready
                                 }
 
@@ -386,7 +437,7 @@ Item {
                                     font.family: Theme.fontIcon
                                     font.pixelSize: 14
                                     color: Theme.accent
-                                    visible: parent.children[0].status !== Image.Ready
+                                    visible: notifIconImg.status !== Image.Ready
                                 }
                             }
 
@@ -410,18 +461,36 @@ Item {
                                                 : cardItem.modelData.appName
                                         }
                                         font.family: "JetBrainsMono Nerd Font"
-                                        font.pixelSize: Theme.fontPx(11)
+                                        font.pixelSize: Theme.fontPx(9)
                                         font.weight: Font.Bold
                                         color: Theme.fg
                                         elide: Text.ElideRight
                                     }
 
                                     /* Dismiss cross on hover */
-                                    Text {
-                                        text: "close"
-                                        font.family: Theme.fontIcon
-                                        font.pixelSize: 11
-                                        color: itemMouse.containsMouse ? Theme.err : "transparent"
+                                    Rectangle {
+                                        width: 18
+                                        height: 18
+                                        radius: 9
+                                        color: closeCrossMA.containsMouse ? Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.25) : "transparent"
+                                        visible: itemMouse.containsMouse || closeCrossMA.containsMouse
+                                        z: 20
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "close"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: 11
+                                            color: Theme.err
+                                        }
+
+                                        MouseArea {
+                                            id: closeCrossMA
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: cardItem.dismissCard()
+                                        }
                                     }
                                 }
 
@@ -429,12 +498,19 @@ Item {
                                     Layout.fillWidth: true
                                     text: cardItem.modelData ? String(cardItem.modelData.body || "") : ""
                                     font.family: "JetBrainsMono Nerd Font"
-                                    font.pixelSize: Theme.fontPx(10)
+                                    font.pixelSize: Theme.fontPx(7.5)
                                     color: Theme.fgDim
                                     wrapMode: Text.Wrap
                                     maximumLineCount: 2
                                     elide: Text.ElideRight
-                                    visible: text.length > 0
+                                }
+
+                                Text {
+                                    text: cardItem.modelData ? String(cardItem.modelData.appName || "") : ""
+                                    font.family: "JetBrainsMono Nerd Font"
+                                    font.pixelSize: Theme.fontPx(6.5)
+                                    color: Theme.accentLit
+                                    elide: Text.ElideRight
                                 }
                             }
                         }
