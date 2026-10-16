@@ -411,20 +411,38 @@ Rectangle {
                         border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.20)
                         visible: opacity > 0.01
                         opacity: root.hoveredCardItem ? 1.0 : 0.0
-                        Behavior on opacity { NumberAnimation { duration: 180 } }
+                        Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutQuad } }
 
-                        property real targetY: root.hoveredCardItem ? root.hoveredCardItem.y : 0
-                        property real targetH: root.hoveredCardItem ? root.hoveredCardItem.height : 0
+                        // Stable last-known position — only update while a card IS hovered.
+                        // This prevents the follower from snapping to y:0 the moment
+                        // hoveredCardItem becomes null (which happens before the fade-out finishes).
+                        property real stableY: 0
+                        property real stableH: 48
 
-                        y: targetY
-                        height: targetH
+                        Connections {
+                            target: root
+                            function onHoveredCardItemChanged() {
+                                var card = root.hoveredCardItem
+                                if (card) {
+                                    hoverFollower.stableY = card.y
+                                    hoverFollower.stableH = card.height
+                                }
+                                // When null: keep stableY/stableH as-is so the follower
+                                // stays in place and fades out smoothly where it was.
+                            }
+                        }
 
+                        // Animate toward the stable position with SmoothedAnimation
+                        // for velocity-continuous gliding (no snapping on rapid hovers)
                         Behavior on y {
-                            NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
+                            SmoothedAnimation { velocity: 900; easing.type: Easing.OutCubic }
                         }
                         Behavior on height {
-                            NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
+                            SmoothedAnimation { velocity: 600; easing.type: Easing.OutCubic }
                         }
+
+                        y: hoverFollower.stableY
+                        height: hoverFollower.stableH
 
                         // 2.5px vertical indicator bar on left edge
                         Rectangle {

@@ -16,42 +16,45 @@ Singleton {
     property string preferredPlayerBus: ""
     property real lastSkipTime: 0
 
-    readonly property var activePlayer: {
-        if (!players || players.length === 0) return null
-        // 1. If we have a playing player, track it as preferred
-        for (let i = 0; i < players.length; i++) {
-            if (players[i].playbackState === MprisPlaybackState.Playing) {
-                root.preferredPlayerBus = players[i].dbusName || ""
-                return players[i]
+    property var activePlayer: null
+
+    function resolveActivePlayer() {
+        var list = root.players
+        if (!list || list.length === 0) return null
+
+        for (var i = 0; i < list.length; i++) {
+            if (list[i] && list[i].playbackState === MprisPlaybackState.Playing) {
+                return list[i]
             }
         }
-        // 2. If recent skip or pause transition, stick with preferred player if still alive
         if (root.preferredPlayerBus && root.preferredPlayerBus.length > 0) {
-            for (let i = 0; i < players.length; i++) {
-                if ((players[i].dbusName || "") === root.preferredPlayerBus) {
-                    return players[i]
+            for (var j = 0; j < list.length; j++) {
+                if (list[j] && (list[j].dbusName || "") === root.preferredPlayerBus) {
+                    return list[j]
                 }
             }
         }
-        // 3. Fallback to non-browser paused player with track
-        for (let i = 0; i < players.length; i++) {
-            const p = players[i]
-            if (p.playbackState === MprisPlaybackState.Paused && (p.trackTitle || "").length > 0) {
-                const name = (p.dbusName || p.identity || "").toLowerCase()
+        for (var k = 0; k < list.length; k++) {
+            var p = list[k]
+            if (p && p.playbackState === MprisPlaybackState.Paused && (p.trackTitle || "").length > 0) {
+                var name = (p.dbusName || p.identity || "").toLowerCase()
                 if (!name.includes("firefox") && !name.includes("chromium") && !name.includes("chrome")) {
-                    root.preferredPlayerBus = p.dbusName || ""
                     return p
                 }
             }
         }
-        // 4. Any paused player with track
-        for (let i = 0; i < players.length; i++) {
-            if (players[i].playbackState === MprisPlaybackState.Paused && (players[i].trackTitle || "").length > 0) {
-                root.preferredPlayerBus = players[i].dbusName || ""
-                return players[i]
+        for (var m = 0; m < list.length; m++) {
+            if (list[m] && list[m].playbackState === MprisPlaybackState.Paused && (list[m].trackTitle || "").length > 0) {
+                return list[m]
             }
         }
-        return players[0]
+        return list[0] || null
+    }
+
+    onActivePlayerChanged: {
+        if (activePlayer && activePlayer.playbackState === MprisPlaybackState.Playing) {
+            root.preferredPlayerBus = activePlayer.dbusName || ""
+        }
     }
 
     readonly property string trackTitle: activePlayer ? (activePlayer.trackTitle || "") : ""
@@ -74,24 +77,56 @@ Singleton {
     property string nextLine: ""
     property string prevLine: ""
 
+    property string lastFetchedKey: ""
+
+    Timer {
+        id: playerPollTimer
+        interval: 300
+        repeat: true
+        running: true
+        triggeredOnStart: true
+        onTriggered: {
+            var p = root.resolveActivePlayer()
+            if (root.activePlayer !== p) {
+                root.activePlayer = p
+                console.log("[LyricsService] activePlayer changed to:", p ? p.trackTitle : "null")
+            }
+            var title = p ? (p.trackTitle || "") : root.trackTitle
+            var artist = p ? (p.trackArtist || "") : root.trackArtist
+            var key = title + "::" + artist
+            if (title.trim().length > 0 && key !== root.lastFetchedKey) {
+                console.log("[LyricsService] Triggering fetchLyrics for:", key)
+                root.fetchLyrics()
+            }
+        }
+    }
+
     onTrackTitleChanged: fetchLyrics()
     onTrackArtistChanged: fetchLyrics()
     onCurrentPositionChanged: updateSync()
     onIsPlayingChanged: updateSync()
 
     function fetchLyrics() {
+        var p = root.activePlayer
+        var title = p ? (p.trackTitle || "") : root.trackTitle
+        var artist = p ? (p.trackArtist || "") : root.trackArtist
+        if (!title || title.trim().length === 0) return
+
+        var key = title + "::" + artist
+        if (root.lastFetchedKey === key && root.lines.length > 0) return
+        root.lastFetchedKey = key
+
         lines = []
         currentIndex = -1
         currentLine = ""
         nextLine = ""
         prevLine = ""
-        if (!hasTrack) return
 
         lyricsProc.command = [
             "python3",
             (Quickshell.env("HOME") || "") + "/.config/hypr/scripts/carbon-lyrics.py",
-            "--title", root.trackTitle,
-            "--artist", root.trackArtist,
+            "--title", title,
+            "--artist", artist,
             "--duration", String(root.totalLength)
         ]
         lyricsProc.running = true
@@ -237,6 +272,7 @@ Singleton {
     }
 
     Component.onCompleted: {
+        console.log("[LyricsService] Global service initialized")
         fetchLyrics()
     }
 }

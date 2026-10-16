@@ -1101,6 +1101,7 @@ ShellRoot {
         } else {
             Quickshell.execDetached(["bash", "-c", "pkill -x waybar; pkill -x waybar-bin; pkill -x swaync"])
         }
+        var _initLyrics = LyricsService.hasTrack
     }
 
     property real volumeStepVal: 0.05
@@ -1142,6 +1143,7 @@ ShellRoot {
     /* ── MPRIS Music Tracking ────────────────────────────────────────── */
     readonly property var mprisPlayers: Mpris.players.values !== undefined ? Mpris.players.values : Mpris.players
     property var activeMprisPlayer: null
+    readonly property var bgLyricsService: LyricsService
 
     function resolveActiveMprisPlayer() {
         if (!root.mprisPlayers || root.mprisPlayers.length === 0) return null
@@ -1429,11 +1431,18 @@ ShellRoot {
                         root.notchBlur = root.shellBlur
                         root.minimalBlur = root.shellBlur
                     }
-                    else if (cmd === "reload-config" || cmd === "apply-settings") {
+                    else if (cmd === "reload-config" || cmd === "apply-settings" || cmd === "reload-lock-config") {
                         root.applyBarPos(barPosFile.text())
                         root.reloadBarMode()
                         Theme.reloadShellOpacity()
                         root.reloadLauncherConfig()
+                        LockState.reloadConfig()
+                    }
+                    else if (cmd.startsWith("set-cairo-mode ") || cmd.startsWith("cairo-mode ")) {
+                        var cairoArg = cmd.replace(/^(set-cairo-mode|cairo-mode)\s+/, "").trim().toLowerCase()
+                        var cairoEn = (cairoArg === "true" || cairoArg === "1" || cairoArg === "on")
+                        LockState.cairoModeEnabled = cairoEn
+                        console.log("[IPC] cairoModeEnabled updated to: " + LockState.cairoModeEnabled)
                     }
                     else if (cmd === "controls-mode-todo") {
                         root.controlsPinned = true
@@ -1774,6 +1783,54 @@ ShellRoot {
 
             LockTransitionOverlay {
                 anchors.fill: parent
+            }
+        }
+    }
+
+    /* ── Carbon // Cairo Mode Standby & Lock Screen (0 MB Lazy Loaded) ───── */
+    Variants {
+        model: Quickshell.screens
+
+        PanelWindow {
+            id: cairoLockWindow
+            required property var modelData
+
+            screen: modelData
+            color: "#000000"
+            WlrLayershell.namespace: "carbon-cairo-lock"
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.keyboardFocus: (LockState.isLocked && ShellConfig.cairoModeEnabled) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            exclusionMode: ExclusionMode.Ignore
+            aboveWindows: true
+            anchors { top: true; bottom: true; left: true; right: true }
+
+            visible: LockState.isLocked && ShellConfig.cairoModeEnabled
+
+            Item {
+                anchors.fill: parent
+                focus: true
+
+                Keys.onPressed: (event) => {
+                    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                        if (cairoStageLoader.item && typeof cairoStageLoader.item.triggerUnlock === "function") {
+                            event.accepted = true
+                            cairoStageLoader.item.triggerUnlock()
+                        }
+                    }
+                }
+
+                // Zero-RAM Lazy Mounting: destroyed completely when unlocked or disabled
+                Loader {
+                    id: cairoStageLoader
+                    anchors.fill: parent
+                    active: LockState.isLocked && ShellConfig.cairoModeEnabled
+                    asynchronous: true
+                    focus: true
+                    source: "modules/lock/CairoStage.qml"
+                    onLoaded: {
+                        if (item) item.forceActiveFocus()
+                    }
+                }
             }
         }
     }

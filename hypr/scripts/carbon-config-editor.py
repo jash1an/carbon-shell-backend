@@ -3109,6 +3109,33 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             self.mark_dirty()
         self.add_switch_row(card, "Media Player on Lock Screen", "Show currently playing track when locked", media_act, on_media)
 
+        # Carbon // Cairo Synced-Lyric Mode Toggle
+        cairo_act = bool(self.lock_cfg.get("cairoModeEnabled", self.lock_cfg.get("verciModeEnabled", False)))
+        def on_cairo(act):
+            self.lock_cfg["cairoModeEnabled"] = act
+            self.lock_cfg["verciModeEnabled"] = act
+            write_json(LOCKSCREEN_CONFIG_PATH, self.lock_cfg)
+            # Sync to ~/.config/hypr/carbon-lockscreen.json
+            hypr_lock_cfg = os.path.expanduser("~/.config/hypr/carbon-lockscreen.json")
+            if hypr_lock_cfg != LOCKSCREEN_CONFIG_PATH:
+                write_json(hypr_lock_cfg, self.lock_cfg)
+            # Instantly inform Carbon Quickshell via IPC
+            ipc_script = os.path.join(CONFIG_DIR, "scripts/carbon-ipc.sh")
+            if not os.path.exists(ipc_script):
+                ipc_script = os.path.expanduser("~/.config/hypr/scripts/carbon-ipc.sh")
+            if not os.path.exists(ipc_script):
+                ipc_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "carbon-ipc.sh")
+            if os.path.exists(ipc_script):
+                val_str = "true" if act else "false"
+                subprocess.run(["sh", ipc_script, f"set-cairo-mode {val_str}"], check=False)
+        self.add_switch_row(
+            card,
+            "Carbon // Cairo Synced-Lyric Mode",
+            "Replace standard lock screen with kinetic synced lyrics standby on solid black (press Enter to unlock)",
+            cairo_act,
+            on_cairo
+        )
+
         page.append(card)
         return page
 

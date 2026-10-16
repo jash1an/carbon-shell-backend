@@ -8,5 +8,7 @@
   "transition": {
     "lockSync": true,
     "debug": false
-  }
+  },
+  "verciModeEnabled": true,
+  "cairoModeEnabled": true
 }

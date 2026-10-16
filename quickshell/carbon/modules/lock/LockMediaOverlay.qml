@@ -211,10 +211,13 @@ Item {
         onTriggered: root.entered = true
     }
 
-    /* ── Frosted Glass Background Card ───────────────────────────────────── */
+    /* ── Frosted Glass Background Card (Anchored at bottom, height 86) ──── */
     Rectangle {
         id: cardBg
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 86
         radius: 20
         color: "#24111319"
         border.color: "#28FFFFFF"
@@ -228,9 +231,42 @@ Item {
         }
     }
 
+    /* ── Moon Doodle (top-right inside card) ─────────────────────────────── */
+    Image {
+        id: moonDoodle
+        anchors.top: cardBg.top
+        anchors.right: cardBg.right
+        anchors.topMargin: 7
+        anchors.rightMargin: 10
+        width: 38
+        height: 38
+        source: Theme.isDark
+            ? "doodles/doodle_moon_white.png"
+            : "doodles/doodle_moon_black.png"
+        fillMode: Image.PreserveAspectFit
+        smooth: true
+        mipmap: true
+        opacity: root.showing ? 0.72 : 0.0
+        visible: root.showing
+        Behavior on opacity { NumberAnimation { duration: 350 } }
+
+        // Gentle slow float
+        SequentialAnimation on y {
+            running: root.showing
+            loops: Animation.Infinite
+            NumberAnimation { to: -3; duration: 2200; easing.type: Easing.InOutSine }
+            NumberAnimation { to: 0;  duration: 2200; easing.type: Easing.InOutSine }
+        }
+    }
+
+
+
     /* ── Content Layout ─────────────────────────────────────────────────── */
     RowLayout {
-        anchors.fill: parent
+        anchors.left: cardBg.left
+        anchors.right: cardBg.right
+        anchors.top: cardBg.top
+        anchors.bottom: cardBg.bottom
         anchors.margins: 11
         spacing: 13
 
@@ -366,16 +402,18 @@ Item {
                         }
                     }
 
-                    // Bright Leading Specular Dot / Glow
+                    // Round Doodle Thumb Knob (matching reference)
                     Rectangle {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        anchors.rightMargin: -2
-                        width: 7
-                        height: 7
-                        radius: 3.5
+                        anchors.rightMargin: -4
+                        width: 10
+                        height: 10
+                        radius: 5
                         color: "#FFFFFF"
-                        visible: root.hasTrack && root.progress > 0.02 && root.progress < 0.99
+                        border.width: 1.8
+                        border.color: Theme.accent
+                        visible: root.hasTrack && root.progress > 0.01 && root.progress < 0.99
                     }
                 }
             }
