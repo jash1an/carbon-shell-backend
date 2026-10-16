@@ -6,9 +6,9 @@
   "lidActionAC": "suspend",
   "sleepMode": "suspend",
   "hibernationEnabled": true,
-  "dimEnabled": true,
+  "dimEnabled": false,
   "dimTimeout": 180,
   "dimBrightnessPercent": 20,
-  "screenOffTimeout": 300,
-  "autoSuspendTimeout": 900
+  "screenOffTimeout": 0,
+  "autoSuspendTimeout": 0
 }

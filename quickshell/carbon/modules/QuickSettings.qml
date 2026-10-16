@@ -183,22 +183,47 @@ Item {
 
     /* ============================ Night Light Warmth ============================ */
     property real nightRatio: 0.5
+    property int pendingNightPct: -1
+    property int appliedNightPct: -1
+
     Process {
         id: nightWarmthProbe
         command: [root.home + "/.config/hypr/scripts/carbon-night.sh", "get"]
         stdout: StdioCollector { id: nightWarmthC; waitForEnd: true }
         onExited: {
+            if (nightWarmthSetProc.running) return
             const val = parseFloat(String(nightWarmthC.text).trim())
             if (!isNaN(val) && val >= 0) {
                 root.nightRatio = Math.max(0.05, Math.min(1.0, val / 100.0))
+                root.appliedNightPct = Math.round(root.nightRatio * 100)
+                root.pendingNightPct = root.appliedNightPct
             }
         }
+    }
+
+    Process {
+        id: nightWarmthSetProc
+        onExited: {
+            if (root.pendingNightPct >= 5 && root.pendingNightPct !== root.appliedNightPct) {
+                root.flushNightWarmth()
+            }
+        }
+    }
+
+    function flushNightWarmth() {
+        if (nightWarmthSetProc.running || root.pendingNightPct < 5) return
+        root.appliedNightPct = root.pendingNightPct
+        nightWarmthSetProc.command = [root.home + "/.config/hypr/scripts/carbon-night.sh", "set", String(root.appliedNightPct)]
+        nightWarmthSetProc.running = true
     }
 
     function setNightWarmth(r) {
         root.nightRatio = Math.max(0.05, Math.min(1.0, r))
         const pct = Math.round(root.nightRatio * 100)
-        Quickshell.execDetached([root.home + "/.config/hypr/scripts/carbon-night.sh", "set", String(pct)])
+        root.pendingNightPct = pct
+        if (!nightWarmthSetProc.running && pct !== root.appliedNightPct) {
+            root.flushNightWarmth()
+        }
     }
 
     /* ============================ Quick Toggles ============================ */
