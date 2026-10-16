@@ -16,6 +16,10 @@ Scope {
     property var notificationServer: null
 
     function lock() {
+        if (LockState.verciModeEnabled) {
+            LockState.lock()
+            return
+        }
         if (LockTransition.lockSync) {
             sessionLock.locked = true
             LockTransition.startLock(false)
@@ -30,6 +34,10 @@ Scope {
     }
 
     function unlock() {
+        if (LockState.verciModeEnabled) {
+            LockState.unlock()
+            return
+        }
         LockTransition.startUnlock()
     }
 

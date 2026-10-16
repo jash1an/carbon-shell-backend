@@ -1523,6 +1523,56 @@ ShellRoot {
         }
     }
 
+    /* ── Carbon // Verci Mode Standby & Lock Screen (0 MB Lazy Loaded) ───── */
+    Variants {
+        model: Quickshell.screens
+
+        PanelWindow {
+            id: verciLockWindow
+            required property var modelData
+
+            screen: modelData
+            color: "#000000"
+            WlrLayershell.namespace: "carbon-verci-lock"
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.keyboardFocus: (LockState.isLocked && ShellConfig.verciModeEnabled) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            exclusionMode: ExclusionMode.Ignore
+            aboveWindows: true
+            anchors { top: true; bottom: true; left: true; right: true }
+
+            visible: LockState.isLocked && ShellConfig.verciModeEnabled
+
+            Item {
+                anchors.fill: parent
+                focus: true
+
+                Keys.onPressed: (event) => {
+                    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                        event.accepted = true
+                        if (verciStageLoader.item && typeof verciStageLoader.item.triggerUnlock === "function") {
+                            verciStageLoader.item.triggerUnlock()
+                        } else {
+                            LockState.finishUnlock()
+                        }
+                    }
+                }
+
+                // Zero-RAM Lazy Mounting: destroyed completely when unlocked or disabled
+                Loader {
+                    id: verciStageLoader
+                    anchors.fill: parent
+                    active: LockState.isLocked && ShellConfig.verciModeEnabled
+                    asynchronous: true
+                    focus: true
+                    source: "modules/lock/VerciStage.qml"
+                    onLoaded: {
+                        if (item) item.forceActiveFocus()
+                    }
+                }
+            }
+        }
+    }
+
     /* Wallpaper: bottom-most fullscreen image, updated live by WallpaperMod */
     Variants {
         model: Quickshell.screens

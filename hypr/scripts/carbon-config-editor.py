@@ -1805,6 +1805,23 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             write_json(LOCKSCREEN_CONFIG_PATH, self.lock_cfg)
         self.add_switch_row(card, "Media Player on Lock Screen", "Show currently playing track when locked", media_act, on_media)
 
+        # Carbon // Verci Synced-Lyric Mode Toggle
+        verci_act = bool(self.lock_cfg.get("verciModeEnabled", False))
+        def on_verci(act):
+            self.lock_cfg["verciModeEnabled"] = act
+            write_json(LOCKSCREEN_CONFIG_PATH, self.lock_cfg)
+            # Sync to ~/.config/hypr/carbon-lockscreen.json
+            hypr_lock_cfg = os.path.expanduser("~/.config/hypr/carbon-lockscreen.json")
+            if hypr_lock_cfg != LOCKSCREEN_CONFIG_PATH:
+                write_json(hypr_lock_cfg, self.lock_cfg)
+        self.add_switch_row(
+            card,
+            "Carbon // Verci Synced-Lyric Mode",
+            "Replace standard lock screen with kinetic synced lyrics standby & top aurora shader (press Enter to unlock)",
+            verci_act,
+            on_verci
+        )
+
         page.append(card)
         return page
 

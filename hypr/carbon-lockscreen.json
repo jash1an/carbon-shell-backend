@@ -8,5 +8,6 @@
   "transition": {
     "lockSync": true,
     "debug": false
-  }
+  },
+  "verciModeEnabled": false
 }

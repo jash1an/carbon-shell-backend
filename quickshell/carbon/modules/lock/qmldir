@@ -8,3 +8,7 @@ LockClock LockClock.qml
 LockMediaOverlay LockMediaOverlay.qml
 LockNotificationOverlay LockNotificationOverlay.qml
 PasswordCard PasswordCard.qml
+AuroraBackground AuroraBackground.qml
+VerciLyricEngine VerciLyricEngine.qml
+VerciTapeBlock VerciTapeBlock.qml
+VerciStage VerciStage.qml

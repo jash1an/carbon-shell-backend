@@ -5,3 +5,5 @@ singleton WeatherService WeatherService.qml
 singleton HudService HudService.qml
 singleton LockTransition LockTransition.qml
 singleton NotificationService NotificationService.qml
+singleton LockState LockState.qml
+singleton ShellConfig ShellConfig.qml
