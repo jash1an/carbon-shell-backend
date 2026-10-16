@@ -5,37 +5,39 @@ import "../../Singletons"
 
 /**
  * CairoBorderGlow.qml:
- * Whisper-subtle ReactBits perimeter glow.
- * - 100% decoupled from lyrics, zero beat triggers, zero pulsing or blinking.
- * - Single color: Matugen.primary (Theme.m3primary || Theme.accent).
- * - Razor-sharp 1.5px inner border rectangle (radius: 12).
- * - Tight 12px soft inner edge shadow.
- * - Masked with a smooth radial gradient spotlight that travels along
- *   the perimeter on a slow, constant 14000ms infinite linear loop.
+ * ReactBits Border Glow (https://reactbits.dev/components/border-glow)
+ * Adapted for Cairo Standby / Lockscreen:
+ * - Always visible on the screen border at all times (continuous perimeter sweep, zero hover dependency).
+ * - Multi-tier inner mesh glow using Google Material 3 tokens (primary, secondary, tertiary).
+ * - Base ambient resting border (1.5px, opacity 0.12).
+ * - Continuous 8000ms linear traveling spotlight mask (420px radial gradient) via MultiEffect.
+ * - Completely decoupled from lyrics (no beat blinks or flash triggers).
  */
 Item {
     id: root
     anchors.fill: parent
 
-    readonly property color glowColor: Theme.m3primary || Theme.accent || "#76d0f9"
+    readonly property color primaryColor: Theme.m3primary || Theme.accent || "#a1c9fd"
+    readonly property color secondaryColor: Theme.m3secondary || Theme.accentLit || Theme.accent || "#bbc7db"
+    readonly property color tertiaryColor: Theme.m3tertiary || Theme.accent || "#d7bde4"
 
-    // Continuous 14000ms perimeter traveling loop
-    property real perimeterAngle: 0.0
-    NumberAnimation on perimeterAngle {
+    // Continuous 8000ms perimeter traveling loop
+    property real sweepProgress: 0.0
+    NumberAnimation on sweepProgress {
         from: 0.0
-        to: Math.PI * 2
-        duration: 14000
+        to: 1.0
+        duration: 8000
         loops: Animation.Infinite
         easing.type: Easing.Linear
     }
 
-    // Map perimeter angle to (x, y) coordinate along the rounded screen perimeter
+    readonly property real m: 4
+    readonly property real w: Math.max(100, root.width - 2 * m)
+    readonly property real h: Math.max(100, root.height - 2 * m)
+    readonly property real perimeter: 2 * (w + h)
+
     readonly property real spotX: {
-        var m = 12
-        var w = Math.max(100, root.width - 2 * m)
-        var h = Math.max(100, root.height - 2 * m)
-        var p = 2 * (w + h)
-        var d = (root.perimeterAngle / (2 * Math.PI)) * p
+        var d = root.sweepProgress * root.perimeter
         if (d <= w) return m + d
         if (d <= w + h) return m + w
         if (d <= 2 * w + h) return m + w - (d - (w + h))
@@ -43,78 +45,83 @@ Item {
     }
 
     readonly property real spotY: {
-        var m = 12
-        var w = Math.max(100, root.width - 2 * m)
-        var h = Math.max(100, root.height - 2 * m)
-        var p = 2 * (w + h)
-        var d = (root.perimeterAngle / (2 * Math.PI)) * p
+        var d = root.sweepProgress * root.perimeter
         if (d <= w) return m
         if (d <= w + h) return m + (d - w)
         if (d <= 2 * w + h) return m + h
         return m + h - (d - (2 * w + h))
     }
 
-    // Base subtle border: always visible at whisper-soft 0.08 opacity
+    // 1. Ambient Resting Border (Always visible around entire perimeter)
     Rectangle {
         anchors.fill: parent
-        anchors.margins: 4
-        radius: 12
+        anchors.margins: root.m
+        radius: 16
         color: "transparent"
         border.width: 1.5
-        border.color: root.glowColor
-        opacity: 0.08
+        border.color: root.primaryColor
+        opacity: 0.12
     }
 
-    // 1. The glowing border + 12px soft inner shadow
+    // 2. ReactBits BorderGlow Content (Border + Soft Inner Mesh Glow)
     Item {
-        id: borderContent
+        id: glowContent
         anchors.fill: parent
         visible: false
 
-        // Razor-sharp 1.5px inner border rectangle (radius: 12)
+        // Razor-sharp 2.0px outer border
         Rectangle {
             anchors.fill: parent
-            anchors.margins: 4
-            radius: 12
+            anchors.margins: root.m
+            radius: 16
             color: "transparent"
-            border.width: 1.5
-            border.color: root.glowColor
+            border.width: 2.0
+            border.color: root.primaryColor
             opacity: 0.95
         }
 
-        // Tight 12px soft inner edge shadow (concentric subtle falloffs)
+        // Concentric inner mesh glow layers (soft luminous depth)
         Rectangle {
             anchors.fill: parent
-            anchors.margins: 5
-            radius: 11
+            anchors.margins: root.m + 1
+            radius: 15
             color: "transparent"
-            border.width: 3
-            border.color: root.glowColor
-            opacity: 0.35
+            border.width: 4
+            border.color: root.primaryColor
+            opacity: 0.50
         }
         Rectangle {
             anchors.fill: parent
-            anchors.margins: 7
+            anchors.margins: root.m + 4
+            radius: 13
+            color: "transparent"
+            border.width: 8
+            border.color: root.secondaryColor
+            opacity: 0.28
+        }
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: root.m + 10
             radius: 10
             color: "transparent"
-            border.width: 5
-            border.color: root.glowColor
-            opacity: 0.18
+            border.width: 14
+            border.color: root.tertiaryColor
+            opacity: 0.14
         }
         Rectangle {
             anchors.fill: parent
-            anchors.margins: 10
+            anchors.margins: root.m + 18
             radius: 8
             color: "transparent"
-            border.width: 6
-            border.color: root.glowColor
-            opacity: 0.08
+            border.width: 18
+            border.color: root.primaryColor
+            opacity: 0.05
         }
     }
 
-    // 2. The spotlight mask: smooth radial gradient spotlight
+    // 3. ReactBits Directional Cone / Spotlight Mask
     Item {
-        id: spotlightMask
+        id: glowMask
         anchors.fill: parent
         visible: false
 
@@ -128,13 +135,14 @@ Item {
                 fillGradient: RadialGradient {
                     centerX: root.spotX
                     centerY: root.spotY
-                    centerRadius: 360
+                    centerRadius: 420
                     focalX: root.spotX
                     focalY: root.spotY
                     focalRadius: 0
                     GradientStop { position: 0.00; color: "#ffffffff" }
-                    GradientStop { position: 0.30; color: "#ccffffff" }
-                    GradientStop { position: 0.65; color: "#30ffffff" }
+                    GradientStop { position: 0.25; color: "#f0ffffff" }
+                    GradientStop { position: 0.55; color: "#60ffffff" }
+                    GradientStop { position: 0.85; color: "#10ffffff" }
                     GradientStop { position: 1.00; color: "#00ffffff" }
                 }
                 startX: 0; startY: 0
@@ -146,11 +154,11 @@ Item {
         }
     }
 
-    // 3. MultiEffect applying the smooth radial spotlight mask
+    // 4. MultiEffect Masking
     MultiEffect {
         anchors.fill: parent
-        source: borderContent
+        source: glowContent
         maskEnabled: true
-        maskSource: spotlightMask
+        maskSource: glowMask
     }
 }
