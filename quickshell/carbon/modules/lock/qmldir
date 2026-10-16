@@ -9,6 +9,7 @@ LockMediaOverlay LockMediaOverlay.qml
 LockNotificationOverlay LockNotificationOverlay.qml
 PasswordCard PasswordCard.qml
 CairoLyricEngine CairoLyricEngine.qml
-CairoHighlightBlock CairoHighlightBlock.qml
+CairoGlyph CairoGlyph.qml
+CairoGlyphEngine CairoGlyphEngine.qml
 CairoVectorGlyph CairoVectorGlyph.qml
 CairoStage CairoStage.qml
