@@ -2,14 +2,17 @@ import QtQuick
 import Quickshell
 import Quickshell.Services.Mpris
 import "../../Singletons"
-import "CairoGlyphMap.js" as GlyphMap
+import "CairoHinglishMap.js" as GlyphMap
 
 /**
  * CairoLyricEngine:
- * Strict 2-Word Lyric Timeline & Tempo-Adaptive Pacing Engine for Carbon // Cairo.
+ * Smart 1-to-2 Word Kinetic Lyric Timeline Engine for Carbon // Cairo.
  *
- * Enforces 2-word chunks (single word ONLY if long or remainder).
- * Dynamically scales phrase duration so slow songs pace leisurely and fast rap songs sync sharply.
+ * Enforces:
+ *   - Words >= 6 chars, phrase-ending punch words, or glyph-matched words sit ALONE on their row.
+ *   - Consecutive short helper words (<= 9 combined chars, no glyphs) group into 2-word rows.
+ *   - Never allows 3+ words per row.
+ *   - Line duration interpolation across (nextLineTime - lineStartTime) * 0.92.
  */
 Item {
     id: root
@@ -17,6 +20,7 @@ Item {
     readonly property bool isPlaying: LyricsService.isPlaying
     readonly property bool hasTrack: LyricsService.hasTrack
     readonly property real currentPosition: LyricsService.currentPosition
+    onCurrentPositionChanged: root.updateSync()
 
     property var allWords: []
     readonly property bool hasLyrics: allWords.length > 0 && hasTrack
@@ -33,7 +37,7 @@ Item {
     signal beatTriggered(var beatData)
     signal clearRequested()
 
-    // Strict 2-word chunker: necessarily 2 words long unless words are long or remainder
+    // Smart 1-to-2 word micro-chunker
     function chunkTokens(tokens) {
         var chunks = []
         var w = 0
@@ -41,7 +45,7 @@ Item {
             var w1 = tokens[w]
             var g1 = GlyphMap.lookupGlyph(w1)
 
-            // If this is the last word in the line, it must be standalone
+            // 1. If this is the phrase-ending punch word (last token in line), sit alone:
             if (w === tokens.length - 1) {
                 chunks.push({
                     "text": w1,
@@ -51,20 +55,8 @@ Item {
                 break
             }
 
-            var w2 = tokens[w + 1]
-            var g2 = GlyphMap.lookupGlyph(w2)
-
-            // A word is single ONLY if:
-            // 1. w1 is a long standalone word (>= 8 chars, e.g. "accelerate", "composure")
-            // 2. Both words are long (w1 >= 6 && w2 >= 6) and combined length > 12 chars
-            var isSingleLong = false
-            if (w1.length >= 8) {
-                isSingleLong = true
-            } else if (w1.length >= 6 && w2.length >= 6 && (w1.length + 1 + w2.length) > 12) {
-                isSingleLong = true
-            }
-
-            if (isSingleLong) {
+            // 2. Any word >= 6 chars or matched to a Cairo Vector Glyph MUST sit alone
+            if (w1.length >= 6 || (g1 && g1.length > 0)) {
                 chunks.push({
                     "text": w1,
                     "glyph": g1 || ""
@@ -73,13 +65,27 @@ Item {
                 continue
             }
 
-            // Otherwise, necessarily combine into 2 words!
-            var combinedGlyph = (g1 && g1.length > 0) ? g1 : (g2 || "")
-            chunks.push({
-                "text": w1 + " " + w2,
-                "glyph": combinedGlyph
-            })
-            w += 2
+            // 3. Inspect next word w2
+            var w2 = tokens[w + 1]
+            var g2 = GlyphMap.lookupGlyph(w2)
+
+            // Only group two consecutive short helper words (<= 9 combined chars, NEITHER matched to a glyph)
+            var combinedLen = w1.length + 1 + w2.length
+            var canGroup = (!g1 || g1.length === 0) && (!g2 || g2.length === 0) && (w2.length < 6) && (combinedLen <= 9)
+
+            if (canGroup) {
+                chunks.push({
+                    "text": w1 + " " + w2,
+                    "glyph": ""
+                })
+                w += 2
+            } else {
+                chunks.push({
+                    "text": w1,
+                    "glyph": g1 || ""
+                })
+                w += 1
+            }
         }
         return chunks
     }
@@ -108,29 +114,31 @@ Item {
             var rawTokens = cur.text.trim().split(/\s+/).filter(function(w) { return w.length > 0 })
             if (rawTokens.length === 0) continue
 
-            // Strict 2-word chunking
+            // Smart 1-to-2 word chunking
             var chunks = root.chunkTokens(rawTokens)
             if (chunks.length === 0) continue
 
-            // Tempo-adaptive vocal singing duration:
-            // Covers ~84% of the natural interval between lines so slow songs do not rush,
-            // while leaving a natural 16% breathing gap between lyric lines.
-            var singingDuration = lineDuration * 0.84
-            if (lineDuration > 6.0) {
-                // If there is an extended instrumental gap between lines, allow up to 1.6s per chunk
-                singingDuration = Math.min(lineDuration - 1.0, Math.max(2.4, chunks.length * 1.5))
-            } else if (lineDuration < 1.6) {
-                // Fast rap delivery: use almost the entire available time
-                singingDuration = Math.max(0.5, lineDuration - 0.15)
-            }
-
-            // Distribute singing duration across chunks weighted by character length
+            // Calculate natural syllable-based vocal duration for this line
+            var expectedTotal = 0
             var weights = []
             var totalWeight = 0
             for (var c = 0; c < chunks.length; c++) {
-                var wt = Math.max(4, chunks[c].text.length)
+                var chunkLen = chunks[c].text.length
+                var wt = Math.max(3, chunkLen)
                 weights.push(wt)
                 totalWeight += wt
+                // Natural singing rate: ~0.28s baseline + ~0.065s per character
+                expectedTotal += (0.28 + chunkLen * 0.065)
+            }
+
+            // Tempo-adaptive vocal singing duration:
+            // Fast rap: takes full available line without artificial gaps
+            // Slow ballad: caps vocal span to natural singing speed so words do not lag into instrumental pauses
+            var singingDuration
+            if (lineDuration <= expectedTotal * 1.15) {
+                singingDuration = Math.max(0.45, lineDuration - 0.08)
+            } else {
+                singingDuration = Math.min(lineDuration - 0.35, Math.max(0.70, expectedTotal * 1.20))
             }
 
             var curChunkTime = cur.time
@@ -191,10 +199,9 @@ Item {
             return
         }
 
-        // Perceptual audio lookahead: 120ms (prevents MPRIS D-Bus IPC lag during fast rap songs)
-        var pos = root.currentPosition + 0.12
+        // Audio lookahead: 220ms (eliminates D-Bus & audio hardware buffer delay for razor-sharp on-beat highlight)
+        var pos = root.currentPosition + 0.22
 
-        // If before first word
         if (pos < root.allWords[0].time) {
             root.row0Word = null
             root.row1Word = null
@@ -239,7 +246,6 @@ Item {
                 var newWord = root.allWords[idx]
                 root.activeBeat = newWord
 
-                // Check for seek jump or natural phrase break (gap > 2.0s)
                 var isNewPhrase = false
                 if (prevIdx >= 0 && (idx < prevIdx || idx > prevIdx + 2)) {
                     isNewPhrase = true
