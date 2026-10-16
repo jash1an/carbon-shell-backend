@@ -6,13 +6,15 @@ import "CairoHinglishMap.js" as GlyphMap
 
 /**
  * CairoLyricEngine:
- * Smart 1-to-2 Word Kinetic Lyric Timeline Engine for Carbon // Cairo.
+ * High-Precision 60fps Kinetic Lyric Timeline Engine for Carbon // Cairo.
  *
- * Enforces:
- *   - Words >= 6 chars, phrase-ending punch words, or glyph-matched words sit ALONE on their row.
- *   - Consecutive short helper words (<= 9 combined chars, no glyphs) group into 2-word rows.
- *   - Never allows 3+ words per row.
- *   - Line duration interpolation across (nextLineTime - lineStartTime) * 0.92.
+ * Implements:
+ *   - 60fps interpolated audio clock with MPRIS D-Bus drift-nudging & seek snapping.
+ *   - Live keyboard sync offset (default -120ms lead compensation).
+ *   - Enhanced word-level LRC parser (<mm:ss.xx> or [mm:ss.xx]).
+ *   - Syllable-clamped vocal window cadence (fixes slow-motion instrumental stretching).
+ *   - Holds final word calmly in Stage 0 across instrumental gaps.
+ *   - Structured 1-to-2 word rows with per-word startMs/endMs tokens for single-word highlighting.
  */
 Item {
     id: root
@@ -20,12 +22,61 @@ Item {
     readonly property bool isPlaying: LyricsService.isPlaying
     readonly property bool hasTrack: LyricsService.hasTrack
     readonly property real currentPosition: LyricsService.currentPosition
-    onCurrentPositionChanged: root.updateSync()
 
+    // ── 1. 60fps Interpolated Audio Clock ──────────────────────────────────
+    property real livePositionMs: 0
+    property real lastFrameMs: 0
+    property int syncOffsetMs: -120 // -120ms lead compensation for instantaneous visual perception
+
+    readonly property real effectivePositionMs: Math.max(0, root.livePositionMs - root.syncOffsetMs)
+    readonly property real effectivePositionSec: root.effectivePositionMs / 1000.0
+
+    // Smooth drift nudging & seek snapping on MPRIS D-Bus position updates
+    onCurrentPositionChanged: {
+        var mprisPosMs = Math.round(root.currentPosition * 1000)
+        var diff = Math.abs(mprisPosMs - root.livePositionMs)
+        if (diff > 160 || root.livePositionMs === 0) {
+            root.livePositionMs = mprisPosMs
+        } else {
+            root.livePositionMs += (mprisPosMs - root.livePositionMs) * 0.15
+        }
+        root.updateSync()
+    }
+
+    // High-precision 60fps clock driver (16ms)
+    Timer {
+        id: clock60fps
+        interval: 16
+        repeat: true
+        running: root.hasTrack
+        onTriggered: {
+            var now = Date.now()
+            var delta = root.lastFrameMs > 0 ? Math.min(60, now - root.lastFrameMs) : 16
+            root.lastFrameMs = now
+
+            if (root.isPlaying) {
+                root.livePositionMs += delta
+            }
+            root.updateSync()
+        }
+    }
+
+    // MPRIS position refresh pinger (250ms) to ensure D-Bus position ticks arrive
+    Timer {
+        interval: 250
+        repeat: true
+        running: root.hasTrack
+        onTriggered: {
+            if (LyricsService.activePlayer && LyricsService.activePlayer.positionSupported) {
+                LyricsService.activePlayer.positionChanged()
+            }
+        }
+    }
+
+    // ── 2. Lyric Data & Timeline Storage ───────────────────────────────────
     property var allWords: []
     readonly property bool hasLyrics: allWords.length > 0 && hasTrack
 
-    // Rolling cluster tracking for compatibility & fallback
     property var row0Word: null
     property var row1Word: null
     property var row2Word: null
@@ -36,59 +87,6 @@ Item {
 
     signal beatTriggered(var beatData)
     signal clearRequested()
-
-    // Smart 1-to-2 word micro-chunker
-    function chunkTokens(tokens) {
-        var chunks = []
-        var w = 0
-        while (w < tokens.length) {
-            var w1 = tokens[w]
-            var g1 = GlyphMap.lookupGlyph(w1)
-
-            // 1. If this is the phrase-ending punch word (last token in line), sit alone:
-            if (w === tokens.length - 1) {
-                chunks.push({
-                    "text": w1,
-                    "glyph": g1 || ""
-                })
-                w += 1
-                break
-            }
-
-            // 2. Any word >= 6 chars or matched to a Cairo Vector Glyph MUST sit alone
-            if (w1.length >= 6 || (g1 && g1.length > 0)) {
-                chunks.push({
-                    "text": w1,
-                    "glyph": g1 || ""
-                })
-                w += 1
-                continue
-            }
-
-            // 3. Inspect next word w2
-            var w2 = tokens[w + 1]
-            var g2 = GlyphMap.lookupGlyph(w2)
-
-            // Only group two consecutive short helper words (<= 9 combined chars, NEITHER matched to a glyph)
-            var combinedLen = w1.length + 1 + w2.length
-            var canGroup = (!g1 || g1.length === 0) && (!g2 || g2.length === 0) && (w2.length < 6) && (combinedLen <= 9)
-
-            if (canGroup) {
-                chunks.push({
-                    "text": w1 + " " + w2,
-                    "glyph": ""
-                })
-                w += 2
-            } else {
-                chunks.push({
-                    "text": w1,
-                    "glyph": g1 || ""
-                })
-                w += 1
-            }
-        }
-        return chunks
-    }
 
     function processLyrics() {
         var rawLines = LyricsService.lines || []
@@ -105,62 +103,169 @@ Item {
         }
 
         var wordsList = []
+
         for (var i = 0; i < rawLines.length; i++) {
             var cur = rawLines[i]
-            var nextTime = (i + 1 < rawLines.length) ? rawLines[i + 1].time : (cur.time + 3.8)
-            var lineDuration = Math.max(0.6, nextTime - cur.time)
+            var lineStartMs = Math.round(cur.time * 1000)
+            var nextLineStartMs = (i + 1 < rawLines.length)
+                ? Math.round(rawLines[i + 1].time * 1000)
+                : (lineStartMs + 6000)
+            var rawGapMs = Math.max(300, nextLineStartMs - lineStartMs)
 
-            // Split line into individual tokens
-            var rawTokens = cur.text.trim().split(/\s+/).filter(function(w) { return w.length > 0 })
-            if (rawTokens.length === 0) continue
+            var lineWords = []
 
-            // Smart 1-to-2 word chunking
-            var chunks = root.chunkTokens(rawTokens)
-            if (chunks.length === 0) continue
-
-            // Calculate natural syllable-based vocal duration for this line
-            var expectedTotal = 0
-            var weights = []
-            var totalWeight = 0
-            for (var c = 0; c < chunks.length; c++) {
-                var chunkLen = chunks[c].text.length
-                var wt = Math.max(3, chunkLen)
-                weights.push(wt)
-                totalWeight += wt
-                // Natural singing rate: ~0.28s baseline + ~0.065s per character
-                expectedTotal += (0.28 + chunkLen * 0.065)
-            }
-
-            // Tempo-adaptive vocal singing duration:
-            // Fast rap: takes full available line without artificial gaps
-            // Slow ballad: caps vocal span to natural singing speed so words do not lag into instrumental pauses
-            var singingDuration
-            if (lineDuration <= expectedTotal * 1.15) {
-                singingDuration = Math.max(0.45, lineDuration - 0.08)
+            // A. Check for rich word-level timestamps (enhanced LRC)
+            if (cur.words && cur.words.length > 0) {
+                for (var w = 0; w < cur.words.length; w++) {
+                    var cw = cur.words[w]
+                    var wStart = Math.round(cw.time * 1000)
+                    var wEnd = (w + 1 < cur.words.length)
+                        ? Math.round(cur.words[w + 1].time * 1000)
+                        : Math.min(nextLineStartMs - 80, wStart + 1000)
+                    lineWords.push({
+                        text: cw.text,
+                        startMs: wStart,
+                        endMs: Math.max(wStart + 120, wEnd),
+                        glyph: GlyphMap.lookupGlyph(cw.text) || ""
+                    })
+                }
             } else {
-                singingDuration = Math.min(lineDuration - 0.35, Math.max(0.70, expectedTotal * 1.20))
+                // B. Vocal-Window Clamping for Standard .lrc Lines (Crucial)
+                var rawTokens = cur.text.trim().split(/\s+/).filter(function(tk) { return tk.length > 0 })
+                if (rawTokens.length === 0) continue
+
+                var N = rawTokens.length
+                var C = 0
+                for (var t = 0; t < N; t++) {
+                    C += rawTokens[t].length
+                }
+
+                // Natural vocal singing duration estimate based on syllable/vowel clusters:
+                var estimatedVocalMs = (N * 240) + (C * 42)
+                // Clamp active singing window so instrumental pauses NEVER stretch words:
+                var vocalWindowMs = Math.min(rawGapMs * 0.90, Math.max(estimatedVocalMs, N * 180))
+
+                // Distribute vocalWindowMs across words weighted by syllable count (plus 1.3x on final punch word)
+                var weights = []
+                var totalWeight = 0
+                for (var k = 0; k < N; k++) {
+                    var token = rawTokens[k]
+                    var sylMatches = token.match(/[aeiouy]+/gi)
+                    var syl = sylMatches ? Math.max(1, sylMatches.length) : 1
+                    var wt = syl * (k === N - 1 ? 1.3 : 1.0)
+                    weights.push(wt)
+                    totalWeight += wt
+                }
+
+                var curMs = lineStartMs
+                for (var k = 0; k < N; k++) {
+                    var wDurMs = Math.round(vocalWindowMs * (weights[k] / Math.max(1, totalWeight)))
+                    wDurMs = Math.max(120, wDurMs)
+                    lineWords.push({
+                        text: rawTokens[k],
+                        startMs: curMs,
+                        endMs: curMs + wDurMs,
+                        glyph: GlyphMap.lookupGlyph(rawTokens[k]) || ""
+                    })
+                    curMs += wDurMs
+                }
             }
 
-            var curChunkTime = cur.time
-            for (var c = 0; c < chunks.length; c++) {
-                var frac = weights[c] / Math.max(1, totalWeight)
-                var chunkDur = singingDuration * frac
+            if (lineWords.length === 0) continue
 
-                wordsList.push({
-                    "id": i + "_" + c,
-                    "text": chunks[c].text,
-                    "time": curChunkTime,
-                    "duration": chunkDur,
-                    "glyph": chunks[c].glyph || "",
-                    "lineIndex": i,
-                    "chunkIndex": c
-                })
+            // C. Group timed words into 1-to-2 word rows for the kinetic barrel
+            var wIdx = 0
+            while (wIdx < lineWords.length) {
+                var w1 = lineWords[wIdx]
+                var isLastWord = (wIdx === lineWords.length - 1)
 
-                curChunkTime += chunkDur
+                // 1. Phrase-ending punch word (last token in line) sits ALONE:
+                if (isLastWord) {
+                    wordsList.push({
+                        id: i + "_" + wIdx,
+                        text: w1.text,
+                        glyph: w1.glyph || "",
+                        time: w1.startMs / 1000.0,
+                        startMs: w1.startMs,
+                        // Hold the final word in Stage 0 calmly until nextLineStartMs arrives!
+                        endMs: nextLineStartMs,
+                        vocalEndMs: w1.endMs,
+                        duration: (nextLineStartMs - w1.startMs) / 1000.0,
+                        lineIndex: i,
+                        chunkIndex: wIdx,
+                        rowWords: [ w1 ]
+                    })
+                    wIdx += 1
+                    break
+                }
+
+                // 2. Word >= 6 chars or matched to a Cairo Vector Glyph MUST sit alone:
+                if (w1.text.length >= 6 || (w1.glyph && w1.glyph.length > 0)) {
+                    var nextWStart = (wIdx + 1 < lineWords.length) ? lineWords[wIdx + 1].startMs : nextLineStartMs
+                    wordsList.push({
+                        id: i + "_" + wIdx,
+                        text: w1.text,
+                        glyph: w1.glyph || "",
+                        time: w1.startMs / 1000.0,
+                        startMs: w1.startMs,
+                        endMs: nextWStart,
+                        vocalEndMs: w1.endMs,
+                        duration: (nextWStart - w1.startMs) / 1000.0,
+                        lineIndex: i,
+                        chunkIndex: wIdx,
+                        rowWords: [ w1 ]
+                    })
+                    wIdx += 1
+                    continue
+                }
+
+                // 3. Inspect next word w2 for helper pairing:
+                var w2 = lineWords[wIdx + 1]
+                var isW2Last = (wIdx + 1 === lineWords.length - 1)
+                var combinedLen = w1.text.length + 1 + w2.text.length
+                var canGroup = (!w1.glyph || w1.glyph.length === 0) &&
+                               (!w2.glyph || w2.glyph.length === 0) &&
+                               (w2.text.length < 6) &&
+                               (combinedLen <= 9) &&
+                               !isW2Last // keep last punch word alone
+
+                if (canGroup) {
+                    var nextChunkStart = (wIdx + 2 < lineWords.length) ? lineWords[wIdx + 2].startMs : nextLineStartMs
+                    wordsList.push({
+                        id: i + "_" + wIdx,
+                        text: w1.text + " " + w2.text,
+                        glyph: "",
+                        time: w1.startMs / 1000.0,
+                        startMs: w1.startMs,
+                        endMs: nextChunkStart,
+                        vocalEndMs: w2.endMs,
+                        duration: (nextChunkStart - w1.startMs) / 1000.0,
+                        lineIndex: i,
+                        chunkIndex: wIdx,
+                        rowWords: [ w1, w2 ]
+                    })
+                    wIdx += 2
+                } else {
+                    var nextChunkStart = (wIdx + 1 < lineWords.length) ? lineWords[wIdx + 1].startMs : nextLineStartMs
+                    wordsList.push({
+                        id: i + "_" + wIdx,
+                        text: w1.text,
+                        glyph: w1.glyph || "",
+                        time: w1.startMs / 1000.0,
+                        startMs: w1.startMs,
+                        endMs: nextChunkStart,
+                        vocalEndMs: w1.endMs,
+                        duration: (nextChunkStart - w1.startMs) / 1000.0,
+                        lineIndex: i,
+                        chunkIndex: wIdx,
+                        rowWords: [ w1 ]
+                    })
+                    wIdx += 1
+                }
             }
         }
 
-        root.allWords = wordsList.sort(function(a, b) { return a.time - b.time })
+        root.allWords = wordsList.sort(function(a, b) { return a.startMs - b.startMs })
         root.updateSync()
     }
 
@@ -174,19 +279,7 @@ Item {
         }
     }
 
-    // High-precision 25ms position poller
-    Timer {
-        interval: 25
-        repeat: true
-        running: root.hasTrack
-        onTriggered: {
-            if (LyricsService.activePlayer && LyricsService.activePlayer.positionSupported) {
-                LyricsService.activePlayer.positionChanged()
-            }
-            root.updateSync()
-        }
-    }
-
+    // ── 3. Update Sync & Beat Triggering ───────────────────────────────────
     function updateSync() {
         if (!root.allWords || root.allWords.length === 0) {
             root.row0Word = null
@@ -199,10 +292,9 @@ Item {
             return
         }
 
-        // Audio lookahead: 220ms (eliminates D-Bus & audio hardware buffer delay for razor-sharp on-beat highlight)
-        var pos = root.currentPosition + 0.22
+        var posMs = root.effectivePositionMs
 
-        if (pos < root.allWords[0].time) {
+        if (posMs < root.allWords[0].startMs) {
             root.row0Word = null
             root.row1Word = null
             root.row2Word = null
@@ -215,24 +307,24 @@ Item {
 
         var idx = -1
         for (var i = 0; i < root.allWords.length; i++) {
-            if (root.allWords[i].time <= pos) {
+            if (root.allWords[i].startMs <= posMs) {
                 idx = i
             } else {
                 break
             }
         }
 
-        // Check if current chunk has expired during an instrumental pause or track end
+        // Expire chunk during extended instrumental pauses (> 4.5s after vocalEndMs and next chunk is > 1.2s away)
         if (idx >= 0 && idx < root.allWords.length) {
-            var curW = root.allWords[idx]
-            var nextW = (idx + 1 < root.allWords.length) ? root.allWords[idx + 1] : null
-            var endThreshold = curW.time + Math.max(curW.duration + 2.0, 3.2)
-            if (nextW) {
-                if (pos > endThreshold && (nextW.time - pos > 0.8)) {
+            var curChunk = root.allWords[idx]
+            var nextChunk = (idx + 1 < root.allWords.length) ? root.allWords[idx + 1] : null
+            var expireMs = curChunk.vocalEndMs + 4500
+            if (nextChunk) {
+                if (posMs > expireMs && (nextChunk.startMs - posMs > 1200)) {
                     idx = -1
                 }
             } else {
-                if (pos > endThreshold) {
+                if (posMs > expireMs) {
                     idx = -1
                 }
             }
@@ -250,8 +342,8 @@ Item {
                 if (prevIdx >= 0 && (idx < prevIdx || idx > prevIdx + 2)) {
                     isNewPhrase = true
                 } else if (root.row2Word) {
-                    var gap = newWord.time - (root.row2Word.time + root.row2Word.duration)
-                    if (gap > 2.0 || (newWord.lineIndex !== root.row2Word.lineIndex && gap > 1.2)) {
+                    var gap = newWord.startMs - root.row2Word.endMs
+                    if (gap > 2000 || (newWord.lineIndex !== root.row2Word.lineIndex && gap > 1200)) {
                         isNewPhrase = true
                     }
                 }

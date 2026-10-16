@@ -43,15 +43,37 @@ def parse_lrc(lrc_text):
     if not lrc_text:
         return lines
     for raw_line in lrc_text.splitlines():
-        # Match [mm:ss.xx] or [mm:ss]
+        # Match leading [mm:ss.xx] or [mm:ss]
         m = re.match(r"^\[(\d+):(\d+(?:\.\d+)?)\]\s*(.*)$", raw_line.strip())
         if m:
             mins = int(m.group(1))
             secs = float(m.group(2))
             t = round(mins * 60 + secs, 2)
-            txt = m.group(3).strip()
-            if txt:
-                lines.append({"time": t, "text": txt})
+            raw_body = m.group(3).strip()
+            if not raw_body:
+                continue
+
+            # Check for inline rich word timestamps: <mm:ss.xx> word or [mm:ss.xx] word
+            word_pattern = r'(?:<|\[)(\d+):(\d+(?:\.\d+)?)(?:>|\])\s*([^<\[\n]+)'
+            matches = list(re.finditer(word_pattern, raw_body))
+            if matches:
+                word_tokens = []
+                for wm in matches:
+                    w_mins = int(wm.group(1))
+                    w_secs = float(wm.group(2))
+                    w_t = round(w_mins * 60 + w_secs, 3)
+                    w_txt = wm.group(3).strip()
+                    if w_txt:
+                        word_tokens.append({"text": w_txt, "time": w_t})
+                if word_tokens:
+                    clean_txt = " ".join(w["text"] for w in word_tokens)
+                    lines.append({"time": t, "text": clean_txt, "words": word_tokens})
+                    continue
+
+            # Standard line: clean any residual bracket metadata
+            clean_txt = re.sub(r"<[^>]+>", "", raw_body).strip()
+            if clean_txt:
+                lines.append({"time": t, "text": clean_txt})
     return sorted(lines, key=lambda x: x["time"])
 
 def get_cache_path(title, artist):
