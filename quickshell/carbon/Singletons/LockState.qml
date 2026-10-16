@@ -13,7 +13,8 @@ Singleton {
     id: root
 
     property bool isLocked: false
-    property bool verciModeEnabled: false
+    property bool cairoModeEnabled: false
+    property alias verciModeEnabled: root.cairoModeEnabled
 
     readonly property string home: Quickshell.env("HOME") || ""
     readonly property string configPath: root.home + "/.config/hypr/carbon-lockscreen.json"
@@ -25,7 +26,10 @@ Singleton {
         watchChanges: true
         blockLoading: true
         printErrors: false
-        onFileChanged: root.reloadConfig()
+        onFileChanged: {
+            cfgFile.reload()
+            root.reloadConfig()
+        }
         onLoaded: root.reloadConfig()
     }
 
@@ -35,32 +39,50 @@ Singleton {
         watchChanges: true
         blockLoading: true
         printErrors: false
-        onFileChanged: root.reloadConfig()
+        onFileChanged: {
+            cfgCarbonFile.reload()
+            root.reloadConfig()
+        }
         onLoaded: root.reloadConfig()
     }
 
     Timer {
-        interval: 1500
+        interval: 1000
         repeat: true
         running: true
-        onTriggered: root.reloadConfig()
+        onTriggered: {
+            cfgFile.reload()
+            cfgCarbonFile.reload()
+            root.reloadConfig()
+        }
+    }
+
+    function parseVal(txt) {
+        if (!txt || txt.length === 0) return undefined
+        try {
+            var parsed = JSON.parse(txt)
+            if (parsed.cairoModeEnabled !== undefined) {
+                return Boolean(parsed.cairoModeEnabled)
+            } else if (parsed.verciModeEnabled !== undefined) {
+                return Boolean(parsed.verciModeEnabled)
+            }
+        } catch (e) {}
+        return undefined
     }
 
     function reloadConfig() {
         try {
-            var txt = cfgFile.text().trim()
-            if (!txt || txt.length === 0) {
-                txt = cfgCarbonFile.text().trim()
+            var vCarbon = parseVal(cfgCarbonFile.text().trim())
+            var vHypr = parseVal(cfgFile.text().trim())
+            var finalVal = undefined
+            if (vCarbon !== undefined) {
+                finalVal = vCarbon
+            } else if (vHypr !== undefined) {
+                finalVal = vHypr
             }
-            if (txt && txt.length > 0) {
-                var parsed = JSON.parse(txt)
-                if (parsed.verciModeEnabled !== undefined) {
-                    var newVal = Boolean(parsed.verciModeEnabled)
-                    if (root.verciModeEnabled !== newVal) {
-                        root.verciModeEnabled = newVal
-                        console.log("[LockState] verciModeEnabled updated to:", root.verciModeEnabled)
-                    }
-                }
+            if (finalVal !== undefined && root.cairoModeEnabled !== finalVal) {
+                root.cairoModeEnabled = finalVal
+                console.log("[LockState] cairoModeEnabled updated to:", root.cairoModeEnabled)
             }
         } catch (e) {
             console.log("[LockState] Error reading config:", e)
@@ -69,7 +91,7 @@ Singleton {
 
     function lock() {
         root.isLocked = true
-        console.log("[LockState] Verci lock activated (RAM lazy-load start)")
+        console.log("[LockState] Cairo lock activated (RAM lazy-load start)")
     }
 
     function unlock() {
@@ -78,10 +100,12 @@ Singleton {
 
     function finishUnlock() {
         root.isLocked = false
-        console.log("[LockState] Verci unlocked -> Loader destroyed (0 MB RAM)")
+        console.log("[LockState] Cairo unlocked -> Loader destroyed (0 MB RAM)")
     }
 
     Component.onCompleted: {
+        cfgFile.reload()
+        cfgCarbonFile.reload()
         root.reloadConfig()
     }
 }

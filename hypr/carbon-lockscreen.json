@@ -9,5 +9,6 @@
     "lockSync": true,
     "debug": false
   },
-  "verciModeEnabled": false
+  "verciModeEnabled": true,
+  "cairoModeEnabled": true
 }

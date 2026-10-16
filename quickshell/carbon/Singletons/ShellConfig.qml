@@ -8,5 +8,6 @@ import Quickshell
  */
 Singleton {
     id: root
+    readonly property bool cairoModeEnabled: LockState.cairoModeEnabled
     readonly property bool verciModeEnabled: LockState.verciModeEnabled
 }

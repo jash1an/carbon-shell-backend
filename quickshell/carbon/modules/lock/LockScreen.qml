@@ -16,7 +16,7 @@ Scope {
     property var notificationServer: null
 
     function lock() {
-        if (LockState.verciModeEnabled) {
+        if (LockState.cairoModeEnabled) {
             LockState.lock()
             return
         }
@@ -34,7 +34,7 @@ Scope {
     }
 
     function unlock() {
-        if (LockState.verciModeEnabled) {
+        if (LockState.cairoModeEnabled) {
             LockState.unlock()
             return
         }
