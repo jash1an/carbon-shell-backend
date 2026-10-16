@@ -13,12 +13,13 @@ import "CairoHinglishMap.js" as GlyphMap
  * Visual Features:
  *   - 100% Pure Pitch-Black Stage (#000000) with zero shaders, zero horizon lines, zero UI chrome.
  *   - 5 Persistent Word Delegates in a True Upward-Gliding 3D Barrel.
- *   - Stage 0: Active spoken row with angled sheared tape polygon rotated -1.4deg.
+ *   - Single-Word Highlight Pacing: in 2-word rows, only the currently active spoken word
+ *     is highlighted at a time with the angled cutout tape, seamlessly stepping from word0 to word1.
  *   - Tape wipes open horizontally (scaleX: 0.0 -> 1.0, 200ms Easing.OutQuart).
  *   - Tape fill = Qt.darker(Theme.m3primary, 1.2) blended 25% with #9e6b74.
  *   - Text inside active tape = bright pale cream/blush (#f7ebed), NEVER black (#000000).
- *   - Stage 1: Tape polygon fades out, text transitions to warm muted bronze (#9c6e54).
- *   - 18 Custom Angular SVG Vector Glyphs beside active words, scaled and fading through stages.
+ *   - Stage 1: Tape polygon dims, text transitions to warm muted bronze (#9c6e54).
+ *   - 18 Custom Angular SVG Vector Glyphs with GPU CurveRenderer anti-aliasing.
  *   - Instant single-Enter unlock with radial iris reveal.
  */
 Item {
@@ -138,13 +139,41 @@ Item {
         property string glyphMotif: ""
         property real currentDuration: 1.0
 
+        // Parse individual words
+        readonly property var words: {
+            var s = (delegateRoot.chunkText || "").trim()
+            if (!s || s.length === 0) return []
+            return s.split(/\s+/)
+        }
+        readonly property string word0: words.length > 0 ? words[0] : ""
+        readonly property string word1: words.length > 1 ? words[1] : ""
+        readonly property bool hasSecondWord: word1.length > 0
+
+        // Single-word highlight stepping: tracks which word is highlighted (0 or 1)
+        property int activeWordSubIndex: 0
+
+        Timer {
+            id: subWordTimer
+            interval: {
+                if (!delegateRoot.hasSecondWord) return 1000
+                var len0 = Math.max(1, delegateRoot.word0.length)
+                var len1 = Math.max(1, delegateRoot.word1.length)
+                var ratio0 = Math.min(0.70, Math.max(0.30, (len0 + 1.0) / (len0 + len1 + 2.0)))
+                return Math.max(150, Math.round(delegateRoot.currentDuration * 1000 * ratio0))
+            }
+            running: delegateRoot.stage === 0 && delegateRoot.hasSecondWord && delegateRoot.activeWordSubIndex === 0
+            repeat: false
+            onTriggered: {
+                delegateRoot.activeWordSubIndex = 1
+            }
+        }
+
         // Spatial animated properties
         property real stageY: root.cy + 210
         property real stageOpacity: 0.0
         property real stageScaleX: 0.88
         property real stageScaleY: 0.50
         property real stageRotX: 8.0
-        property real tapeScaleX: 0.0
 
         property bool enableAnim: true
 
@@ -174,12 +203,6 @@ Item {
             NumberAnimation { duration: 340; easing.type: Easing.OutQuint }
         }
 
-        // Horizontal tape wipe: 200ms Easing.OutQuart
-        Behavior on tapeScaleX {
-            enabled: delegateRoot.enableAnim
-            NumberAnimation { duration: 200; easing.type: Easing.OutQuart }
-        }
-
         transform: [
             Scale {
                 origin.x: delegateRoot.width / 2
@@ -195,32 +218,40 @@ Item {
             }
         ]
 
+        function calcFontSize(txt) {
+            var len = (txt || "").length
+            if (len > 12) return 86
+            if (len > 8) return 102
+            return 118
+        }
+
         function setStage(newStage) {
             stage = newStage
             if (newStage === -1) {
-                // Stage -1 (Pre-Entry Spawn): y: cy + 210, opacity: 0.0, xScale: 0.88, yScale: 0.50
+                // Stage -1 (Pre-Entry Spawn)
                 enableAnim = false
+                activeWordSubIndex = 0
+                subWordTimer.stop()
                 stageY = root.cy + 210
                 stageOpacity = 0.0
                 stageScaleX = 0.88
                 stageScaleY = 0.50
                 stageRotX = 8.0
-                tapeScaleX = 0.0
                 z = 1
                 enableAnim = true
             } else if (newStage === 0) {
-                // Stage 0 (Bottom Active Spoken Row — With Cutout Tape):
-                // y: cy + 110, opacity: 1.0, xScale: 1.0, yScale: 1.0, rotX: 0, z: 30
+                // Stage 0 (Bottom Active Spoken Row)
+                activeWordSubIndex = 0
+                if (hasSecondWord) subWordTimer.restart()
                 stageY = root.cy + 110
                 stageOpacity = 1.0
                 stageScaleX = 1.0
                 stageScaleY = 1.0
                 stageRotX = 0.0
-                tapeScaleX = 1.0
                 z = 30
             } else if (newStage === 1) {
-                // Stage 1 (Middle Row — Just Passed):
-                // y: cy - 12, opacity: 0.92, xScale: 0.86, yScale: 0.74, rotX: 20, z: 20
+                // Stage 1 (Middle Row — Just Passed)
+                subWordTimer.stop()
                 stageY = root.cy - 12
                 stageOpacity = 0.92
                 stageScaleX = 0.86
@@ -228,8 +259,8 @@ Item {
                 stageRotX = 20.0
                 z = 20
             } else if (newStage === 2) {
-                // Stage 2 (Top Row — Receding Barrel Edge):
-                // y: cy - 118, opacity: 0.70, xScale: 0.72, yScale: 0.54, rotX: 38, z: 10
+                // Stage 2 (Top Row — Receding Barrel Edge)
+                subWordTimer.stop()
                 stageY = root.cy - 118
                 stageOpacity = 0.70
                 stageScaleX = 0.72
@@ -237,8 +268,8 @@ Item {
                 stageRotX = 38.0
                 z = 10
             } else if (newStage === 3) {
-                // Stage 3 (Exiting Top — Crushing Flat):
-                // y: cy - 195, opacity: 0.0, xScale: 0.54, yScale: 0.12, rotX: 58
+                // Stage 3 (Exiting Top — Crushing Flat)
+                subWordTimer.stop()
                 stageY = root.cy - 195
                 stageOpacity = 0.0
                 stageScaleX = 0.54
@@ -246,6 +277,7 @@ Item {
                 stageRotX = 58.0
                 z = 5
             } else {
+                subWordTimer.stop()
                 stageOpacity = 0.0
                 stage = 4
                 z = 0
@@ -257,7 +289,7 @@ Item {
             anchors.centerIn: parent
             spacing: 20
 
-            // 18 Custom Cairo Angular SVG Vector Glyph
+            // 18 Custom Cairo Angular SVG Vector Glyph with CurveRenderer
             CairoGlyph {
                 id: glyphItem
                 motif: delegateRoot.glyphMotif
@@ -268,65 +300,135 @@ Item {
                 visible: motif.length > 0
             }
 
-            // Word(s) Item with Active Angled Cutout Tape
-            Item {
-                id: wordTapeItem
-                width: wordText.contentWidth + 56
-                height: Math.max(90, wordText.contentHeight + 20)
+            // Words Row: renders individual words with independent single-word highlighting
+            Row {
+                id: wordsRow
                 anchors.verticalCenter: parent.verticalCenter
+                spacing: 16
 
-                // Active Angled Cutout Tape Polygon:
-                // Sheared polygon (top-left 1.5%, 4%; top-right 100%, 0%; bottom-right 98.5%, 96%; bottom-left 0%, 100%; rotation -1.4deg)
+                // Word 0 Item
                 Item {
-                    id: tapeContainer
-                    anchors.fill: parent
-                    rotation: -1.4
-                    transformOrigin: Item.Left
-                    opacity: delegateRoot.stage === 0 ? 1.0 : (delegateRoot.stage === 1 ? 0.18 : 0.0)
-                    scale: delegateRoot.tapeScaleX
+                    id: wordBox0
+                    visible: delegateRoot.word0.length > 0
+                    readonly property bool isHighlighted: delegateRoot.stage === 0 && delegateRoot.activeWordSubIndex === 0
+                    width: wordText0.contentWidth + 48
+                    height: Math.max(80, wordText0.contentHeight + 18)
+                    anchors.verticalCenter: parent.verticalCenter
 
-                    Behavior on opacity {
-                        NumberAnimation { duration: 340; easing.type: Easing.OutQuint }
+                    Item {
+                        id: tapeContainer0
+                        anchors.fill: parent
+                        rotation: -1.4
+                        transformOrigin: Item.Left
+                        opacity: wordBox0.isHighlighted ? 1.0 : (delegateRoot.stage === 1 ? 0.14 : 0.0)
+                        scale: wordBox0.isHighlighted ? 1.0 : 0.0
+
+                        Behavior on opacity {
+                            NumberAnimation { duration: 240; easing.type: Easing.OutQuint }
+                        }
+                        Behavior on scale {
+                            NumberAnimation { duration: 200; easing.type: Easing.OutQuart }
+                        }
+
+                        Shape {
+                            id: tapeShape0
+                            anchors.fill: parent
+                            asynchronous: true
+                            preferredRendererType: Shape.CurveRenderer
+                            antialiasing: true
+                            smooth: true
+
+                            ShapePath {
+                                fillColor: root.tapeFillColor
+                                strokeWidth: 0
+                                strokeColor: "transparent"
+                                startX: tapeShape0.width * 0.015
+                                startY: tapeShape0.height * 0.04
+                                PathLine { x: tapeShape0.width * 1.000; y: 0 }
+                                PathLine { x: tapeShape0.width * 0.985; y: tapeShape0.height * 0.96 }
+                                PathLine { x: 0;                        y: tapeShape0.height * 1.000 }
+                                PathLine { x: tapeShape0.width * 0.015; y: tapeShape0.height * 0.04 }
+                            }
+                        }
                     }
 
-                    Shape {
-                        id: tapeShape
-                        anchors.fill: parent
-                        asynchronous: true
-                        preferredRendererType: Shape.CurveRenderer
-                        antialiasing: true
-                        smooth: true
+                    Text {
+                        id: wordText0
+                        anchors.centerIn: parent
+                        text: delegateRoot.word0
+                        font.family: "Plus Jakarta Sans, Manrope, sans-serif"
+                        font.weight: Font.ExtraBold
+                        font.italic: wordBox0.isHighlighted
+                        font.letterSpacing: -3.0
+                        font.pixelSize: delegateRoot.calcFontSize(delegateRoot.chunkText)
+                        color: wordBox0.isHighlighted ? root.activeTextColor : root.bronzeColor
 
-                        ShapePath {
-                            fillColor: root.tapeFillColor
-                            strokeWidth: 0
-                            strokeColor: "transparent"
-                            startX: tapeShape.width * 0.015
-                            startY: tapeShape.height * 0.04
-                            PathLine { x: tapeShape.width * 1.000; y: 0 }
-                            PathLine { x: tapeShape.width * 0.985; y: tapeShape.height * 0.96 }
-                            PathLine { x: 0;                       y: tapeShape.height * 1.000 }
-                            PathLine { x: tapeShape.width * 0.015; y: tapeShape.height * 0.04 }
+                        Behavior on color {
+                            ColorAnimation { duration: 240; easing.type: Easing.OutQuint }
                         }
                     }
                 }
 
-                // Lyric Text:
-                // Plus Jakarta Sans / Manrope, ExtraBold, natural casing, letterSpacing: -3.5, pixelSize: 118
-                // Active inside tape: #f7ebed, Stage 1/2: bronze #9c6e54
-                Text {
-                    id: wordText
-                    anchors.centerIn: parent
-                    text: delegateRoot.chunkText
-                    font.family: "Plus Jakarta Sans, Manrope, sans-serif"
-                    font.weight: Font.ExtraBold
-                    font.italic: delegateRoot.stage === 0
-                    font.letterSpacing: -3.5
-                    font.pixelSize: Math.min(118, Math.max(56, Math.round((root.width * 0.72) / Math.max(5, text.length * 0.62))))
-                    color: delegateRoot.stage === 0 ? root.activeTextColor : root.bronzeColor
+                // Word 1 Item
+                Item {
+                    id: wordBox1
+                    visible: delegateRoot.hasSecondWord
+                    readonly property bool isHighlighted: delegateRoot.stage === 0 && delegateRoot.activeWordSubIndex === 1
+                    width: wordText1.contentWidth + 48
+                    height: Math.max(80, wordText1.contentHeight + 18)
+                    anchors.verticalCenter: parent.verticalCenter
 
-                    Behavior on color {
-                        ColorAnimation { duration: 340; easing.type: Easing.OutQuint }
+                    Item {
+                        id: tapeContainer1
+                        anchors.fill: parent
+                        rotation: -1.4
+                        transformOrigin: Item.Left
+                        opacity: wordBox1.isHighlighted ? 1.0 : (delegateRoot.stage === 1 ? 0.14 : 0.0)
+                        scale: wordBox1.isHighlighted ? 1.0 : 0.0
+
+                        Behavior on opacity {
+                            NumberAnimation { duration: 240; easing.type: Easing.OutQuint }
+                        }
+                        Behavior on scale {
+                            NumberAnimation { duration: 200; easing.type: Easing.OutQuart }
+                        }
+
+                        Shape {
+                            id: tapeShape1
+                            anchors.fill: parent
+                            asynchronous: true
+                            preferredRendererType: Shape.CurveRenderer
+                            antialiasing: true
+                            smooth: true
+
+                            ShapePath {
+                                fillColor: root.tapeFillColor
+                                strokeWidth: 0
+                                strokeColor: "transparent"
+                                startX: tapeShape1.width * 0.015
+                                startY: tapeShape1.height * 0.04
+                                PathLine { x: tapeShape1.width * 1.000; y: 0 }
+                                PathLine { x: tapeShape1.width * 0.985; y: tapeShape1.height * 0.96 }
+                                PathLine { x: 0;                        y: tapeShape1.height * 1.000 }
+                                PathLine { x: tapeShape1.width * 0.015; y: tapeShape1.height * 0.04 }
+                            }
+                        }
+                    }
+
+                    Text {
+                        id: wordText1
+                        anchors.centerIn: parent
+                        text: delegateRoot.word1
+                        font.family: "Plus Jakarta Sans, Manrope, sans-serif"
+                        font.weight: Font.ExtraBold
+                        font.italic: wordBox1.isHighlighted
+                        font.letterSpacing: -3.0
+                        font.pixelSize: delegateRoot.calcFontSize(delegateRoot.chunkText)
+                        color: wordBox1.isHighlighted ? root.activeTextColor : root.bronzeColor
+
+                        Behavior on color {
+                            ColorAnimation { duration: 240; easing.type: Easing.OutQuint }
+                        }
                     }
                 }
             }
