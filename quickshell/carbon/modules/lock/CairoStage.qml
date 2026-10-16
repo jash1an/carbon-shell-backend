@@ -73,7 +73,7 @@ Item {
     readonly property real liveAudioPosition: lyricEngine.currentPosition
 
     onLiveAudioPositionChanged: {
-        var pos = root.liveAudioPosition + 0.05
+        var pos = root.liveAudioPosition + 0.22
         for (var i = 0; i < delegates.length; i++) {
             if (delegates[i].stage === 0) {
                 delegates[i].updateSubWord(pos)
@@ -179,7 +179,7 @@ Item {
             return Math.min(0.70, Math.max(0.30, (len0 + 0.5) / (len0 + len1 + 1.0)))
         }
 
-        readonly property real word1StartTime: chunkStartTime + (currentDuration * word0Ratio)
+        readonly property real word1StartTime: chunkStartTime + Math.max(0.06, (currentDuration * word0Ratio) - 0.07)
 
         // Single-word highlight stepping
         property int activeWordSubIndex: 0
@@ -195,7 +195,7 @@ Item {
 
         Timer {
             id: subWordTimer
-            interval: Math.max(120, Math.round(delegateRoot.currentDuration * 1000 * delegateRoot.word0Ratio))
+            interval: Math.max(60, Math.round((delegateRoot.currentDuration * delegateRoot.word0Ratio - 0.07) * 1000))
             running: delegateRoot.stage === 0 && delegateRoot.hasSecondWord && delegateRoot.activeWordSubIndex === 0
             repeat: false
             onTriggered: {
@@ -361,10 +361,10 @@ Item {
                         opacity: wordBox0.isHighlighted ? 1.0 : 0.0
 
                         Behavior on scale {
-                            NumberAnimation { duration: 180; easing.type: Easing.OutQuart }
+                            NumberAnimation { duration: 90; easing.type: Easing.OutQuad }
                         }
                         Behavior on opacity {
-                            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+                            NumberAnimation { duration: 90; easing.type: Easing.OutQuad }
                         }
                     }
 
@@ -379,7 +379,7 @@ Item {
                         color: wordBox0.isHighlighted ? root.highlightedTextColor : (delegateRoot.stage === 0 ? root.vibrantPrimary : root.bronzeColor)
 
                         Behavior on color {
-                            ColorAnimation { duration: 180; easing.type: Easing.OutCubic }
+                            ColorAnimation { duration: 90; easing.type: Easing.OutQuad }
                         }
                     }
                 }
@@ -404,10 +404,10 @@ Item {
                         opacity: wordBox1.isHighlighted ? 1.0 : 0.0
 
                         Behavior on scale {
-                            NumberAnimation { duration: 180; easing.type: Easing.OutQuart }
+                            NumberAnimation { duration: 90; easing.type: Easing.OutQuad }
                         }
                         Behavior on opacity {
-                            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+                            NumberAnimation { duration: 90; easing.type: Easing.OutQuad }
                         }
                     }
 
@@ -422,7 +422,7 @@ Item {
                         color: wordBox1.isHighlighted ? root.highlightedTextColor : (delegateRoot.stage === 0 ? root.vibrantPrimary : root.bronzeColor)
 
                         Behavior on color {
-                            ColorAnimation { duration: 180; easing.type: Easing.OutCubic }
+                            ColorAnimation { duration: 90; easing.type: Easing.OutQuad }
                         }
                     }
                 }

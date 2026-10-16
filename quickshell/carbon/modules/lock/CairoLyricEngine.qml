@@ -20,6 +20,7 @@ Item {
     readonly property bool isPlaying: LyricsService.isPlaying
     readonly property bool hasTrack: LyricsService.hasTrack
     readonly property real currentPosition: LyricsService.currentPosition
+    onCurrentPositionChanged: root.updateSync()
 
     property var allWords: []
     readonly property bool hasLyrics: allWords.length > 0 && hasTrack
@@ -198,8 +199,8 @@ Item {
             return
         }
 
-        // Audio lookahead: 50ms (balances D-Bus event interval with sharp on-beat delivery)
-        var pos = root.currentPosition + 0.05
+        // Audio lookahead: 220ms (eliminates D-Bus & audio hardware buffer delay for razor-sharp on-beat highlight)
+        var pos = root.currentPosition + 0.22
 
         if (pos < root.allWords[0].time) {
             root.row0Word = null
