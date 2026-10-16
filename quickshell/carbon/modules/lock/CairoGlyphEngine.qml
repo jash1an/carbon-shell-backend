@@ -5,8 +5,8 @@ import "CairoHinglishMap.js" as GlyphMap
 
 /**
  * CairoGlyph.qml:
- * Native 24x24 Angular Vector Glyph Renderer for Carbon // Cairo.
- * Zero Unicode text emojis. 100% custom geometric evenodd SVG vector paths.
+ * Native Vector Glyph Renderer with GPU CurveRenderer Anti-Aliasing for Carbon // Cairo.
+ * Evaluates 24x24 PathSvg geometry mathematically across native 86x86 bounds.
  */
 Item {
     id: root
@@ -16,30 +16,35 @@ Item {
     property string motif: ""
     property color glyphColor: Theme.m3primary || Theme.accent || "#c0c4ee"
 
-    readonly property string svgPathData: GlyphMap.GLYPH_PATHS[root.motif] || ""
-    readonly property bool hasValidGlyph: root.svgPathData.length > 0
+    readonly property string svgPathString: GlyphMap.GLYPH_PATHS[root.motif] || ""
+    readonly property bool hasValidGlyph: root.svgPathString.length > 0
 
     visible: hasValidGlyph
 
     Shape {
-        id: glyphShape
-        width: 24
-        height: 24
-        anchors.centerIn: parent
-        scale: root.width / 24.0
-        asynchronous: true
-        layer.enabled: true
-        layer.smooth: true
+        id: vectorShape
+        anchors.fill: parent
+        // Qt6 GPU analytical curve anti-aliasing for razor-sharp edges at any scale:
+        preferredRendererType: Shape.CurveRenderer
+        antialiasing: true
+        smooth: true
 
         ShapePath {
-            fillRule: ShapePath.OddEvenFill
-            fillColor: root.glyphColor
-            strokeWidth: 0
+            strokeWidth: -1 // No stroke, pure fill
             strokeColor: "transparent"
+            fillColor: root.glyphColor
+            fillRule: ShapePath.OddEvenFill
 
             PathSvg {
-                path: root.svgPathData
+                path: root.svgPathString
             }
+        }
+
+        // Scale the 24x24 PathSvg geometry mathematically inside the Shape
+        // instead of scaling a rasterized texture:
+        transform: Scale {
+            xScale: vectorShape.width / 24.0
+            yScale: vectorShape.height / 24.0
         }
     }
 }

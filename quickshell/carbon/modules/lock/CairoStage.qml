@@ -293,8 +293,9 @@ Item {
                         id: tapeShape
                         anchors.fill: parent
                         asynchronous: true
-                        layer.enabled: true
-                        layer.smooth: true
+                        preferredRendererType: Shape.CurveRenderer
+                        antialiasing: true
+                        smooth: true
 
                         ShapePath {
                             fillColor: root.tapeFillColor
