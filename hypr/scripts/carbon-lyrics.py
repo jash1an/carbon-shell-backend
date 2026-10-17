@@ -253,6 +253,29 @@ def fetch_from_lrclib(title, artist, duration=None):
 
     return []
 
+def score_kugou_candidate(item, title, artist, target_dur):
+    fn = item.get("filename", "").lower()
+    title_l = title.lower()
+    dur = float(item.get("duration", 0))
+    score = 0.0
+
+    if target_dur > 0 and dur > 0:
+        diff = abs(dur - target_dur)
+        score += diff * 2.0
+        if diff > 15:
+            score += 200.0
+
+    if "live" not in title_l and "live" in fn:
+        score += 300.0
+    if "remix" not in title_l and "remix" in fn:
+        score += 150.0
+    if "acoustic" not in title_l and "acoustic" in fn:
+        score += 150.0
+    if "instrumental" not in title_l and "instrumental" in fn:
+        score += 500.0
+
+    return score
+
 def fetch_from_kugou(title, artist, duration=None):
     candidates = get_candidates(title, artist)
     target_dur = 0.0
@@ -284,10 +307,12 @@ def fetch_from_kugou(title, artist, duration=None):
                 if not items:
                     continue
 
-                if target_dur > 0:
-                    items.sort(key=lambda x: abs(float(x.get("duration", 0)) - target_dur))
+                items.sort(key=lambda x: score_kugou_candidate(x, title, artist, target_dur))
 
                 for song in items[:3]:
+                    dur_val = float(song.get("duration", 0))
+                    if target_dur > 30 and dur_val > 0 and abs(dur_val - target_dur) > 25:
+                        continue
                     fhash = song.get("hash")
                     dur_val = song.get("duration", 0)
                     song_dur_ms = int(float(dur_val if dur_val else target_dur) * 1000)
