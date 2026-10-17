@@ -72,8 +72,9 @@ Item {
         z: 0
     }
 
-    // ── 1b. Whisper-subtle ReactBits Perimeter Glow (Steady 14000ms glide) ─
-    CairoBorderGlow {
+    // ── 1b. Music-Sensitive Ambient Perimeter Border ──────────────────────
+    CairoAmbientBorder {
+        id: ambientBorder
         anchors.fill: parent
         z: 1
     }
@@ -466,6 +467,10 @@ Item {
 
     function handleBeatTriggered(beat) {
         if (!beat) return
+
+        if (ambientBorder && typeof ambientBorder.triggerBeat === "function") {
+            ambientBorder.triggerBeat()
+        }
 
         // 1. Synchronously increment stage += 1 on EVERY existing active delegate first
         // before activating the new delegate at stage = 0.

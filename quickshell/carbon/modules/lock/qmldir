@@ -13,4 +13,5 @@ CairoGlyph CairoGlyph.qml
 CairoGlyphEngine CairoGlyphEngine.qml
 CairoVectorGlyph CairoVectorGlyph.qml
 CairoBorderGlow CairoBorderGlow.qml
+CairoAmbientBorder CairoAmbientBorder.qml
 CairoStage CairoStage.qml
