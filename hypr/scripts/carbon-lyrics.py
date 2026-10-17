@@ -12,7 +12,10 @@ import hashlib
 import urllib.request
 import urllib.parse
 import argparse
+import base64
+import zlib
 
+KRC_KEY = [0x40, 0x47, 0x61, 0x77, 0x5E, 0x32, 0x74, 0x47, 0x51, 0x36, 0x31, 0x2D, 0xCE, 0xD2, 0x6E, 0x69]
 CACHE_DIR = "/tmp/carbon-lyrics-cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
@@ -74,6 +77,73 @@ def parse_lrc(lrc_text):
             clean_txt = re.sub(r"<[^>]+>", "", raw_body).strip()
             if clean_txt:
                 lines.append({"time": t, "text": clean_txt})
+    return sorted(lines, key=lambda x: x["time"])
+
+def is_credit_line(full_text, line_start_ms):
+    ft_lower = full_text.lower()
+    if line_start_ms < 4000:
+        if " - " in full_text:
+            return True
+        for kw in ["lyrics", "composed", "produced", "written", "arranged", "mixed", "mastered", "album", "artist", "singer", "track", "by:"]:
+            if kw in ft_lower:
+                return True
+        for kw in ["作词", "作曲", "编曲", "制作", "录音", "混音", "母带", "歌词", "演唱"]:
+            if kw in full_text:
+                return True
+    else:
+        for kw in ["lyrics by", "composed by", "produced by", "written by", "arranged by", "作词", "作曲", "编曲", "制作人"]:
+            if kw in ft_lower or kw in full_text:
+                return True
+    return False
+
+def parse_krc(krc_text):
+    lines = []
+    meta_line_pattern = re.compile(r"^\[(\d+),(\d+)\](.*)$")
+    word_pattern = re.compile(r"<(\d+),(\d+),(\d+)>([^<]*)")
+
+    for raw in krc_text.splitlines():
+        raw = raw.strip()
+        m = meta_line_pattern.match(raw)
+        if not m:
+            continue
+        line_start_ms = int(m.group(1))
+        body = m.group(3)
+
+        word_matches = list(word_pattern.finditer(body))
+        if not word_matches:
+            continue
+
+        words = []
+        full_text_parts = []
+        for wm in word_matches:
+            w_offset = int(wm.group(1))
+            w_dur = int(wm.group(2))
+            w_text = wm.group(4)
+            full_text_parts.append(w_text)
+
+            w_clean = w_text.strip()
+            if w_clean:
+                w_start_sec = round((line_start_ms + w_offset) / 1000.0, 3)
+                words.append({
+                    "text": w_clean,
+                    "time": w_start_sec,
+                    "dur": round(w_dur / 1000.0, 3)
+                })
+
+        full_text = re.sub(r"\s+", " ", "".join(full_text_parts)).strip()
+        if not full_text:
+            continue
+
+        if is_credit_line(full_text, line_start_ms):
+            continue
+
+        line_start_sec = round(line_start_ms / 1000.0, 3)
+        lines.append({
+            "time": line_start_sec,
+            "text": full_text,
+            "words": words
+        })
+
     return sorted(lines, key=lambda x: x["time"])
 
 def get_cache_path(title, artist):
@@ -183,6 +253,78 @@ def fetch_from_lrclib(title, artist, duration=None):
 
     return []
 
+def fetch_from_kugou(title, artist, duration=None):
+    candidates = get_candidates(title, artist)
+    target_dur = 0.0
+    if duration:
+        try:
+            target_dur = float(duration)
+        except Exception:
+            target_dur = 0.0
+
+    queries = []
+    seen = set()
+    for cand_artist, cand_track in candidates:
+        if cand_artist and cand_track:
+            q = f"{cand_artist} {cand_track}".strip()
+            if q not in seen:
+                seen.add(q)
+                queries.append(q)
+        if cand_track and cand_track not in seen:
+            seen.add(cand_track)
+            queries.append(cand_track)
+
+    for q in queries[:4]:
+        try:
+            url = f"http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword={urllib.parse.quote(q)}&page=1&pagesize=5"
+            req = urllib.request.Request(url, headers={"User-Agent": "Android712-AndroidPhone-8983-18-0-Search-wifi"})
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                items = data.get("data", {}).get("info", [])
+                if not items:
+                    continue
+
+                if target_dur > 0:
+                    items.sort(key=lambda x: abs(float(x.get("duration", 0)) - target_dur))
+
+                for song in items[:3]:
+                    fhash = song.get("hash")
+                    dur_val = song.get("duration", 0)
+                    song_dur_ms = int(float(dur_val if dur_val else target_dur) * 1000)
+                    if not fhash:
+                        continue
+
+                    lrc_search_url = f"http://lyrics.kugou.com/search?ver=1&man=yes&client=pc&keyword=&duration={song_dur_ms}&hash={fhash}"
+                    req_lrc = urllib.request.Request(lrc_search_url, headers={"User-Agent": "Mozilla/5.0"})
+                    with urllib.request.urlopen(req_lrc, timeout=3.0) as resp_lrc:
+                        cands = json.loads(resp_lrc.read().decode("utf-8")).get("candidates", [])
+                        if not cands:
+                            continue
+
+                        best_cand = cands[0]
+                        lid = best_cand["id"]
+                        akey = best_cand["accesskey"]
+
+                        dl_url = f"http://lyrics.kugou.com/download?ver=1&client=pc&id={lid}&accesskey={akey}&fmt=krc&charset=utf8"
+                        req_dl = urllib.request.Request(dl_url, headers={"User-Agent": "Mozilla/5.0"})
+                        with urllib.request.urlopen(req_dl, timeout=3.0) as resp_dl:
+                            b64 = json.loads(resp_dl.read().decode("utf-8")).get("content")
+                            if not b64:
+                                continue
+                            raw = base64.b64decode(b64)
+                            if len(raw) < 4 or raw[:4] != b"krc1":
+                                continue
+                            enc = raw[4:]
+                            dec = bytearray(enc[i] ^ KRC_KEY[i % len(KRC_KEY)] for i in range(len(enc)))
+                            text = zlib.decompress(bytes(dec)).decode("utf-8", errors="ignore")
+                            parsed = parse_krc(text)
+                            if parsed:
+                                return parsed
+        except Exception:
+            pass
+
+    return []
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--title", default="")
@@ -216,17 +358,31 @@ def main():
         return
 
     cache_file = get_cache_path(title, artist)
+    cached_fallback = None
     if os.path.isfile(cache_file):
         try:
             with open(cache_file, "r", encoding="utf-8") as f:
                 cached_data = json.load(f)
                 if cached_data.get("found"):
-                    print(json.dumps(cached_data))
-                    return
+                    cached_lines = cached_data.get("lines", [])
+                    has_rich_words = any("words" in l and l["words"] for l in cached_lines)
+                    if has_rich_words:
+                        print(json.dumps(cached_data))
+                        return
+                    cached_fallback = cached_data
         except Exception:
             pass
 
-    lines = fetch_from_lrclib(title, artist, duration)
+    # 1. Primary: Kugou syllable-level Richsync
+    lines = fetch_from_kugou(title, artist, duration)
+
+    # 2. Secondary fallback: LRCLIB standard sync
+    if not lines:
+        if cached_fallback:
+            lines = cached_fallback.get("lines", [])
+        else:
+            lines = fetch_from_lrclib(title, artist, duration)
+
     result = {
         "found": len(lines) > 0,
         "title": title,

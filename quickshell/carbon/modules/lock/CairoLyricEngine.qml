@@ -157,9 +157,9 @@ Item {
                     var cw = cur.words[w]
                     var wStart = Math.round(cw.time * 1000)
                     var isLastWord = (w === cur.words.length - 1)
-                    var wEnd = !isLastWord
-                        ? Math.round(cur.words[w + 1].time * 1000)
-                        : Math.min(nextLineStartMs - 80, wStart + 1000)
+                    var vocalEnd = (cw.dur !== undefined && cw.dur > 0)
+                        ? (wStart + Math.round(cw.dur * 1000))
+                        : (!isLastWord ? Math.round(cur.words[w + 1].time * 1000) : Math.min(nextLineStartMs - 80, wStart + 1000))
                     var nextWStart = !isLastWord
                         ? Math.round(cur.words[w + 1].time * 1000)
                         : nextLineStartMs
@@ -171,11 +171,11 @@ Item {
                         time: wStart / 1000.0,
                         startMs: wStart,
                         endMs: nextWStart,
-                        vocalEndMs: Math.max(wStart + 120, wEnd),
+                        vocalEndMs: Math.max(wStart + 120, vocalEnd),
                         duration: (nextWStart - wStart) / 1000.0,
                         lineIndex: i,
                         chunkIndex: w,
-                        rowWords: [{ text: cw.text, startMs: wStart, endMs: Math.max(wStart + 120, wEnd) }]
+                        rowWords: [{ text: cw.text, startMs: wStart, endMs: Math.max(wStart + 120, vocalEnd) }]
                     })
                 }
             } else {
