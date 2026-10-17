@@ -697,7 +697,7 @@ def download(url, filename):
             pass
 
         if os.path.isfile(WP_APPLY_SCRIPT):
-            subprocess.run(["sh", WP_APPLY_SCRIPT, dest_path], check=False)
+            subprocess.run(["sh", WP_APPLY_SCRIPT, dest_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
 
         print(json.dumps({"success": True, "path": dest_path}))
     else:
@@ -706,7 +706,7 @@ def download(url, filename):
 
 def apply_local(path):
     if os.path.isfile(path) and os.path.isfile(WP_APPLY_SCRIPT):
-        subprocess.run(["sh", WP_APPLY_SCRIPT, path], check=False)
+        subprocess.run(["sh", WP_APPLY_SCRIPT, path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
         print(json.dumps({"success": True, "path": path}))
     else:
         print(json.dumps({"success": False, "error": "File not found"}))

@@ -35,12 +35,7 @@ Item {
         if (!filePath) return ""
         var clean = filePath.trim()
         if (clean.startsWith("file://")) clean = clean.substring(7)
-        
-        const parts = clean.split("/")
-        const filename = parts[parts.length - 1]
-        const safeScaled = root.home + "/.cache/carbon/wpscale/" + filename.replace(/\./g, "_") + ".jpg"
-        
-        return "file://" + safeScaled
+        return "file://" + clean
     }
 
     /* ── Config Watcher (carbon-bar-mode.json) ─────────────────────── */
@@ -149,6 +144,8 @@ Item {
         if (!path) return
         console.log("[WallpaperMod] initWallpaper:", path)
         root.currentWpPath = path
+        root.pendingNewPath = ""
+        root.isAnimating = false
         root.activeBuffer = "A"
         const type = getWallpaperType(path)
 
@@ -179,10 +176,6 @@ Item {
         if (newPath === root.pendingNewPath) return
         console.log("[WallpaperMod] applyNewWallpaper:", newPath, "from current:", root.currentWpPath)
 
-        const home = Quickshell.env("HOME") || ""
-        const themeScript = home + "/.config/carbon/scripts/theme-mk.py"
-        Quickshell.execDetached(["python3", themeScript, newPath])
-
         const newType = getWallpaperType(newPath)
         const oldType = getWallpaperType(root.currentWpPath)
 
@@ -193,11 +186,14 @@ Item {
             const incoming = (root.activeBuffer === "A" ? bufB : bufA)
             incoming.opacity = 0.0
             incoming.visible = true
-            incoming.source = resolveWpUrl(newPath)
-            console.log("[WallpaperMod] Set incoming source to:", incoming.source, "status is:", incoming.status)
-
-            if (incoming.status === Image.Ready) {
+            const targetUrl = resolveWpUrl(newPath)
+            if (incoming.source.toString() === targetUrl && incoming.status === Image.Ready) {
                 root.startImageTransition()
+            } else {
+                incoming.source = targetUrl
+                if (incoming.status === Image.Ready) {
+                    root.startImageTransition()
+                }
             }
         } else {
             root.startCrossTypeTransition(newPath, newType, oldType)
@@ -213,6 +209,12 @@ Item {
 
         if (transitionAnim.running) {
             transitionAnim.stop()
+            if (transitionAnim.outgoingTarget) {
+                transitionAnim.outgoingTarget.visible = false
+                transitionAnim.outgoingTarget.source = ""
+            }
+            root.activeBuffer = (root.activeBuffer === "A" ? "B" : "A")
+            root.isAnimating = false
         }
 
         // Set incoming starting transform based on animation type
@@ -442,15 +444,7 @@ Item {
 
             onStatusChanged: {
                 console.log("[WallpaperMod] bufA statusChanged:", status, "source:", source)
-                if (status === Image.Error && source.toString().indexOf("/wpscale/") !== -1) {
-                    const rawA = root.pendingNewPath || root.currentWpPath
-                    if (rawA) {
-                        console.log("[WallpaperMod] bufA fallback to raw file:", rawA)
-                        source = (rawA.startsWith("file://") ? rawA : ("file://" + rawA))
-                        return
-                    }
-                }
-                if (status === Image.Ready && root.pendingNewPath && root.pendingNewPath !== root.currentWpPath && root.activeBuffer === "B") {
+                if (status === Image.Ready && root.pendingNewPath && root.pendingNewPath !== root.currentWpPath && root.activeBuffer === "B" && !transitionAnim.running) {
                     root.startImageTransition()
                 }
             }
@@ -472,15 +466,7 @@ Item {
 
             onStatusChanged: {
                 console.log("[WallpaperMod] bufB statusChanged:", status, "source:", source)
-                if (status === Image.Error && source.toString().indexOf("/wpscale/") !== -1) {
-                    const rawB = root.pendingNewPath || root.currentWpPath
-                    if (rawB) {
-                        console.log("[WallpaperMod] bufB fallback to raw file:", rawB)
-                        source = (rawB.startsWith("file://") ? rawB : ("file://" + rawB))
-                        return
-                    }
-                }
-                if (status === Image.Ready && root.pendingNewPath && root.pendingNewPath !== root.currentWpPath && root.activeBuffer === "A") {
+                if (status === Image.Ready && root.pendingNewPath && root.pendingNewPath !== root.currentWpPath && root.activeBuffer === "A" && !transitionAnim.running) {
                     root.startImageTransition()
                 }
             }
