@@ -248,8 +248,8 @@ Item {
                 z = 1
                 enableAnim = true
             } else if (newStage === 0) {
-                // Stage 0 (Bottom Active Spoken Row: glides up from +195 to +82)
-                stageY = root.cy + 82
+                // Stage 0 (Bottom Active Spoken Row: glides up from +195 to +105)
+                stageY = root.cy + 105
                 stageOpacity = 1.0
                 stageScaleX = 1.0
                 stageScaleY = 1.0
@@ -257,7 +257,7 @@ Item {
                 z = 30
             } else if (newStage === 1) {
                 // Stage 1 (Middle Row — Just Passed)
-                stageY = root.cy - 12
+                stageY = root.cy - 35
                 stageOpacity = 0.92
                 stageScaleX = 0.86
                 stageScaleY = 0.74
@@ -265,7 +265,7 @@ Item {
                 z = 20
             } else if (newStage === 2) {
                 // Stage 2 (Top Row — Receding Barrel Edge)
-                stageY = root.cy - 118
+                stageY = root.cy - 135
                 stageOpacity = 0.70
                 stageScaleX = 0.72
                 stageScaleY = 0.54
@@ -317,7 +317,7 @@ Item {
                 width: wordText.contentWidth
                 height: Math.max(80, wordText.contentHeight)
 
-                // 0.52 Translucent Glass Tape highlight block
+                // Translucent Glass Tape highlight block
                 Rectangle {
                     id: activeWordHighlight
                     z: -1
@@ -325,8 +325,8 @@ Item {
                     width: wordText.contentWidth + 36
                     height: wordText.contentHeight + 12
                     radius: 8
-                    color: root.highlightColor
-                    opacity: (delegateRoot.stage === 0) ? 0.52 : 0.0
+                    color: Qt.rgba(root.highlightColor.r, root.highlightColor.g, root.highlightColor.b, 0.45)
+                    opacity: (delegateRoot.stage === 0) ? 1.0 : 0.0
                     visible: opacity > 0.01
 
                     Behavior on opacity {
