@@ -311,6 +311,57 @@ def update_waybar_theme(accent_hex, accent_lit_hex, on_accent_hex, bg_hex, bg_al
     subprocess.run(["pkill", "-SIGUSR2", "-x", "waybar"], capture_output=True)
 
 
+def extract_matugen_palette(img_path):
+    """Run matugen to extract authentic Google Material 3 tokens non-interactively."""
+    try:
+        res = subprocess.run(
+            ["matugen", "image", "--prefer", "saturation", "-j", "hex", "-m", "dark", img_path],
+            capture_output=True, text=True, timeout=5.0
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            data = json.loads(res.stdout)
+            colors = data.get("colors", {})
+            def get_c(key, fallback):
+                node = colors.get(key, {})
+                return node.get("dark", {}).get("color") or node.get("default", {}).get("color") or fallback
+
+            primary = get_c("primary", None)
+            if primary:
+                return {
+                    "primary": primary,
+                    "onPrimary": get_c("on_primary", "#00325a"),
+                    "primaryContainer": get_c("primary_container", "#1a4874"),
+                    "onPrimaryContainer": get_c("on_primary_container", "#d2e4ff"),
+                    "secondary": get_c("secondary", "#bbc7db"),
+                    "onSecondary": get_c("on_secondary", "#253141"),
+                    "secondaryContainer": get_c("secondary_container", "#3c4858"),
+                    "onSecondaryContainer": get_c("on_secondary_container", "#d7e3f8"),
+                    "tertiary": get_c("tertiary", "#d7bde4"),
+                    "onTertiary": get_c("on_tertiary", "#3b2947"),
+                    "tertiaryContainer": get_c("tertiary_container", "#533f5f"),
+                    "onTertiaryContainer": get_c("on_tertiary_container", "#f3daff"),
+                    "surface": get_c("surface", "#111418"),
+                    "surfaceDim": get_c("surface_dim", "#111418"),
+                    "surfaceBright": get_c("surface_bright", "#37393e"),
+                    "surfaceContainerLowest": get_c("surface_container_lowest", "#0b0e13"),
+                    "surfaceContainerLow": get_c("surface_container_low", "#191c20"),
+                    "surfaceContainer": get_c("surface_container", "#1d2024"),
+                    "surfaceContainerHigh": get_c("surface_container_high", "#272a2f"),
+                    "surfaceContainerHighest": get_c("surface_container_highest", "#32353a"),
+                    "onSurface": get_c("on_surface", "#e1e2e8"),
+                    "surfaceVariant": get_c("surface_variant", "#43474e"),
+                    "onSurfaceVariant": get_c("on_surface_variant", "#c3c6cf"),
+                    "outline": get_c("outline", "#8d9199"),
+                    "outlineVariant": get_c("outline_variant", "#43474e"),
+                    "error": get_c("error", "#ffb4ab"),
+                    "onError": get_c("on_error", "#690005"),
+                    "errorContainer": get_c("error_container", "#93000a"),
+                }
+    except Exception:
+        pass
+    return None
+
+
 def main():
     src_wp = resolve_source_wallpaper()
     if not src_wp or not os.path.exists(src_wp):
@@ -323,7 +374,7 @@ def main():
     if "carbon" in wp_lower or "black" in wp_lower or "mono" in wp_lower:
         is_mono = True
 
-    # Intelligent color extraction
+    m3 = None
     if is_mono:
         accent_hex = "#E2E2E8"
         accent_lit_hex = "#FFFFFF"
@@ -333,16 +384,41 @@ def main():
         bg_alt_hex = "#1A1A1F"
         fg_hex = "#E4E4E8"
         outline_hex = "#484852"
+        try:
+            subprocess.run(
+                ["matugen", "color", "hex", "ffffff", "-t", "scheme-monochrome", "-m", "dark"],
+                capture_output=True, timeout=4.0
+            )
+        except Exception:
+            pass
     else:
-        pal = extract_wallpaper_palette(analysis_img)
-        accent_hex = pal["accent"]
-        accent_lit_hex = pal["accentLit"]
-        tertiary_hex = pal["tertiary"]
-        on_accent_hex = pal["onAccent"]
-        bg_hex = pal["bg"]
-        bg_alt_hex = pal["bgAlt"]
-        fg_hex = pal["fg"]
-        outline_hex = pal["outline"]
+        m3 = extract_matugen_palette(analysis_img)
+        if m3:
+            accent_hex = m3["primary"]
+            accent_lit_hex = m3["primaryContainer"]
+            tertiary_hex = m3["tertiary"]
+            on_accent_hex = m3["onPrimary"]
+            bg_hex = m3["surface"]
+            bg_alt_hex = m3["surfaceContainerHigh"]
+            fg_hex = m3["onSurface"]
+            outline_hex = m3["outline"]
+            try:
+                subprocess.run(
+                    ["matugen", "image", "--prefer", "saturation", "-m", "dark", src_wp],
+                    capture_output=True, timeout=4.0
+                )
+            except Exception:
+                pass
+        else:
+            pal = extract_wallpaper_palette(analysis_img)
+            accent_hex = pal["accent"]
+            accent_lit_hex = pal["accentLit"]
+            tertiary_hex = pal["tertiary"]
+            on_accent_hex = pal["onAccent"]
+            bg_hex = pal["bg"]
+            bg_alt_hex = pal["bgAlt"]
+            fg_hex = pal["fg"]
+            outline_hex = pal["outline"]
 
     palette_dict = {
         "bg": alpha(bg_hex, 0.92),
@@ -379,23 +455,40 @@ def main():
     os.makedirs(os.path.dirname(caelestia_scheme_path), exist_ok=True)
     cael_data = {
         "name": "carbon-dynamic",
+        "flavour": "dark",
         "mode": "dark",
+        "variant": "tonalspot",
         "colours": {
             "primary": accent_hex.lstrip("#"),
             "onPrimary": on_accent_hex.lstrip("#"),
             "primaryContainer": accent_lit_hex.lstrip("#"),
-            "onPrimaryContainer": on_accent_hex.lstrip("#"),
+            "onPrimaryContainer": (m3.get("onPrimaryContainer", on_accent_hex) if m3 else on_accent_hex).lstrip("#"),
             "accentLit": accent_lit_hex.lstrip("#"),
-            "surface": bg_hex.lstrip("#"),
-            "onSurface": fg_hex.lstrip("#"),
-            "surfaceContainer": bg_hex.lstrip("#"),
-            "surfaceContainerHigh": bg_alt_hex.lstrip("#"),
-            "surfaceContainerHighest": bg_alt_hex.lstrip("#"),
-            "outline": outline_hex.lstrip("#"),
-            "outlineVariant": outline_hex.lstrip("#"),
-            "success": OK.lstrip("#"),
+            "secondary": (m3.get("secondary", tertiary_hex) if m3 else tertiary_hex).lstrip("#"),
+            "onSecondary": (m3.get("onSecondary", on_accent_hex) if m3 else on_accent_hex).lstrip("#"),
+            "secondaryContainer": (m3.get("secondaryContainer", bg_alt_hex) if m3 else bg_alt_hex).lstrip("#"),
+            "onSecondaryContainer": (m3.get("onSecondaryContainer", fg_hex) if m3 else fg_hex).lstrip("#"),
             "tertiary": tertiary_hex.lstrip("#"),
-            "error": ERR.lstrip("#")
+            "onTertiary": (m3.get("onTertiary", on_accent_hex) if m3 else on_accent_hex).lstrip("#"),
+            "tertiaryContainer": (m3.get("tertiaryContainer", accent_lit_hex) if m3 else accent_lit_hex).lstrip("#"),
+            "onTertiaryContainer": (m3.get("onTertiaryContainer", on_accent_hex) if m3 else on_accent_hex).lstrip("#"),
+            "surface": bg_hex.lstrip("#"),
+            "surfaceDim": (m3.get("surfaceDim", bg_hex) if m3 else bg_hex).lstrip("#"),
+            "surfaceBright": (m3.get("surfaceBright", bg_alt_hex) if m3 else bg_alt_hex).lstrip("#"),
+            "surfaceContainerLowest": (m3.get("surfaceContainerLowest", "000000") if m3 else "000000").lstrip("#"),
+            "surfaceContainerLow": (m3.get("surfaceContainerLow", bg_hex) if m3 else bg_hex).lstrip("#"),
+            "surfaceContainer": (m3.get("surfaceContainer", bg_hex) if m3 else bg_hex).lstrip("#"),
+            "surfaceContainerHigh": bg_alt_hex.lstrip("#"),
+            "surfaceContainerHighest": (m3.get("surfaceContainerHighest", bg_alt_hex) if m3 else bg_alt_hex).lstrip("#"),
+            "onSurface": fg_hex.lstrip("#"),
+            "surfaceVariant": (m3.get("surfaceVariant", bg_alt_hex) if m3 else bg_alt_hex).lstrip("#"),
+            "onSurfaceVariant": (m3.get("onSurfaceVariant", outline_hex) if m3 else outline_hex).lstrip("#"),
+            "outline": outline_hex.lstrip("#"),
+            "outlineVariant": (m3.get("outlineVariant", outline_hex) if m3 else outline_hex).lstrip("#"),
+            "success": OK.lstrip("#"),
+            "error": (m3.get("error", ERR) if m3 else ERR).lstrip("#"),
+            "onError": (m3.get("onError", "690005") if m3 else "690005").lstrip("#"),
+            "errorContainer": (m3.get("errorContainer", "93000a") if m3 else "93000a").lstrip("#")
         }
     }
     try:

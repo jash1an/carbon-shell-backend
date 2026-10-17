@@ -19,9 +19,11 @@ EXT="${WALL##*.}"
 EXT="$(echo "$EXT" | tr '[:upper:]' '[:lower:]')"
 
 SCALED="$CACHE_DIR/wpscale/$(basename "$WALL" | tr '.' '_').jpg"
+SIG_FILE="${SCALED}.sig"
+WALL_SIG="$(stat -c '%Y-%s' "$WALL" 2>/dev/null || stat -f '%m-%z' "$WALL" 2>/dev/null)"
 mkdir -p "$CACHE_DIR/wpscale"
 
-if [ -s "$SCALED" ] && [ "$SCALED" -nt "$WALL" ]; then
+if [ -s "$SCALED" ] && [ -f "$SIG_FILE" ] && [ "$(cat "$SIG_FILE" 2>/dev/null)" = "$WALL_SIG" ]; then
     ln -sfn "$SCALED" "$CACHE_DIR/wallpaper_scaled.jpg"
 else
     read -r LW LH < <(hyprctl monitors -j | python3 -c \
@@ -51,6 +53,7 @@ else
     else
         cp -f "$FRAME_SRC" "$SCALED" 2>/dev/null || true
     fi
+    echo "$WALL_SIG" > "$SIG_FILE"
     ln -sfn "$SCALED" "$CACHE_DIR/wallpaper_scaled.jpg"
 
     BLURRED="$CACHE_DIR/wpscale/$(basename "$WALL" | tr '.' '_')_blurred.jpg"

@@ -3109,6 +3109,15 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             self.mark_dirty()
         self.add_switch_row(card, "Media Player on Lock Screen", "Show currently playing track when locked", media_act, on_media)
 
+        page.append(card)
+
+        # ── Card 2: Cairo Kinetic Lyrics Engine ──
+        card_cairo = self.create_settings_card()
+        lbl_cairo = Gtk.Label(label="Cairo Kinetic Lyrics")
+        lbl_cairo.set_halign(Gtk.Align.START)
+        lbl_cairo.add_css_class("heading")
+        card_cairo.append(lbl_cairo)
+
         # Carbon // Cairo Synced-Lyric Mode Toggle
         cairo_act = bool(self.lock_cfg.get("cairoModeEnabled", self.lock_cfg.get("verciModeEnabled", False)))
         def on_cairo(act):
@@ -3129,14 +3138,37 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
                 val_str = "true" if act else "false"
                 subprocess.run(["sh", ipc_script, f"set-cairo-mode {val_str}"], check=False)
         self.add_switch_row(
-            card,
-            "Carbon // Cairo Synced-Lyric Mode",
+            card_cairo,
+            "Enable Cairo Kinetic Lyrics Mode",
             "Replace standard lock screen with kinetic synced lyrics standby on solid black (press Enter to unlock)",
             cairo_act,
             on_cairo
         )
 
-        page.append(card)
+        # English Converted Lyrics / Romanization Toggle
+        romanize_act = bool(self.lock_cfg.get("cairoRomanizeLyrics", True))
+        def on_romanize(act):
+            self.lock_cfg["cairoRomanizeLyrics"] = act
+            write_json(LOCKSCREEN_CONFIG_PATH, self.lock_cfg)
+            hypr_lock_cfg = os.path.expanduser("~/.config/hypr/carbon-lockscreen.json")
+            if hypr_lock_cfg != LOCKSCREEN_CONFIG_PATH:
+                write_json(hypr_lock_cfg, self.lock_cfg)
+            # Clear lyrics cache so current and subsequent tracks re-fetch in chosen mode
+            import glob
+            for f in glob.glob("/tmp/carbon-lyrics-cache/*.json"):
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
+        self.add_switch_row(
+            card_cairo,
+            "English Converted Lyrics (Romanization)",
+            "Pronounce non-English lyrics (Punjabi, Hindi, Russian, Korean, etc.) in readable English/Latin letters",
+            romanize_act,
+            on_romanize
+        )
+
+        page.append(card_cairo)
         return page
 
     # ── Category 11: System ────────────────────────────────────────────────

@@ -12,6 +12,14 @@ import socket
 import signal
 import json
 import subprocess
+import fcntl
+
+# Single instance lock
+try:
+    _lock_file = open("/tmp/audio-border.lock", "w")
+    fcntl.lockf(_lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except (IOError, BlockingIOError):
+    sys.exit(0)
 
 # 1. Locate Hyprland IPC Socket
 def get_hypr_socket():
@@ -32,6 +40,9 @@ def get_hypr_socket():
 sock_path = get_hypr_socket()
 
 def send_hypr(cmd):
+    global sock_path
+    if not sock_path or not os.path.exists(sock_path):
+        sock_path = get_hypr_socket()
     if not sock_path:
         return
     try:
@@ -41,7 +52,7 @@ def send_hypr(cmd):
             s.sendall((cmd + "\n").encode())
             s.recv(64)
     except Exception:
-        pass
+        sock_path = None
 
 def set_border(color_str):
     send_hypr(f'eval hl.config({{ general = {{ col = {{ active_border = "{color_str}" }} }} }})')

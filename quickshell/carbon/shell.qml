@@ -1868,11 +1868,11 @@ ShellRoot {
         }
     }
 
-    /* ── Audio-Reactive Active Window Border Daemon (Disabled for low latency & CPU efficiency) ── */
+    /* ── Audio-Reactive Active Window Border Daemon ──────────────────────── */
     Process {
         id: audioBorderDaemon
         command: ["python3", root.carbonConfigDir + "/scripts/audio-border.py"]
-        running: false
+        running: true
     }
 
     /* ── Dynamic Edge Reservation Windows (Prevents App Overlap) ────────── */

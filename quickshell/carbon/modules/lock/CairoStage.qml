@@ -10,16 +10,13 @@ import "CairoHinglishMap.js" as GlyphMap
  * CairoStage.qml:
  * Carbon // Cairo Kinetic Lyric Standby & Lock Screen Engine
  *
- * Visual Features:
- *   - 100% Pure Pitch-Black Stage (#000000) with zero shaders, zero horizon lines, zero UI chrome.
+ * Implements:
+ *   - 100% Pitch-Black Stage (#000000) with CairoBorderGlow steady perimeter spotlight.
  *   - 5 Persistent Word Delegates in a True Upward-Gliding 3D Barrel.
- *   - Flat Rectangular Highlighter (Word Document Style): clean 90-degree untilted rectangle
- *     wrapping strictly the active word with natural padding and smooth horizontal wipe.
- *   - High-contrast text: crisp dark ink (#08090d) on luminous highlights, pale cream on deep tones.
- *   - Wallpaper Theme Palette: auto-boosts saturation on pale/pastel wallpapers to maintain vibrancy.
- *   - Precision Audio-Synchronized Sub-Word Stepping: locked to microsecond MPRIS position so
- *     words stay tightly synced on fast rap songs and slow ballads alike.
- *   - 18 Custom Angular SVG Vector Glyphs with native GPU CurveRenderer anti-aliasing.
+ *   - Strictly Single-Word Highlighting: single shared Rectangle highlight block
+ *     that glides dynamically to whichever word in Stage 0 is currently active.
+ *   - Zero highlight on Stage 1 (middle) and Stage 2 (top).
+ *   - 60fps Interpolated Audio Clock with live [ and ] hotkeys for fine-tuning sync offset.
  *   - Instant single-Enter unlock with radial iris reveal.
  */
 Item {
@@ -32,30 +29,25 @@ Item {
     readonly property real cx: root.width / 2
     readonly property real cy: root.height / 2
 
-    // ── Wallpaper Theme Palette Saturation Booster ─────────────────────────
+    // ── Palette Tokens ─────────────────────────────────────────────────────
     function getVibrantThemeColor() {
-        var c = Theme.m3primary || Theme.accent || Qt.rgba(0.46, 0.81, 0.97, 1.0)
-        var r = c.r, g = c.g, b = c.b
-        var max = Math.max(r, g, b), min = Math.min(r, g, b)
-        var d = max - min
-        var h = 0
-        if (d > 0.0001) {
-            if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6
-            else if (max === g) h = ((b - r) / d + 2) / 6
-            else h = ((r - g) / d + 4) / 6
-        }
-        var s = max === 0 ? 0 : d / max
-        var v = max
-        var boostS = Math.max(s, 0.78)
+        var base = Theme.m3primary || Theme.accent || Qt.rgba(0.46, 0.82, 0.98, 1.0)
+        var h = base.hslHue
+        var s = base.hslSaturation
+        var v = base.hslLightness
+
+        if (h < 0) return Qt.rgba(0.46, 0.82, 0.98, 1.0)
+
+        var boostS = Math.max(0.65, Math.min(s * 1.30, 0.95))
         var boostV = Math.max(0.75, Math.min(v, 0.95))
         return Qt.hsva(h, boostS, boostV, 1.0)
     }
 
     readonly property color vibrantPrimary: getVibrantThemeColor()
-    readonly property color highlightColor: root.vibrantPrimary
+    readonly property color highlightColor: Qt.darker(root.vibrantPrimary, 1.18)
 
     readonly property real highlightLuminance: 0.299 * highlightColor.r + 0.587 * highlightColor.g + 0.114 * highlightColor.b
-    readonly property color highlightedTextColor: highlightLuminance > 0.42 ? "#08090d" : "#f7ebed"
+    readonly property color highlightedTextColor: "#f7ebed"
 
     readonly property color bronzeColor: {
         var sec = Theme.m3secondary || Qt.rgba(0.77, 0.77, 0.87, 1.0)
@@ -69,17 +61,8 @@ Item {
         )
     }
 
-    // Live continuous audio position for instant sub-word stepping
-    readonly property real liveAudioPosition: lyricEngine.currentPosition
-
-    onLiveAudioPositionChanged: {
-        var pos = root.liveAudioPosition + 0.22
-        for (var i = 0; i < delegates.length; i++) {
-            if (delegates[i].stage === 0) {
-                delegates[i].updateSubWord(pos)
-            }
-        }
-    }
+    // High-precision effective audio position from 60fps clock
+    readonly property real effectivePositionMs: lyricEngine.effectivePositionMs
 
     // ── 1. Pure Pitch-Black Stage (0% Shaders / 0% Chrome) ────────────────
     Rectangle {
@@ -87,6 +70,13 @@ Item {
         anchors.fill: parent
         color: "#000000"
         z: 0
+    }
+
+    // ── 1b. Music-Sensitive Ambient Perimeter Border ──────────────────────
+    CairoAmbientBorder {
+        id: ambientBorder
+        anchors.fill: parent
+        z: 1
     }
 
     // ── 2. Cairo Lyric Engine ─────────────────────────────────────────────
@@ -128,9 +118,30 @@ Item {
         onTriggered: root.readyToUnlock = true
     }
 
+    // Sync Offset Toast
+    property string offsetToastText: ""
+    property bool offsetToastVisible: false
+    Timer {
+        id: toastTimer
+        interval: 1400
+        onTriggered: root.offsetToastVisible = false
+    }
+    function showOffsetToast(val) {
+        root.offsetToastText = "SYNC: " + (val > 0 ? "+" : "") + val + " ms"
+        root.offsetToastVisible = true
+        toastTimer.restart()
+    }
+
     Keys.onPressed: (event) => {
-        if (!root.readyToUnlock) return
-        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+        if (event.key === Qt.Key_BracketLeft) {
+            event.accepted = true
+            lyricEngine.syncOffsetMs -= 50
+            root.showOffsetToast(lyricEngine.syncOffsetMs)
+        } else if (event.key === Qt.Key_BracketRight) {
+            event.accepted = true
+            lyricEngine.syncOffsetMs += 50
+            root.showOffsetToast(lyricEngine.syncOffsetMs)
+        } else if (root.readyToUnlock && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)) {
             event.accepted = true
             root.triggerUnlock()
         }
@@ -161,47 +172,11 @@ Item {
         property string glyphMotif: ""
         property real currentDuration: 1.0
         property real chunkStartTime: 0.0
+        property real chunkStartMs: 0
+        property real chunkEndMs: 0
+        property real vocalEndMs: 0
+        property var rowWords: []
 
-        // Parse individual words
-        readonly property var words: {
-            var s = (delegateRoot.chunkText || "").trim()
-            if (!s || s.length === 0) return []
-            return s.split(/\s+/)
-        }
-        readonly property string word0: words.length > 0 ? words[0] : ""
-        readonly property string word1: words.length > 1 ? words[1] : ""
-        readonly property bool hasSecondWord: word1.length > 0
-
-        readonly property real word0Ratio: {
-            if (!hasSecondWord) return 1.0
-            var len0 = Math.max(1, word0.length)
-            var len1 = Math.max(1, word1.length)
-            return Math.min(0.70, Math.max(0.30, (len0 + 0.5) / (len0 + len1 + 1.0)))
-        }
-
-        readonly property real word1StartTime: chunkStartTime + Math.max(0.06, (currentDuration * word0Ratio) - 0.07)
-
-        // Single-word highlight stepping
-        property int activeWordSubIndex: 0
-
-        function updateSubWord(pos) {
-            if (stage !== 0 || !hasSecondWord) return
-            if (chunkStartTime > 0.0 && pos >= word1StartTime) {
-                if (activeWordSubIndex !== 1) activeWordSubIndex = 1
-            } else if (chunkStartTime > 0.0 && pos < word1StartTime) {
-                if (activeWordSubIndex !== 0) activeWordSubIndex = 0
-            }
-        }
-
-        Timer {
-            id: subWordTimer
-            interval: Math.max(60, Math.round((delegateRoot.currentDuration * delegateRoot.word0Ratio - 0.07) * 1000))
-            running: delegateRoot.stage === 0 && delegateRoot.hasSecondWord && delegateRoot.activeWordSubIndex === 0
-            repeat: false
-            onTriggered: {
-                delegateRoot.activeWordSubIndex = 1
-            }
-        }
 
         // Spatial animated properties
         property real stageY: root.cy + 210
@@ -218,23 +193,23 @@ Item {
 
         // Transitions: 340ms Easing.OutQuint across all barrel coordinates
         Behavior on stageY {
-            enabled: delegateRoot.enableAnim
+            enabled: delegateRoot.enableAnim && delegateRoot.stage >= 0
             NumberAnimation { duration: 340; easing.type: Easing.OutQuint }
         }
         Behavior on stageScaleX {
-            enabled: delegateRoot.enableAnim
+            enabled: delegateRoot.enableAnim && delegateRoot.stage >= 0
             NumberAnimation { duration: 340; easing.type: Easing.OutQuint }
         }
         Behavior on stageScaleY {
-            enabled: delegateRoot.enableAnim
+            enabled: delegateRoot.enableAnim && delegateRoot.stage >= 0
             NumberAnimation { duration: 340; easing.type: Easing.OutQuint }
         }
         Behavior on stageRotX {
-            enabled: delegateRoot.enableAnim
+            enabled: delegateRoot.enableAnim && delegateRoot.stage >= 0
             NumberAnimation { duration: 340; easing.type: Easing.OutQuint }
         }
         Behavior on stageOpacity {
-            enabled: delegateRoot.enableAnim
+            enabled: delegateRoot.enableAnim && delegateRoot.stage >= 0
             NumberAnimation { duration: 340; easing.type: Easing.OutQuint }
         }
 
@@ -263,22 +238,18 @@ Item {
         function setStage(newStage) {
             stage = newStage
             if (newStage === -1) {
-                // Stage -1 (Pre-Entry Spawn)
+                // Stage -1 (Pre-Entry Spawn: 0ms teleport without downward animation)
                 enableAnim = false
-                activeWordSubIndex = 0
-                subWordTimer.stop()
-                stageY = root.cy + 210
                 stageOpacity = 0.0
+                stageY = root.cy + 195
                 stageScaleX = 0.88
                 stageScaleY = 0.50
                 stageRotX = 8.0
                 z = 1
                 enableAnim = true
             } else if (newStage === 0) {
-                // Stage 0 (Bottom Active Spoken Row)
-                activeWordSubIndex = 0
-                if (hasSecondWord) subWordTimer.restart()
-                stageY = root.cy + 110
+                // Stage 0 (Bottom Active Spoken Row: glides up from +195 to +105)
+                stageY = root.cy + 105
                 stageOpacity = 1.0
                 stageScaleX = 1.0
                 stageScaleY = 1.0
@@ -286,8 +257,7 @@ Item {
                 z = 30
             } else if (newStage === 1) {
                 // Stage 1 (Middle Row — Just Passed)
-                subWordTimer.stop()
-                stageY = root.cy - 12
+                stageY = root.cy - 35
                 stageOpacity = 0.92
                 stageScaleX = 0.86
                 stageScaleY = 0.74
@@ -295,8 +265,7 @@ Item {
                 z = 20
             } else if (newStage === 2) {
                 // Stage 2 (Top Row — Receding Barrel Edge)
-                subWordTimer.stop()
-                stageY = root.cy - 118
+                stageY = root.cy - 135
                 stageOpacity = 0.70
                 stageScaleX = 0.72
                 stageScaleY = 0.54
@@ -304,17 +273,17 @@ Item {
                 z = 10
             } else if (newStage === 3) {
                 // Stage 3 (Exiting Top — Crushing Flat)
-                subWordTimer.stop()
-                stageY = root.cy - 195
+                stageY = root.cy - 182
                 stageOpacity = 0.0
                 stageScaleX = 0.54
                 stageScaleY = 0.12
                 stageRotX = 58.0
-                z = 5
+                z = 1
             } else {
-                subWordTimer.stop()
+                // Stage 4 (Idle Pool Dormant)
+                enableAnim = false
                 stageOpacity = 0.0
-                stage = 4
+                stageY = root.cy + 400
                 z = 0
             }
         }
@@ -325,6 +294,7 @@ Item {
             spacing: 20
 
             // 18 Custom Cairo Angular SVG Vector Glyph with CurveRenderer
+            // Strictly visible only on Stage 0 (hidden on Stage 1 and Stage 2)
             CairoGlyph {
                 id: glyphItem
                 motif: delegateRoot.glyphMotif
@@ -332,98 +302,52 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 86
                 height: 86
-                visible: motif.length > 0
+                opacity: (delegateRoot.stage === 0 && motif.length > 0) ? 1.0 : 0.0
+                visible: opacity > 0.01 && motif.length > 0
+
+                Behavior on opacity {
+                    NumberAnimation { duration: 120; easing.type: Easing.OutQuad }
+                }
             }
 
-            // Words Row: renders individual words with clean Word document rectangular highlighting
-            Row {
-                id: wordsRow
+            // Word Box: holds the 0.52 translucent glass tape highlight behind the single word text
+            Item {
+                id: wordBox
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 16
+                width: wordText.contentWidth
+                height: Math.max(80, wordText.contentHeight)
 
-                // Word 0 Item
-                Item {
-                    id: wordBox0
-                    visible: delegateRoot.word0.length > 0
-                    readonly property bool isHighlighted: delegateRoot.stage === 0 && delegateRoot.activeWordSubIndex === 0
-                    width: wordText0.contentWidth + 28
-                    height: wordText0.contentHeight + 10
-                    anchors.verticalCenter: parent.verticalCenter
+                // Translucent Glass Tape highlight block
+                Rectangle {
+                    id: activeWordHighlight
+                    z: -1
+                    anchors.centerIn: parent
+                    width: wordText.contentWidth + 36
+                    height: wordText.contentHeight + 12
+                    radius: 8
+                    color: Qt.rgba(root.highlightColor.r, root.highlightColor.g, root.highlightColor.b, 0.45)
+                    opacity: (delegateRoot.stage === 0) ? 1.0 : 0.0
+                    visible: opacity > 0.01
 
-                    // Word Document Rectangular Highlighter (Untilted, radius: 4)
-                    Rectangle {
-                        id: highlightRect0
-                        anchors.fill: parent
-                        radius: 4
-                        color: root.highlightColor
-                        transformOrigin: Item.Left
-                        scale: wordBox0.isHighlighted ? 1.0 : 0.0
-                        opacity: wordBox0.isHighlighted ? 1.0 : 0.0
-
-                        Behavior on scale {
-                            NumberAnimation { duration: 90; easing.type: Easing.OutQuad }
-                        }
-                        Behavior on opacity {
-                            NumberAnimation { duration: 90; easing.type: Easing.OutQuad }
-                        }
-                    }
-
-                    Text {
-                        id: wordText0
-                        anchors.centerIn: parent
-                        text: delegateRoot.word0
-                        font.family: "Plus Jakarta Sans, Manrope, sans-serif"
-                        font.weight: Font.ExtraBold
-                        font.letterSpacing: -2.8
-                        font.pixelSize: delegateRoot.calcFontSize(delegateRoot.chunkText)
-                        color: wordBox0.isHighlighted ? root.highlightedTextColor : (delegateRoot.stage === 0 ? root.vibrantPrimary : root.bronzeColor)
-
-                        Behavior on color {
-                            ColorAnimation { duration: 90; easing.type: Easing.OutQuad }
-                        }
+                    Behavior on opacity {
+                        NumberAnimation { duration: 140; easing.type: Easing.OutQuad }
                     }
                 }
 
-                // Word 1 Item
-                Item {
-                    id: wordBox1
-                    visible: delegateRoot.hasSecondWord
-                    readonly property bool isHighlighted: delegateRoot.stage === 0 && delegateRoot.activeWordSubIndex === 1
-                    width: wordText1.contentWidth + 28
-                    height: wordText1.contentHeight + 10
-                    anchors.verticalCenter: parent.verticalCenter
+                Text {
+                    id: wordText
+                    anchors.centerIn: parent
+                    text: delegateRoot.chunkText
+                    font.family: "Plus Jakarta Sans, Manrope, sans-serif"
+                    font.weight: Font.ExtraBold
+                    font.letterSpacing: -2.8
+                    font.pixelSize: delegateRoot.calcFontSize(delegateRoot.chunkText)
+                    color: (delegateRoot.stage === 0)
+                           ? root.highlightedTextColor
+                           : root.bronzeColor
 
-                    // Word Document Rectangular Highlighter (Untilted, radius: 4)
-                    Rectangle {
-                        id: highlightRect1
-                        anchors.fill: parent
-                        radius: 4
-                        color: root.highlightColor
-                        transformOrigin: Item.Left
-                        scale: wordBox1.isHighlighted ? 1.0 : 0.0
-                        opacity: wordBox1.isHighlighted ? 1.0 : 0.0
-
-                        Behavior on scale {
-                            NumberAnimation { duration: 90; easing.type: Easing.OutQuad }
-                        }
-                        Behavior on opacity {
-                            NumberAnimation { duration: 90; easing.type: Easing.OutQuad }
-                        }
-                    }
-
-                    Text {
-                        id: wordText1
-                        anchors.centerIn: parent
-                        text: delegateRoot.word1
-                        font.family: "Plus Jakarta Sans, Manrope, sans-serif"
-                        font.weight: Font.ExtraBold
-                        font.letterSpacing: -2.8
-                        font.pixelSize: delegateRoot.calcFontSize(delegateRoot.chunkText)
-                        color: wordBox1.isHighlighted ? root.highlightedTextColor : (delegateRoot.stage === 0 ? root.vibrantPrimary : root.bronzeColor)
-
-                        Behavior on color {
-                            ColorAnimation { duration: 90; easing.type: Easing.OutQuad }
-                        }
+                    Behavior on color {
+                        ColorAnimation { duration: 90; easing.type: Easing.OutQuad }
                     }
                 }
             }
@@ -448,28 +372,44 @@ Item {
     readonly property var delegates: [d0, d1, d2, d3, d4]
     property int poolPointer: 0
 
-    readonly property bool hasActiveWords: (
-        (d0.stage >= 0 && d0.stage <= 2 && d0.stageOpacity > 0.05) ||
-        (d1.stage >= 0 && d1.stage <= 2 && d1.stageOpacity > 0.05) ||
-        (d2.stage >= 0 && d2.stage <= 2 && d2.stageOpacity > 0.05) ||
-        (d3.stage >= 0 && d3.stage <= 2 && d3.stageOpacity > 0.05) ||
-        (d4.stage >= 0 && d4.stage <= 2 && d4.stageOpacity > 0.05)
-    )
+    readonly property bool hasActiveWords: {
+        for (var i = 0; i < delegates.length; i++) {
+            if (delegates[i].stage >= 0 && delegates[i].stage <= 2) return true
+        }
+        return false
+    }
+
+    function pushNewWord(beat) {
+        handleBeatTriggered(beat)
+    }
 
     function handleBeatTriggered(beat) {
-        if (!beat || !beat.text) return
+        if (!beat) return
 
-        // 1. Advance all active delegates up the barrel
+        if (ambientBorder && typeof ambientBorder.triggerBeat === "function") {
+            ambientBorder.triggerBeat()
+        }
+
+        // 1. Synchronously increment stage += 1 on EVERY existing active delegate first
+        // before activating the new delegate at stage = 0.
+        // Assert that at most ONE delegate in the entire pool ever has stage === 0.
         for (var i = 0; i < delegates.length; i++) {
             var d = delegates[i]
-            if (d.stage === 0) {
-                d.setStage(1)
+            if (d.stage === 2) {
+                d.setStage(3)
             } else if (d.stage === 1) {
                 d.setStage(2)
-            } else if (d.stage === 2) {
-                d.setStage(3)
+            } else if (d.stage === 0) {
+                d.setStage(1)
             } else if (d.stage === 3) {
                 d.setStage(4)
+            }
+        }
+
+        // Safety assertion: enforce zero delegates remaining at stage 0
+        for (var i = 0; i < delegates.length; i++) {
+            if (delegates[i].stage === 0) {
+                delegates[i].setStage(1)
             }
         }
 
@@ -477,15 +417,25 @@ Item {
         var nextD = delegates[poolPointer]
         poolPointer = (poolPointer + 1) % delegates.length
 
-        // 3. Set content and spawn at Stage -1
+        // 3. Set content and reset to spawn at Stage -1 (0ms teleport without downward fly)
         nextD.chunkText = beat.text
         nextD.glyphMotif = beat.glyph || ""
         nextD.currentDuration = beat.duration || 1.0
         nextD.chunkStartTime = beat.time || 0.0
+        nextD.chunkStartMs = beat.startMs || Math.round(beat.time * 1000)
+        nextD.chunkEndMs = beat.endMs || Math.round((beat.time + beat.duration) * 1000)
+        nextD.vocalEndMs = beat.vocalEndMs || nextD.chunkEndMs
+        nextD.rowWords = beat.rowWords || [{ text: beat.text, startMs: nextD.chunkStartMs, endMs: nextD.vocalEndMs }]
         nextD.setStage(-1)
 
-        // 4. Animate immediately into Stage 0
+        // 4. On next frame, glide smoothly upward into Stage 0 with Behavior enabled
         Qt.callLater(function() {
+            // Strictly enforce single-stage-0 invariant across all other delegates
+            for (var j = 0; j < delegates.length; j++) {
+                if (delegates[j] !== nextD && delegates[j].stage === 0) {
+                    delegates[j].setStage(1)
+                }
+            }
             nextD.setStage(0)
         })
     }
@@ -514,6 +464,10 @@ Item {
             d2.glyphMotif = w2.glyph || ""
             d2.currentDuration = w2.duration || 1.0
             d2.chunkStartTime = w2.time || 0.0
+            d2.chunkStartMs = w2.startMs || Math.round(w2.time * 1000)
+            d2.chunkEndMs = w2.endMs || Math.round((w2.time + w2.duration) * 1000)
+            d2.vocalEndMs = w2.vocalEndMs || d2.chunkEndMs
+            d2.rowWords = w2.rowWords || [{ text: w2.text, startMs: d2.chunkStartMs, endMs: d2.vocalEndMs }]
             d2.setStage(2)
         }
         if (idx >= 1) {
@@ -522,6 +476,10 @@ Item {
             d1.glyphMotif = w1.glyph || ""
             d1.currentDuration = w1.duration || 1.0
             d1.chunkStartTime = w1.time || 0.0
+            d1.chunkStartMs = w1.startMs || Math.round(w1.time * 1000)
+            d1.chunkEndMs = w1.endMs || Math.round((w1.time + w1.duration) * 1000)
+            d1.vocalEndMs = w1.vocalEndMs || d1.chunkEndMs
+            d1.rowWords = w1.rowWords || [{ text: w1.text, startMs: d1.chunkStartMs, endMs: d1.vocalEndMs }]
             d1.setStage(1)
         }
         var w0 = lyricEngine.allWords[idx]
@@ -529,6 +487,10 @@ Item {
         d0.glyphMotif = w0.glyph || ""
         d0.currentDuration = w0.duration || 1.0
         d0.chunkStartTime = w0.time || 0.0
+        d0.chunkStartMs = w0.startMs || Math.round(w0.time * 1000)
+        d0.chunkEndMs = w0.endMs || Math.round((w0.time + w0.duration) * 1000)
+        d0.vocalEndMs = w0.vocalEndMs || d0.chunkEndMs
+        d0.rowWords = w0.rowWords || [{ text: w0.text, startMs: d0.chunkStartMs, endMs: d0.vocalEndMs }]
         d0.setStage(0)
 
         poolPointer = 3
@@ -623,4 +585,33 @@ Item {
     }
 
     onIrisRadiusChanged: irisCanvas.requestPaint()
+
+    // ── 8. Sync Offset OSD Toast ──────────────────────────────────────────
+    Rectangle {
+        id: offsetToastBox
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: parent.top
+        anchors.topMargin: 36
+        width: offsetToastLabel.contentWidth + 32
+        height: 38
+        radius: 8
+        color: "#181a20"
+        border.width: 1
+        border.color: root.vibrantPrimary
+        opacity: root.offsetToastVisible ? 0.94 : 0.0
+        visible: opacity > 0.01
+        z: 100
+
+        Behavior on opacity { NumberAnimation { duration: 150 } }
+
+        Text {
+            id: offsetToastLabel
+            anchors.centerIn: parent
+            text: root.offsetToastText
+            font.family: "Plus Jakarta Sans, Manrope, sans-serif"
+            font.weight: Font.Bold
+            font.pixelSize: 14
+            color: root.vibrantPrimary
+        }
+    }
 }
