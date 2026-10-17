@@ -88,6 +88,46 @@ Item {
     signal beatTriggered(var beatData)
     signal clearRequested()
 
+    function tokenizeLineToSingleWords(lineText, lineStartMs, nextLineStartMs) {
+        // 1. Clean parenthetical ad-libs like "(All night long)" or "(Forever)" if they duplicate, or split every single whitespace token:
+        var rawTokens = lineText.trim().split(/\s+/).filter(function(w) { return w.length > 0; });
+        if (rawTokens.length === 0) return [];
+
+        // 2. Pure 1-word array: EVERY element in `rawTokens` is its own standalone row!
+        // DO NOT group short words, articles, or pronouns. 1 token = 1 single word string.
+        var rawGapMs = Math.max(350, nextLineStartMs - lineStartMs);
+
+        // 3. Adaptive Tempo Window: scales naturally with fast rap/pop or slow ballads
+        // Takes 86% of the real timestamp gap (capped at 420ms * wordCount so long instrumental pauses don't stretch words)
+        var maxNaturalWindow = rawTokens.length * 420;
+        var activeWindowMs = Math.min(rawGapMs * 0.86, maxNaturalWindow);
+
+        // 4. Weight each single word slightly by character length so short words ("I", "a", "in") step fast
+        // and longer punch words ("confidence", "measurements", "together?") hold slightly longer:
+        var weights = [];
+        var totalWeight = 0;
+        for (var i = 0; i < rawTokens.length; i++) {
+            var cleanLen = rawTokens[i].replace(/[^a-zA-Z0-9\u0900-\u097F]/g, "").length;
+            var w = Math.max(1.0, Math.pow(cleanLen, 0.55));
+            if (i === rawTokens.length - 1) w *= 1.25; // Slight hold on the last word of a line
+            weights.push(w);
+            totalWeight += w;
+        }
+
+        var result = [];
+        var cursorMs = lineStartMs;
+        for (var j = 0; j < rawTokens.length; j++) {
+            var durMs = (weights[j] / totalWeight) * activeWindowMs;
+            result.push({
+                word: rawTokens[j],          // STRICTLY 1 WORD STRING (never an array of 2 words!)
+                startMs: Math.round(cursorMs),
+                endMs: Math.round(cursorMs + durMs)
+            });
+            cursorMs += durMs;
+        }
+        return result;
+    }
+
     function processLyrics() {
         var rawLines = LyricsService.lines || []
         if (!rawLines || rawLines.length === 0) {
@@ -110,157 +150,57 @@ Item {
             var nextLineStartMs = (i + 1 < rawLines.length)
                 ? Math.round(rawLines[i + 1].time * 1000)
                 : (lineStartMs + 6000)
-            var rawGapMs = Math.max(300, nextLineStartMs - lineStartMs)
-
-            var lineWords = []
 
             // A. Check for rich word-level timestamps (enhanced LRC)
             if (cur.words && cur.words.length > 0) {
                 for (var w = 0; w < cur.words.length; w++) {
                     var cw = cur.words[w]
                     var wStart = Math.round(cw.time * 1000)
-                    var wEnd = (w + 1 < cur.words.length)
+                    var isLastWord = (w === cur.words.length - 1)
+                    var wEnd = !isLastWord
                         ? Math.round(cur.words[w + 1].time * 1000)
                         : Math.min(nextLineStartMs - 80, wStart + 1000)
-                    lineWords.push({
+                    var nextWStart = !isLastWord
+                        ? Math.round(cur.words[w + 1].time * 1000)
+                        : nextLineStartMs
+
+                    wordsList.push({
+                        id: i + "_" + w,
                         text: cw.text,
+                        glyph: GlyphMap.lookupGlyph(cw.text) || "",
+                        time: wStart / 1000.0,
                         startMs: wStart,
-                        endMs: Math.max(wStart + 120, wEnd),
-                        glyph: GlyphMap.lookupGlyph(cw.text) || ""
+                        endMs: nextWStart,
+                        vocalEndMs: Math.max(wStart + 120, wEnd),
+                        duration: (nextWStart - wStart) / 1000.0,
+                        lineIndex: i,
+                        chunkIndex: w,
+                        rowWords: [{ text: cw.text, startMs: wStart, endMs: Math.max(wStart + 120, wEnd) }]
                     })
                 }
             } else {
-                // B. Vocal-Window Clamping for Standard .lrc Lines (Crucial)
-                var rawTokens = cur.text.trim().split(/\s+/).filter(function(tk) { return tk.length > 0 })
-                if (rawTokens.length === 0) continue
+                // B. Pure 1-Word Architecture (Standard .lrc Lines)
+                var singleWords = root.tokenizeLineToSingleWords(cur.text, lineStartMs, nextLineStartMs)
+                if (singleWords.length === 0) continue
 
-                var N = rawTokens.length
-                var C = 0
-                for (var t = 0; t < N; t++) {
-                    C += rawTokens[t].length
-                }
+                for (var j = 0; j < singleWords.length; j++) {
+                    var sw = singleWords[j]
+                    var isLast = (j === singleWords.length - 1)
+                    var chunkEndMs = isLast ? nextLineStartMs : singleWords[j + 1].startMs
 
-                // Natural vocal singing duration estimate based on syllable/vowel clusters:
-                var estimatedVocalMs = (N * 240) + (C * 42)
-                // Clamp active singing window so instrumental pauses NEVER stretch words:
-                var vocalWindowMs = Math.min(rawGapMs * 0.90, Math.max(estimatedVocalMs, N * 180))
-
-                // Distribute vocalWindowMs across words weighted by syllable count (plus 1.3x on final punch word)
-                var weights = []
-                var totalWeight = 0
-                for (var k = 0; k < N; k++) {
-                    var token = rawTokens[k]
-                    var sylMatches = token.match(/[aeiouy]+/gi)
-                    var syl = sylMatches ? Math.max(1, sylMatches.length) : 1
-                    var wt = syl * (k === N - 1 ? 1.3 : 1.0)
-                    weights.push(wt)
-                    totalWeight += wt
-                }
-
-                var curMs = lineStartMs
-                for (var k = 0; k < N; k++) {
-                    var wDurMs = Math.round(vocalWindowMs * (weights[k] / Math.max(1, totalWeight)))
-                    wDurMs = Math.max(120, wDurMs)
-                    lineWords.push({
-                        text: rawTokens[k],
-                        startMs: curMs,
-                        endMs: curMs + wDurMs,
-                        glyph: GlyphMap.lookupGlyph(rawTokens[k]) || ""
-                    })
-                    curMs += wDurMs
-                }
-            }
-
-            if (lineWords.length === 0) continue
-
-            // C. Group timed words into 1-to-2 word rows for the kinetic barrel
-            var wIdx = 0
-            while (wIdx < lineWords.length) {
-                var w1 = lineWords[wIdx]
-                var isLastWord = (wIdx === lineWords.length - 1)
-
-                // 1. Phrase-ending punch word (last token in line) sits ALONE:
-                if (isLastWord) {
                     wordsList.push({
-                        id: i + "_" + wIdx,
-                        text: w1.text,
-                        glyph: w1.glyph || "",
-                        time: w1.startMs / 1000.0,
-                        startMs: w1.startMs,
-                        // Hold the final word in Stage 0 calmly until nextLineStartMs arrives!
-                        endMs: nextLineStartMs,
-                        vocalEndMs: w1.endMs,
-                        duration: (nextLineStartMs - w1.startMs) / 1000.0,
+                        id: i + "_" + j,
+                        text: sw.word,
+                        glyph: GlyphMap.lookupGlyph(sw.word) || "",
+                        time: sw.startMs / 1000.0,
+                        startMs: sw.startMs,
+                        endMs: chunkEndMs,
+                        vocalEndMs: sw.endMs,
+                        duration: (chunkEndMs - sw.startMs) / 1000.0,
                         lineIndex: i,
-                        chunkIndex: wIdx,
-                        rowWords: [ w1 ]
+                        chunkIndex: j,
+                        rowWords: [{ text: sw.word, startMs: sw.startMs, endMs: sw.endMs }]
                     })
-                    wIdx += 1
-                    break
-                }
-
-                // 2. Word >= 6 chars or matched to a Cairo Vector Glyph MUST sit alone:
-                if (w1.text.length >= 6 || (w1.glyph && w1.glyph.length > 0)) {
-                    var nextWStart = (wIdx + 1 < lineWords.length) ? lineWords[wIdx + 1].startMs : nextLineStartMs
-                    wordsList.push({
-                        id: i + "_" + wIdx,
-                        text: w1.text,
-                        glyph: w1.glyph || "",
-                        time: w1.startMs / 1000.0,
-                        startMs: w1.startMs,
-                        endMs: nextWStart,
-                        vocalEndMs: w1.endMs,
-                        duration: (nextWStart - w1.startMs) / 1000.0,
-                        lineIndex: i,
-                        chunkIndex: wIdx,
-                        rowWords: [ w1 ]
-                    })
-                    wIdx += 1
-                    continue
-                }
-
-                // 3. Inspect next word w2 for helper pairing:
-                var w2 = lineWords[wIdx + 1]
-                var isW2Last = (wIdx + 1 === lineWords.length - 1)
-                var combinedLen = w1.text.length + 1 + w2.text.length
-                var canGroup = (!w1.glyph || w1.glyph.length === 0) &&
-                               (!w2.glyph || w2.glyph.length === 0) &&
-                               (w2.text.length < 6) &&
-                               (combinedLen <= 9) &&
-                               !isW2Last // keep last punch word alone
-
-                if (canGroup) {
-                    var nextChunkStart = (wIdx + 2 < lineWords.length) ? lineWords[wIdx + 2].startMs : nextLineStartMs
-                    wordsList.push({
-                        id: i + "_" + wIdx,
-                        text: w1.text + " " + w2.text,
-                        glyph: "",
-                        time: w1.startMs / 1000.0,
-                        startMs: w1.startMs,
-                        endMs: nextChunkStart,
-                        vocalEndMs: w2.endMs,
-                        duration: (nextChunkStart - w1.startMs) / 1000.0,
-                        lineIndex: i,
-                        chunkIndex: wIdx,
-                        rowWords: [ w1, w2 ]
-                    })
-                    wIdx += 2
-                } else {
-                    var nextChunkStart = (wIdx + 1 < lineWords.length) ? lineWords[wIdx + 1].startMs : nextLineStartMs
-                    wordsList.push({
-                        id: i + "_" + wIdx,
-                        text: w1.text,
-                        glyph: w1.glyph || "",
-                        time: w1.startMs / 1000.0,
-                        startMs: w1.startMs,
-                        endMs: nextChunkStart,
-                        vocalEndMs: w1.endMs,
-                        duration: (nextChunkStart - w1.startMs) / 1000.0,
-                        lineIndex: i,
-                        chunkIndex: wIdx,
-                        rowWords: [ w1 ]
-                    })
-                    wIdx += 1
                 }
             }
         }

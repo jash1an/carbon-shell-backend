@@ -177,37 +177,6 @@ Item {
         property real vocalEndMs: 0
         property var rowWords: []
 
-        // Parse individual words
-        readonly property var words: {
-            if (rowWords && rowWords.length > 0) {
-                var res = []
-                for (var i = 0; i < rowWords.length; i++) res.push(rowWords[i].text)
-                return res
-            }
-            var s = (delegateRoot.chunkText || "").trim()
-            if (!s || s.length === 0) return []
-            return s.split(/\s+/)
-        }
-        readonly property string word0: words.length > 0 ? words[0] : ""
-        readonly property string word1: words.length > 1 ? words[1] : ""
-        readonly property bool hasSecondWord: word1.length > 0
-
-        // Intra-row spoken word tracking: strictly highlight the word spoken at currentPlaybackMs
-        readonly property int activeWordSubIndex: {
-            if (stage !== 0 || !rowWords || rowWords.length === 0) return -1
-            var ms = root.effectivePositionMs
-            for (var i = 0; i < rowWords.length; i++) {
-                var rw = rowWords[i]
-                if (ms >= rw.startMs && ms < rw.endMs) {
-                    return i
-                }
-            }
-            // If past vocalEndMs but still holding row in Stage 0, hold highlight on final word
-            if (rowWords.length > 0 && ms >= rowWords[rowWords.length - 1].startMs) {
-                return rowWords.length - 1
-            }
-            return 0
-        }
 
         // Spatial animated properties
         property real stageY: root.cy + 210
@@ -341,95 +310,44 @@ Item {
                 }
             }
 
-            // Word Box: holds the single shared activeWordHighlight behind wordsRow
+            // Word Box: holds the 0.52 translucent glass tape highlight behind the single word text
             Item {
                 id: wordBox
                 anchors.verticalCenter: parent.verticalCenter
-                width: wordsRow.width
-                height: Math.max(80, wordItem0.height)
+                width: wordText.contentWidth
+                height: Math.max(80, wordText.contentHeight)
 
-                // Single shared Rectangle highlight block
+                // 0.52 Translucent Glass Tape highlight block
                 Rectangle {
                     id: activeWordHighlight
                     z: -1
-                    radius: 6
+                    anchors.centerIn: parent
+                    width: wordText.contentWidth + 36
+                    height: wordText.contentHeight + 12
+                    radius: 8
                     color: root.highlightColor
-
-                    readonly property Item activeSubWordItem: {
-                        if (delegateRoot.stage !== 0 || delegateRoot.activeWordSubIndex < 0) return null
-                        if (delegateRoot.activeWordSubIndex === 0 && delegateRoot.word0.length > 0) return wordItem0
-                        if (delegateRoot.activeWordSubIndex === 1 && delegateRoot.hasSecondWord) return wordItem1
-                        return null
-                    }
-
+                    opacity: (delegateRoot.stage === 0) ? 0.52 : 0.0
                     visible: opacity > 0.01
-                    opacity: (delegateRoot.stage === 0 && activeSubWordItem !== null) ? 1.0 : 0.0
 
-                    x: activeSubWordItem ? (wordsRow.x + activeSubWordItem.x - 18) : 0
-                    y: activeSubWordItem ? (wordsRow.y + activeSubWordItem.y - 6) : 0
-                    width: activeSubWordItem ? (activeSubWordItem.width + 36) : 0
-                    height: activeSubWordItem ? (activeSubWordItem.height + 12) : 0
-
-                    Behavior on x { NumberAnimation { duration: 110; easing.type: Easing.OutQuart } }
-                    Behavior on width { NumberAnimation { duration: 110; easing.type: Easing.OutQuart } }
-                    Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutQuad } }
+                    Behavior on opacity {
+                        NumberAnimation { duration: 140; easing.type: Easing.OutQuad }
+                    }
                 }
 
-                Row {
-                    id: wordsRow
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 18
+                Text {
+                    id: wordText
+                    anchors.centerIn: parent
+                    text: delegateRoot.chunkText
+                    font.family: "Plus Jakarta Sans, Manrope, sans-serif"
+                    font.weight: Font.ExtraBold
+                    font.letterSpacing: -2.8
+                    font.pixelSize: delegateRoot.calcFontSize(delegateRoot.chunkText)
+                    color: (delegateRoot.stage === 0)
+                           ? root.highlightedTextColor
+                           : root.bronzeColor
 
-                    // Word 0 Item
-                    Item {
-                        id: wordItem0
-                        visible: delegateRoot.word0.length > 0
-                        width: wordText0.contentWidth
-                        height: wordText0.contentHeight
-                        anchors.verticalCenter: parent.verticalCenter
-
-                        Text {
-                            id: wordText0
-                            anchors.centerIn: parent
-                            text: delegateRoot.word0
-                            font.family: "Plus Jakarta Sans, Manrope, sans-serif"
-                            font.weight: Font.ExtraBold
-                            font.letterSpacing: -2.8
-                            font.pixelSize: delegateRoot.calcFontSize(delegateRoot.chunkText)
-                            color: (delegateRoot.stage === 0 && delegateRoot.activeWordSubIndex === 0)
-                                   ? root.highlightedTextColor
-                                   : root.bronzeColor
-
-                            Behavior on color {
-                                ColorAnimation { duration: 90; easing.type: Easing.OutQuad }
-                            }
-                        }
-                    }
-
-                    // Word 1 Item
-                    Item {
-                        id: wordItem1
-                        visible: delegateRoot.hasSecondWord
-                        width: wordText1.contentWidth
-                        height: wordText1.contentHeight
-                        anchors.verticalCenter: parent.verticalCenter
-
-                        Text {
-                            id: wordText1
-                            anchors.centerIn: parent
-                            text: delegateRoot.word1
-                            font.family: "Plus Jakarta Sans, Manrope, sans-serif"
-                            font.weight: Font.ExtraBold
-                            font.letterSpacing: -2.8
-                            font.pixelSize: delegateRoot.calcFontSize(delegateRoot.chunkText)
-                            color: (delegateRoot.stage === 0 && delegateRoot.activeWordSubIndex === 1)
-                                   ? root.highlightedTextColor
-                                   : root.bronzeColor
-
-                            Behavior on color {
-                                ColorAnimation { duration: 90; easing.type: Easing.OutQuad }
-                            }
-                        }
+                    Behavior on color {
+                        ColorAnimation { duration: 90; easing.type: Easing.OutQuad }
                     }
                 }
             }
