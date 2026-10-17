@@ -19,8 +19,12 @@ Singleton {
     readonly property string caelestiaSchemePath: root.home + "/.local/state/caelestia/scheme.json"
     readonly property string fallbackThemePath: root.configDir + "/theme.json"
     readonly property string barPosPath: root.configDir + "/carbon-bar-position.json"
+    readonly property string fontsConfigPath: root.configDir + "/carbon-fonts.json"
 
     property real shellOpacity: 0.85
+    property string customFont: ""
+    property string customFontMono: ""
+    property real customFontScale: 1.0
 
     /* ── Connectivity Orbit Picker Tokens ── */
     readonly property int wifiOrbitBase: 118
@@ -74,6 +78,34 @@ Singleton {
             }
         } catch (e) {}
         root.reload()
+    }
+
+    FileView {
+        id: fontsFile
+        path: root.fontsConfigPath
+        watchChanges: true
+        blockLoading: true
+        printErrors: false
+        onFileChanged: root.reloadFonts()
+        onLoaded: root.reloadFonts()
+    }
+
+    function reloadFonts() {
+        try {
+            var txt = fontsFile.text().trim()
+            if (txt.length > 0) {
+                var d = JSON.parse(txt)
+                if (d.interface_font && String(d.interface_font).length > 0) {
+                    root.customFont = String(d.interface_font) + ", Rubik, Google Sans Flex, sans-serif"
+                }
+                if (d.monospace_font && String(d.monospace_font).length > 0) {
+                    root.customFontMono = String(d.monospace_font) + ", monospace"
+                }
+                if (d.scaling_factor !== undefined) {
+                    root.customFontScale = Math.max(0.5, Math.min(2.0, parseFloat(d.scaling_factor) || 1.0))
+                }
+            }
+        } catch (e) {}
     }
 
     FileView {
@@ -359,13 +391,13 @@ Singleton {
     readonly property real moduleMargin: 5
 
     /* Typography */
-    readonly property string font: "Rubik, Google Sans Flex, JetBrainsMono Nerd Font, sans-serif"
-    readonly property string fontMono: "JetBrainsMono Nerd Font, monospace"
+    readonly property string font: (root.customFont && root.customFont.length > 0) ? root.customFont : "Rubik, Google Sans Flex, JetBrainsMono Nerd Font, sans-serif"
+    readonly property string fontMono: (root.customFontMono && root.customFontMono.length > 0) ? root.customFontMono : "JetBrainsMono Nerd Font, monospace"
 
     /* ── Global Font Scale — the single knob ────────────────────────── */
     // Edit this ONE number to resize every text element in the shell.
     // 1.0 = original design size.  All text sizes are wrapped in fontPx().
-    readonly property real fontScale: 1
+    readonly property real fontScale: root.customFontScale > 0 ? root.customFontScale : 1
     function fontPx(base) { return Math.round(base * fontScale) }
     readonly property string fontIcon: "Material Symbols Rounded"
 

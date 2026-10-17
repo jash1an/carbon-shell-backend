@@ -1435,6 +1435,7 @@ ShellRoot {
                         root.applyBarPos(barPosFile.text())
                         root.reloadBarMode()
                         Theme.reloadShellOpacity()
+                        Theme.reloadFonts()
                         root.reloadLauncherConfig()
                         LockState.reloadConfig()
                     }

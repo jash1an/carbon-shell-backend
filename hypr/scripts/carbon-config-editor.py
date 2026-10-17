@@ -65,6 +65,7 @@ BLUR_EXCEPTIONS_CONF = os.path.join(CONFIG_DIR, "blur-exceptions.conf")
 POWER_CONFIG_PATH = os.path.join(CONFIG_DIR, "carbon-power.json")
 POWER_CONF_PATH = os.path.join(CONFIG_DIR, "power.conf")
 HYPRIDLE_CONF_PATH = os.path.join(CONFIG_DIR, "hypridle.conf")
+FONTS_CONFIG_PATH = os.path.join(CONFIG_DIR, "carbon-fonts.json")
 
 DEFAULT_POWER_CONFIG = {
     "profile": "balanced",
@@ -242,6 +243,165 @@ def write_json(path, data):
             json.dump(data, f, indent=2)
     except Exception as e:
         print(f"Error saving {path}: {e}", file=sys.stderr)
+
+def scan_installed_fonts():
+    try:
+        out = subprocess.check_output(["fc-list", ":", "family"], text=True, stderr=subprocess.DEVNULL)
+        families = set()
+        for line in out.splitlines():
+            for f in line.split(","):
+                f = f.strip()
+                if f and not f.startswith("."):
+                    families.add(f)
+        fonts = sorted(list(families), key=lambda x: x.lower())
+        return fonts if fonts else ["JetBrainsMono Nerd Font", "Adwaita Sans", "Adwaita Mono", "FreeSans"]
+    except Exception:
+        return ["JetBrainsMono Nerd Font", "Adwaita Sans", "Adwaita Mono", "FreeSans"]
+
+def read_fonts_config():
+    cfg = read_json(FONTS_CONFIG_PATH, {})
+    if not isinstance(cfg, dict):
+        cfg = {}
+
+    if "interface_font" not in cfg or "interface_size" not in cfg:
+        try:
+            val = subprocess.check_output(["gsettings", "get", "org.gnome.desktop.interface", "font-name"], text=True, stderr=subprocess.DEVNULL).strip().strip("'\"")
+            parts = val.rsplit(" ", 1)
+            if len(parts) == 2 and parts[1].replace(".", "", 1).isdigit():
+                cfg.setdefault("interface_font", parts[0])
+                cfg.setdefault("interface_size", int(float(parts[1])))
+            else:
+                cfg.setdefault("interface_font", val or "JetBrainsMono Nerd Font")
+                cfg.setdefault("interface_size", 11)
+        except Exception:
+            cfg.setdefault("interface_font", "JetBrainsMono Nerd Font")
+            cfg.setdefault("interface_size", 11)
+
+    if "monospace_font" not in cfg or "monospace_size" not in cfg:
+        try:
+            val = subprocess.check_output(["gsettings", "get", "org.gnome.desktop.interface", "monospace-font-name"], text=True, stderr=subprocess.DEVNULL).strip().strip("'\"")
+            parts = val.rsplit(" ", 1)
+            if len(parts) == 2 and parts[1].replace(".", "", 1).isdigit():
+                cfg.setdefault("monospace_font", parts[0])
+                cfg.setdefault("monospace_size", int(float(parts[1])))
+            else:
+                cfg.setdefault("monospace_font", val or "JetBrainsMono Nerd Font")
+                cfg.setdefault("monospace_size", 11)
+        except Exception:
+            cfg.setdefault("monospace_font", "JetBrainsMono Nerd Font")
+            cfg.setdefault("monospace_size", 11)
+
+    if "document_font" not in cfg or "document_size" not in cfg:
+        try:
+            val = subprocess.check_output(["gsettings", "get", "org.gnome.desktop.interface", "document-font-name"], text=True, stderr=subprocess.DEVNULL).strip().strip("'\"")
+            parts = val.rsplit(" ", 1)
+            if len(parts) == 2 and parts[1].replace(".", "", 1).isdigit():
+                cfg.setdefault("document_font", parts[0])
+                cfg.setdefault("document_size", int(float(parts[1])))
+            else:
+                cfg.setdefault("document_font", val or "JetBrainsMono Nerd Font")
+                cfg.setdefault("document_size", 11)
+        except Exception:
+            cfg.setdefault("document_font", "JetBrainsMono Nerd Font")
+            cfg.setdefault("document_size", 11)
+
+    if "scaling_factor" not in cfg:
+        try:
+            val = subprocess.check_output(["gsettings", "get", "org.gnome.desktop.interface", "text-scaling-factor"], text=True, stderr=subprocess.DEVNULL).strip()
+            cfg.setdefault("scaling_factor", float(val))
+        except Exception:
+            cfg.setdefault("scaling_factor", 1.0)
+
+    return cfg
+
+def apply_fonts_config(cfg):
+    write_json(FONTS_CONFIG_PATH, cfg)
+    hypr_fonts = os.path.expanduser("~/.config/hypr/carbon-fonts.json")
+    if hypr_fonts != FONTS_CONFIG_PATH:
+        write_json(hypr_fonts, cfg)
+
+    if_name = f"{cfg.get('interface_font', 'JetBrainsMono Nerd Font')} {int(cfg.get('interface_size', 11))}"
+    mono_name = f"{cfg.get('monospace_font', 'JetBrainsMono Nerd Font')} {int(cfg.get('monospace_size', 11))}"
+    doc_name = f"{cfg.get('document_font', 'JetBrainsMono Nerd Font')} {int(cfg.get('document_size', 11))}"
+    scale = float(cfg.get("scaling_factor", 1.0))
+
+    try:
+        subprocess.run(["gsettings", "set", "org.gnome.desktop.interface", "font-name", if_name], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["gsettings", "set", "org.gnome.desktop.interface", "monospace-font-name", mono_name], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["gsettings", "set", "org.gnome.desktop.interface", "document-font-name", doc_name], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["gsettings", "set", "org.gnome.desktop.interface", "text-scaling-factor", f"{scale:.2f}"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:
+        print("[Fonts] Error applying gsettings:", e, file=sys.stderr)
+
+    # ~/.config/gtk-3.0/settings.ini
+    try:
+        gtk3_path = os.path.expanduser("~/.config/gtk-3.0/settings.ini")
+        os.makedirs(os.path.dirname(gtk3_path), exist_ok=True)
+        lines = []
+        if os.path.exists(gtk3_path):
+            with open(gtk3_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+        new_lines = []
+        in_settings = False
+        found_font = False
+        found_mono = False
+        for line in lines:
+            s = line.strip()
+            if s == "[Settings]":
+                in_settings = True
+                new_lines.append(line)
+                continue
+            if in_settings and s.startswith("gtk-font-name="):
+                new_lines.append(f"gtk-font-name={if_name}\n")
+                found_font = True
+            elif in_settings and s.startswith("gtk-monospace-font-name="):
+                new_lines.append(f"gtk-monospace-font-name={mono_name}\n")
+                found_mono = True
+            else:
+                new_lines.append(line)
+        if not in_settings:
+            new_lines.insert(0, "[Settings]\n")
+        if not found_font:
+            new_lines.append(f"gtk-font-name={if_name}\n")
+        if not found_mono:
+            new_lines.append(f"gtk-monospace-font-name={mono_name}\n")
+        with open(gtk3_path, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+    except Exception as e:
+        print("[Fonts] Error updating gtk-3.0 settings.ini:", e, file=sys.stderr)
+
+    # ~/.config/gtk-4.0/settings.ini
+    try:
+        gtk4_path = os.path.expanduser("~/.config/gtk-4.0/settings.ini")
+        os.makedirs(os.path.dirname(gtk4_path), exist_ok=True)
+        lines = []
+        if os.path.exists(gtk4_path):
+            with open(gtk4_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+        new_lines = []
+        in_settings = False
+        found_font = False
+        for line in lines:
+            s = line.strip()
+            if s == "[Settings]":
+                in_settings = True
+                new_lines.append(line)
+                continue
+            if in_settings and s.startswith("gtk-font-name="):
+                new_lines.append(f"gtk-font-name={if_name}\n")
+                found_font = True
+            elif in_settings and s.startswith("gtk-monospace-font-name="):
+                continue
+            else:
+                new_lines.append(line)
+        if not in_settings:
+            new_lines.insert(0, "[Settings]\n")
+        if not found_font:
+            new_lines.append(f"gtk-font-name={if_name}\n")
+        with open(gtk4_path, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+    except Exception as e:
+        print("[Fonts] Error updating gtk-4.0 settings.ini:", e, file=sys.stderr)
 
 def read_variables():
     data = {}
@@ -964,6 +1124,15 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             self.blur_exceptions = []
 
         self.pending_layer_blur = None
+        self.fonts_cfg = read_fonts_config()
+
+        # Original snapshots to avoid unnecessary reloads
+        self.orig_bar_mode = copy.deepcopy(self.bar_mode)
+        self.orig_blur_exceptions = copy.deepcopy(self.blur_exceptions)
+        self.orig_vanish_shortcuts = copy.deepcopy(self.vanish_shortcuts)
+        self.orig_power_cfg = copy.deepcopy(self.power_cfg)
+        self.orig_looknfeel_cfg = copy.deepcopy(self.looknfeel_cfg)
+        self.orig_fonts_cfg = copy.deepcopy(self.fonts_cfg)
 
         # Deferred Save State Tracking
         self.is_building_ui = True
@@ -1780,6 +1949,8 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         row.append(label_box)
 
         dropdown = Gtk.DropDown.new_from_strings(options)
+        if len(options) > 10 and hasattr(dropdown, "set_enable_search"):
+            dropdown.set_enable_search(True)
         dropdown.set_selected(cur_idx if 0 <= cur_idx < len(options) else 0)
         dropdown.set_valign(Gtk.Align.CENTER)
         dropdown.set_halign(Gtk.Align.END)
@@ -2665,7 +2836,73 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
 
         page.append(card_blur)
 
-        # ── Card 5: Shell & Wallpaper ──
+        # ── Card 5: System Typography & Fonts ──
+        card_fonts = self.create_settings_card()
+        lbl_f_head = Gtk.Label(label="System Typography & Fonts")
+        lbl_f_head.set_halign(Gtk.Align.START)
+        lbl_f_head.add_css_class("heading")
+        card_fonts.append(lbl_f_head)
+
+        system_fonts = scan_installed_fonts()
+        if not system_fonts:
+            system_fonts = ["JetBrainsMono Nerd Font", "Adwaita Sans", "Adwaita Mono", "FreeSans"]
+
+        # 1. Interface Font
+        cur_if_font = self.fonts_cfg.get("interface_font", "JetBrainsMono Nerd Font")
+        cur_if_idx = system_fonts.index(cur_if_font) if cur_if_font in system_fonts else 0
+        def on_if_font_changed(idx):
+            self.fonts_cfg["interface_font"] = system_fonts[idx]
+            self.mark_dirty()
+        self.add_combo_row(card_fonts, "Interface Font", "Default system-wide typography for applications, menus, and bars", system_fonts, cur_if_idx, on_if_font_changed)
+
+        # 2. Interface Font Size
+        cur_if_size = int(self.fonts_cfg.get("interface_size", 11))
+        def on_if_size_changed(v):
+            self.fonts_cfg["interface_size"] = int(v)
+            self.mark_dirty()
+        self.add_slider_row(card_fonts, "Interface Font Size", "Base font point size for UI text", 8, 24, 1, cur_if_size, "pt", on_if_size_changed)
+
+        # 3. Monospace Font
+        cur_mono_font = self.fonts_cfg.get("monospace_font", "JetBrainsMono Nerd Font")
+        cur_mono_idx = system_fonts.index(cur_mono_font) if cur_mono_font in system_fonts else 0
+        def on_mono_font_changed(idx):
+            self.fonts_cfg["monospace_font"] = system_fonts[idx]
+            self.mark_dirty()
+        self.add_combo_row(card_fonts, "Monospace Font", "Fixed-width typography for terminals, code editors, and logs", system_fonts, cur_mono_idx, on_mono_font_changed)
+
+        # 4. Monospace Font Size
+        cur_mono_size = int(self.fonts_cfg.get("monospace_size", 11))
+        def on_mono_size_changed(v):
+            self.fonts_cfg["monospace_size"] = int(v)
+            self.mark_dirty()
+        self.add_slider_row(card_fonts, "Monospace Font Size", "Point size for monospace text", 8, 24, 1, cur_mono_size, "pt", on_mono_size_changed)
+
+        # 5. Document Font
+        cur_doc_font = self.fonts_cfg.get("document_font", "JetBrainsMono Nerd Font")
+        cur_doc_idx = system_fonts.index(cur_doc_font) if cur_doc_font in system_fonts else 0
+        def on_doc_font_changed(idx):
+            self.fonts_cfg["document_font"] = system_fonts[idx]
+            self.mark_dirty()
+        self.add_combo_row(card_fonts, "Document Font", "Typography used for document viewports and reading content", system_fonts, cur_doc_idx, on_doc_font_changed)
+
+        # 6. Document Font Size
+        cur_doc_size = int(self.fonts_cfg.get("document_size", 11))
+        def on_doc_size_changed(v):
+            self.fonts_cfg["document_size"] = int(v)
+            self.mark_dirty()
+        self.add_slider_row(card_fonts, "Document Font Size", "Point size for document viewing", 8, 24, 1, cur_doc_size, "pt", on_doc_size_changed)
+
+        # 7. Text Scaling Factor
+        cur_scale = int(float(self.fonts_cfg.get("scaling_factor", 1.0)) * 100)
+        def on_scale_changed(v):
+            self.fonts_cfg["scaling_factor"] = round(v / 100.0, 2)
+            self.mark_dirty()
+        self.add_slider_row(card_fonts, "Font Text Scaling", "Proportional magnification scaling factor across all UI text", 75, 150, 5, cur_scale, "%", on_scale_changed)
+
+        page.append(card_fonts)
+        self.register_search_item(self.current_cat_id, "System Typography & Fonts", "Change system interface fonts, monospace terminal fonts, and text scaling", card_fonts)
+
+        # ── Card 6: Shell & Wallpaper ──
         card_wp = self.create_settings_card()
         lbl_wp = Gtk.Label(label="Shell & Wallpaper")
         lbl_wp.set_halign(Gtk.Align.START)
@@ -3652,7 +3889,10 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         if hasattr(self, "save_tile_config"):
             self.save_tile_config()
 
-        # 2. Save variables.lua if needed
+        # 2. Apply Fonts config (GTK3, GTK4, GNOME gsettings, Quickshell)
+        apply_fonts_config(self.fonts_cfg)
+
+        # 3. Save variables.lua if needed
         if "rounding" in self.looknfeel_cfg:
             write_variable("rounding", self.looknfeel_cfg["rounding"])
         if "border_size" in self.looknfeel_cfg:
@@ -3660,7 +3900,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
         if "active_opacity" in self.looknfeel_cfg:
             write_variable("windowOpacity", self.looknfeel_cfg["active_opacity"])
 
-        # 3. Save looknfeel.conf & blur-exceptions.conf
+        # 4. Save looknfeel.conf & blur-exceptions.conf
         write_looknfeel_config(self.looknfeel_cfg)
         write_json(BLUR_EXCEPTIONS_JSON, self.blur_exceptions)
         hypr_blur_json = os.path.expanduser("~/.config/hypr/carbon-blur-exceptions.json")
@@ -3668,7 +3908,7 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             write_json(hypr_blur_json, self.blur_exceptions)
         write_blur_exceptions_config(self.blur_exceptions)
 
-        # 4. Save lockscreen hyprlock.conf if blurRadius changed
+        # 5. Save lockscreen hyprlock.conf if blurRadius changed
         if "blurRadius" in self.lock_cfg:
             blur_val = int(self.lock_cfg["blurRadius"])
             hyprlock_paths = [
@@ -3687,11 +3927,11 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
                     except Exception:
                         pass
 
-        # 5. Apply layer blur if pending
+        # 6. Apply layer blur if pending
         if self.pending_layer_blur is not None:
             apply_hyprland_layer_blur(self.pending_layer_blur)
 
-        # 6. Apply live Hyprland Look & Feel keywords
+        # 7. Apply live Hyprland Look & Feel keywords (decorations, gaps, borders, shadows, blur)
         apply_hyprland_looknfeel_live(self.looknfeel_cfg)
 
         # Live animations keyword
@@ -3699,36 +3939,63 @@ class ConfigEditorWindow(Adw.ApplicationWindow):
             anim_enabled = "false" if self.motion_cfg["reduceMotion"] else "true"
             subprocess.run(["hyprctl", "keyword", "animations:enabled", anim_enabled], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        # Bar mode IPC
+        # 8. Bar mode & Quickshell live IPC (no process restart or killed apps)
         mode_id = self.bar_mode.get("mode", "notch")
+        old_mode_id = getattr(self, "orig_bar_mode", {}).get("mode", "notch")
         ipc_script = os.path.join(CONFIG_DIR, "scripts/carbon-ipc.sh")
         if not os.path.exists(ipc_script):
             ipc_script = os.path.expanduser("~/.config/hypr/scripts/carbon-ipc.sh")
         if os.path.exists(ipc_script):
-            if mode_id == "nucleus":
-                if self.bar_mode.get("nucleus", {}).get("transition", True):
-                    subprocess.run(["sh", ipc_script, "nucleus transition"], check=False)
+            if mode_id != old_mode_id:
+                if mode_id == "nucleus":
+                    if self.bar_mode.get("nucleus", {}).get("transition", True):
+                        subprocess.run(["sh", ipc_script, "nucleus transition"], check=False)
+                    else:
+                        subprocess.run(["sh", ipc_script, "set-bar-mode nucleus"], check=False)
                 else:
-                    subprocess.run(["sh", ipc_script, "set-bar-mode nucleus"], check=False)
-            else:
-                subprocess.run(["sh", ipc_script, f"set-bar-mode {mode_id}"], check=False)
+                    subprocess.run(["sh", ipc_script, f"set-bar-mode {mode_id}"], check=False)
 
-        # Waybar lifecycle for pill mode
-        if mode_id == "pill":
-            waybar_launch = os.path.expanduser("~/.config/waybar/launch.sh")
-            if os.path.exists(waybar_launch):
-                subprocess.Popen(["bash", waybar_launch])
-        else:
-            subprocess.run(["pkill", "-x", "waybar"], check=False)
-            subprocess.run(["pkill", "-x", "waybar-bin"], check=False)
-            subprocess.run(["pkill", "-x", "swaync"], check=False)
+            # Signal Quickshell to live-reload configurations over unix socket without dropping apps or restarting
+            subprocess.run(["sh", ipc_script, "apply-settings"], check=False)
 
-        # 7. Reload Hyprland & Carbon Quickshell
-        try:
-            subprocess.run(["hyprctl", "reload"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            subprocess.run(["systemctl", "--user", "restart", "carbon-quickshell.service"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception as e:
-            print("Error restarting shell:", e, file=sys.stderr)
+        # Waybar lifecycle only if bar mode transitioned to/from pill
+        if old_mode_id != mode_id:
+            if mode_id == "pill":
+                waybar_launch = os.path.expanduser("~/.config/waybar/launch.sh")
+                if os.path.exists(waybar_launch):
+                    subprocess.Popen(["bash", waybar_launch])
+            elif old_mode_id == "pill":
+                subprocess.run(["pkill", "-x", "waybar"], check=False)
+                subprocess.run(["pkill", "-x", "waybar-bin"], check=False)
+                subprocess.run(["pkill", "-x", "swaync"], check=False)
+
+        # 9. Only reload Hyprland if structural configuration changed (window rules, keybinds, lid/power action)
+        need_hypr_reload = False
+        if getattr(self, "orig_blur_exceptions", None) != self.blur_exceptions:
+            need_hypr_reload = True
+        elif getattr(self, "orig_vanish_shortcuts", None) != self.vanish_shortcuts:
+            need_hypr_reload = True
+        elif self.pending_layer_blur is not None:
+            need_hypr_reload = True
+        elif (getattr(self, "orig_power_cfg", {}).get("lidActionBattery") != self.power_cfg.get("lidActionBattery") or
+              getattr(self, "orig_power_cfg", {}).get("lidActionAC") != self.power_cfg.get("lidActionAC") or
+              getattr(self, "orig_power_cfg", {}).get("powerButtonAction") != self.power_cfg.get("powerButtonAction")):
+            need_hypr_reload = True
+
+        if need_hypr_reload:
+            try:
+                subprocess.run(["hyprctl", "reload"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception as e:
+                print("Error reloading Hyprland:", e, file=sys.stderr)
+
+        # Update snapshots for minimal delta detection on next apply
+        self.orig_bar_mode = copy.deepcopy(self.bar_mode)
+        self.orig_blur_exceptions = copy.deepcopy(self.blur_exceptions)
+        self.orig_vanish_shortcuts = copy.deepcopy(self.vanish_shortcuts)
+        self.orig_power_cfg = copy.deepcopy(self.power_cfg)
+        self.orig_looknfeel_cfg = copy.deepcopy(self.looknfeel_cfg)
+        self.orig_fonts_cfg = copy.deepcopy(self.fonts_cfg)
+        self.pending_layer_blur = None
 
         self.dirty = False
         self.lbl_status.set_text("Changes applied successfully.")
