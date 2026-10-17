@@ -217,24 +217,45 @@ function stripHinglishSuffix(token) {
     return s;
 }
 
+var STOP_WORDS = {
+    "he": true, "she": true, "was": true, "is": true, "do": true,
+    "what": true, "you": true, "you've": true, "youve": true, "been": true,
+    "too": true, "out": true, "in": true, "on": true, "to": true,
+    "the": true, "a": true, "an": true, "and": true, "or": true,
+    "but": true, "it": true, "for": true, "of": true, "te": true,
+    "ne": true, "ko": true, "se": true, "hai": true,
+    "सी": true, "है": true, "ने": true
+};
+
+function isStopWord(word) {
+    if (!word) return true;
+    var norm = normalizeLyricToken(word);
+    if (!norm) return true;
+    return !!STOP_WORDS[norm];
+}
+
 /**
  * Lookup glyph by word:
  * Direct -> Stemmed -> Suffix-stripped
+ * Blocked immediately if token matches STOP_WORDS.
  */
 function lookupGlyph(rawWord) {
     if (!rawWord) return "";
     var norm = normalizeLyricToken(rawWord);
-    if (!norm) return "";
+    if (!norm || STOP_WORDS[norm]) return "";
 
     if (KEYWORD_MAP[norm]) return KEYWORD_MAP[norm];
 
     var stemmed = stemHinglish(norm);
+    if (STOP_WORDS[stemmed]) return "";
     if (KEYWORD_MAP[stemmed]) return KEYWORD_MAP[stemmed];
 
     var suffStripped = stripHinglishSuffix(stemmed);
+    if (STOP_WORDS[suffStripped]) return "";
     if (KEYWORD_MAP[suffStripped]) return KEYWORD_MAP[suffStripped];
 
     var directSuff = stripHinglishSuffix(norm);
+    if (STOP_WORDS[directSuff]) return "";
     if (KEYWORD_MAP[directSuff]) return KEYWORD_MAP[directSuff];
 
     return "";

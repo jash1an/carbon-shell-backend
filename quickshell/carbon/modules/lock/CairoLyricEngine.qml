@@ -266,6 +266,39 @@ Item {
         }
 
         root.allWords = wordsList.sort(function(a, b) { return a.startMs - b.startMs })
+
+        // 3rd-Beat Rhythm Fallback Pass:
+        // Only trigger fallback on words with length >= 4 that are NOT in the stop-word list!
+        var RHYTHM_FALLBACK_MOTIFS = [
+            "dhun_play", "jaan_sparkle", "bijli_bolt", "nasha_vortex", "sona_diamond"
+        ]
+        var rhythmBeatCount = 0
+
+        for (var b = 0; b < root.allWords.length; b++) {
+            var item = root.allWords[b]
+            if (item.glyph && item.glyph.length > 0) {
+                rhythmBeatCount = 0
+                continue
+            }
+
+            rhythmBeatCount++
+            if (rhythmBeatCount >= 3) {
+                var candidateWord = ""
+                if (item.rowWords && item.rowWords.length > 0) {
+                    candidateWord = item.rowWords[0].text
+                } else {
+                    candidateWord = (item.text || "").split(/\s+/)[0] || ""
+                }
+
+                var normWord = GlyphMap.normalizeLyricToken(candidateWord)
+                if (normWord.length >= 4 && !GlyphMap.isStopWord(normWord)) {
+                    var fallbackMotif = RHYTHM_FALLBACK_MOTIFS[b % RHYTHM_FALLBACK_MOTIFS.length]
+                    item.glyph = fallbackMotif
+                    rhythmBeatCount = 0
+                }
+            }
+        }
+
         root.updateSync()
     }
 

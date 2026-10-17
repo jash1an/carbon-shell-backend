@@ -223,23 +223,23 @@ Item {
 
         // Transitions: 340ms Easing.OutQuint across all barrel coordinates
         Behavior on stageY {
-            enabled: delegateRoot.enableAnim
+            enabled: delegateRoot.enableAnim && delegateRoot.stage >= 0
             NumberAnimation { duration: 340; easing.type: Easing.OutQuint }
         }
         Behavior on stageScaleX {
-            enabled: delegateRoot.enableAnim
+            enabled: delegateRoot.enableAnim && delegateRoot.stage >= 0
             NumberAnimation { duration: 340; easing.type: Easing.OutQuint }
         }
         Behavior on stageScaleY {
-            enabled: delegateRoot.enableAnim
+            enabled: delegateRoot.enableAnim && delegateRoot.stage >= 0
             NumberAnimation { duration: 340; easing.type: Easing.OutQuint }
         }
         Behavior on stageRotX {
-            enabled: delegateRoot.enableAnim
+            enabled: delegateRoot.enableAnim && delegateRoot.stage >= 0
             NumberAnimation { duration: 340; easing.type: Easing.OutQuint }
         }
         Behavior on stageOpacity {
-            enabled: delegateRoot.enableAnim
+            enabled: delegateRoot.enableAnim && delegateRoot.stage >= 0
             NumberAnimation { duration: 340; easing.type: Easing.OutQuint }
         }
 
@@ -268,18 +268,18 @@ Item {
         function setStage(newStage) {
             stage = newStage
             if (newStage === -1) {
-                // Stage -1 (Pre-Entry Spawn)
+                // Stage -1 (Pre-Entry Spawn: 0ms teleport without downward animation)
                 enableAnim = false
-                stageY = root.cy + 210
                 stageOpacity = 0.0
+                stageY = root.cy + 195
                 stageScaleX = 0.88
                 stageScaleY = 0.50
                 stageRotX = 8.0
                 z = 1
                 enableAnim = true
             } else if (newStage === 0) {
-                // Stage 0 (Bottom Active Spoken Row)
-                stageY = root.cy + 110
+                // Stage 0 (Bottom Active Spoken Row: glides up from +195 to +82)
+                stageY = root.cy + 82
                 stageOpacity = 1.0
                 stageScaleX = 1.0
                 stageScaleY = 1.0
@@ -303,7 +303,7 @@ Item {
                 z = 10
             } else if (newStage === 3) {
                 // Stage 3 (Exiting Top — Crushing Flat)
-                stageY = root.cy - 195
+                stageY = root.cy - 182
                 stageOpacity = 0.0
                 stageScaleX = 0.54
                 stageScaleY = 0.12
@@ -324,6 +324,7 @@ Item {
             spacing: 20
 
             // 18 Custom Cairo Angular SVG Vector Glyph with CurveRenderer
+            // Strictly visible only on Stage 0 (hidden on Stage 1 and Stage 2)
             CairoGlyph {
                 id: glyphItem
                 motif: delegateRoot.glyphMotif
@@ -331,7 +332,12 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 86
                 height: 86
-                visible: motif.length > 0
+                opacity: (delegateRoot.stage === 0 && motif.length > 0) ? 1.0 : 0.0
+                visible: opacity > 0.01 && motif.length > 0
+
+                Behavior on opacity {
+                    NumberAnimation { duration: 120; easing.type: Easing.OutQuad }
+                }
             }
 
             // Word Box: holds the single shared activeWordHighlight behind wordsRow
@@ -355,7 +361,7 @@ Item {
                         return null
                     }
 
-                    visible: delegateRoot.stage === 0 && activeSubWordItem !== null
+                    visible: opacity > 0.01
                     opacity: (delegateRoot.stage === 0 && activeSubWordItem !== null) ? 1.0 : 0.0
 
                     x: activeSubWordItem ? (wordsRow.x + activeSubWordItem.x - 18) : 0
@@ -365,7 +371,7 @@ Item {
 
                     Behavior on x { NumberAnimation { duration: 110; easing.type: Easing.OutQuart } }
                     Behavior on width { NumberAnimation { duration: 110; easing.type: Easing.OutQuart } }
-                    Behavior on opacity { NumberAnimation { duration: 90; easing.type: Easing.OutQuad } }
+                    Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutQuad } }
                 }
 
                 Row {
@@ -454,10 +460,16 @@ Item {
         return false
     }
 
+    function pushNewWord(beat) {
+        handleBeatTriggered(beat)
+    }
+
     function handleBeatTriggered(beat) {
         if (!beat) return
 
-        // 1. Upward glide through barrel
+        // 1. Synchronously increment stage += 1 on EVERY existing active delegate first
+        // before activating the new delegate at stage = 0.
+        // Assert that at most ONE delegate in the entire pool ever has stage === 0.
         for (var i = 0; i < delegates.length; i++) {
             var d = delegates[i]
             if (d.stage === 2) {
@@ -471,11 +483,18 @@ Item {
             }
         }
 
+        // Safety assertion: enforce zero delegates remaining at stage 0
+        for (var i = 0; i < delegates.length; i++) {
+            if (delegates[i].stage === 0) {
+                delegates[i].setStage(1)
+            }
+        }
+
         // 2. Pick next delegate from pool
         var nextD = delegates[poolPointer]
         poolPointer = (poolPointer + 1) % delegates.length
 
-        // 3. Set content and spawn at Stage -1
+        // 3. Set content and reset to spawn at Stage -1 (0ms teleport without downward fly)
         nextD.chunkText = beat.text
         nextD.glyphMotif = beat.glyph || ""
         nextD.currentDuration = beat.duration || 1.0
@@ -486,8 +505,14 @@ Item {
         nextD.rowWords = beat.rowWords || [{ text: beat.text, startMs: nextD.chunkStartMs, endMs: nextD.vocalEndMs }]
         nextD.setStage(-1)
 
-        // 4. Animate immediately into Stage 0
+        // 4. On next frame, glide smoothly upward into Stage 0 with Behavior enabled
         Qt.callLater(function() {
+            // Strictly enforce single-stage-0 invariant across all other delegates
+            for (var j = 0; j < delegates.length; j++) {
+                if (delegates[j] !== nextD && delegates[j].stage === 0) {
+                    delegates[j].setStage(1)
+                }
+            }
             nextD.setStage(0)
         })
     }
