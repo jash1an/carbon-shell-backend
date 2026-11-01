@@ -15,7 +15,7 @@ import "qml/workspace"
 
 PanelWindow {
     id: root
-    visible: shellRootController ? (shellRootController.barMode === "minimal" || shellRootController.barMode === "minimal_notch") : false
+    visible: (shellRootController ? (shellRootController.barMode === "minimal" || shellRootController.barMode === "minimal_notch") : false) && !GlobalState.isFocusActive
     property var shellRootController: null
     property string overviewPhase: "closed"
     property bool overviewPreloading: false

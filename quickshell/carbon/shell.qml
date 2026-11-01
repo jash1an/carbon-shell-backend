@@ -3195,7 +3195,7 @@ ShellRoot {
 
             implicitHeight: 370
             WlrLayershell.keyboardFocus: root.centerDashboardOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
-            visible: root.barMode === "notch"
+            visible: (root.barMode === "notch") && !GlobalState.isFocusActive
 
             Item {
                 id: notchKeyHandler
@@ -3826,7 +3826,7 @@ ShellRoot {
             }
             implicitHeight: (separateNotchCenter.dragActive || separateNotchCenter.isUploading) ? Math.round(48 * root.shellScale) : 34
             implicitWidth: separateNotchCenter.implicitWidth
-            visible: root.barMode === "notch" && (root.musicBarEdge !== root.mainBarEdge || root.mainBarEdge === "left" || root.mainBarEdge === "right")
+            visible: root.barMode === "notch" && (root.musicBarEdge !== root.mainBarEdge || root.mainBarEdge === "left" || root.mainBarEdge === "right") && !GlobalState.isFocusActive
 
             NotchBarCenter {
                 id: separateNotchCenter
@@ -4999,11 +4999,12 @@ ShellRoot {
 
             implicitWidth: 48
             implicitHeight: 48
-            visible: true
+            visible: !GlobalState.isFocusActive
 
             MouseArea {
                 anchors.fill: parent
                 hoverEnabled: true
+                enabled: !GlobalState.isFocusActive
                 cursorShape: Qt.PointingHandCursor
                 onEntered: {
                     root.openControls()

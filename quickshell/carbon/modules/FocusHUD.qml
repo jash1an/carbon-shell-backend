@@ -58,6 +58,8 @@ PanelWindow {
     }
 
     onVisibleChanged: {
+        GlobalState.isFocusActive = visible; // Broadcast to the rest of the shell
+
         if (visible) {
             let cmd = [
                 "sh", "-c",
