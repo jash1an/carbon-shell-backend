@@ -11,3 +11,4 @@ path = "src/main.rs"
 sysinfo = "0.29"
 cpal = "0.15"
 tokio = { version = "1", features = ["full"] }
+libc = "0.2"

@@ -3,6 +3,7 @@ const DEBUG_THRESHOLD: f32 = 0.25; // Print noise louder than ambient room noise
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::env;
+use std::io::IsTerminal;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{Arc, Mutex};
@@ -86,26 +87,54 @@ impl ClapDetector {
     }
 }
 
+fn get_best_input_device(
+    host: &cpal::Host,
+) -> Result<(cpal::Device, cpal::SupportedStreamConfig), String> {
+    // 1. Prefer "pipewire" device on modern Linux to prevent ALSA dsnoop resource conflicts
+    if let Ok(devices) = host.input_devices() {
+        for device in devices {
+            if let Ok(name) = device.name() {
+                if name.to_lowercase().contains("pipewire") {
+                    if let Ok(cfg) = device.default_input_config() {
+                        return Ok((device, cfg));
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Try default input device
+    if let Some(device) = host.default_input_device() {
+        if let Ok(cfg) = device.default_input_config() {
+            return Ok((device, cfg));
+        }
+    }
+
+    // 3. Fallback: Search all available input devices for any valid working configuration
+    if let Ok(devices) = host.input_devices() {
+        for device in devices {
+            if let Ok(cfg) = device.default_input_config() {
+                return Ok((device, cfg));
+            }
+        }
+    }
+
+    Err("No compatible audio input device found by cpal.".to_string())
+}
+
 fn start_audio_capture(
     running: Arc<AtomicBool>,
     detector: Arc<Mutex<ClapDetector>>,
     debug_tx: SyncSender<f32>,
 ) -> Result<cpal::Stream, String> {
     let host = cpal::default_host();
-    let device = host
-        .default_input_device()
-        .expect("FATAL: No default input device found by cpal.");
+    let (device, config) = get_best_input_device(&host)?;
     println!(
         "SUCCESS: Listening to microphone: {}",
         device.name().unwrap_or_else(|_| "Unknown".to_string())
     );
 
-    let config = device
-        .default_input_config()
-        .map_err(|e| format!("Failed to get default input config: {e}"))?;
-
     let err_fn = |err| {
-        // Log stream errors/xruns without terminating the entire application
         eprintln!("Audio stream warning: {err}");
     };
 
@@ -207,6 +236,12 @@ fn start_audio_capture(
 
 #[tokio::main]
 async fn main() {
+    // Prevent background shells (bash, fish, zsh) from suspending this process via SIGTTIN/SIGTTOU
+    unsafe {
+        libc::signal(libc::SIGTTIN, libc::SIG_IGN);
+        libc::signal(libc::SIGTTOU, libc::SIG_IGN);
+    }
+
     let args: Vec<String> = env::args().collect();
 
     // Check for direct trigger flag
@@ -244,41 +279,46 @@ async fn main() {
         }
     };
 
-    // Stdin command loop
-    let stdin = tokio::io::stdin();
-    let mut reader = BufReader::new(stdin).lines();
+    // Stdin command loop if connected to an interactive TTY; otherwise, run daemon loop
+    if std::io::stdin().is_terminal() {
+        let stdin = tokio::io::stdin();
+        let mut reader = BufReader::new(stdin).lines();
 
-    while let Ok(Some(line)) = reader.next_line().await {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
+        while let Ok(Some(line)) = reader.next_line().await {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
 
-        match trimmed {
-            "clap" | "double-clap" | "trigger" => {
-                println!("[carbon-acoustic] Received trigger command.");
-                handle_double_clap();
-            }
-            "status" => {
-                let mut sys = System::new_all();
-                sys.refresh_processes();
-                let hyprlock_active = sys
-                    .processes()
-                    .values()
-                    .any(|p| p.name().to_lowercase().contains("hyprlock"));
-                println!(
-                    "[carbon-acoustic] Status: running, hyprlock_active={}, CLAP_THRESHOLD={}, DEBUG_THRESHOLD={}",
-                    hyprlock_active, CLAP_THRESHOLD, DEBUG_THRESHOLD
-                );
-            }
-            "quit" | "exit" => {
-                println!("[carbon-acoustic] Exiting.");
-                break;
-            }
-            _ => {
-                println!("[carbon-acoustic] Unknown command: {}", trimmed);
+            match trimmed {
+                "clap" | "double-clap" | "trigger" => {
+                    println!("[carbon-acoustic] Received trigger command.");
+                    handle_double_clap();
+                }
+                "status" => {
+                    let mut sys = System::new_all();
+                    sys.refresh_processes();
+                    let hyprlock_active = sys
+                        .processes()
+                        .values()
+                        .any(|p| p.name().to_lowercase().contains("hyprlock"));
+                    println!(
+                        "[carbon-acoustic] Status: running, hyprlock_active={}, CLAP_THRESHOLD={}, DEBUG_THRESHOLD={}",
+                        hyprlock_active, CLAP_THRESHOLD, DEBUG_THRESHOLD
+                    );
+                }
+                "quit" | "exit" => {
+                    println!("[carbon-acoustic] Exiting.");
+                    break;
+                }
+                _ => {
+                    println!("[carbon-acoustic] Unknown command: {}", trimmed);
+                }
             }
         }
+    } else {
+        // Daemon / background mode: await termination signal without blocking on stdin
+        let _ = tokio::signal::ctrl_c().await;
     }
 
     running.store(false, Ordering::Relaxed);
