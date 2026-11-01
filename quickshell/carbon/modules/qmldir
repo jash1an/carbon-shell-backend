@@ -61,3 +61,4 @@ AudioTab AudioTab.qml
 NetworkTab NetworkTab.qml
 ModesTab ModesTab.qml
 FocusHUD FocusHUD.qml
+FocusHUDBackground FocusHUDBackground.qml

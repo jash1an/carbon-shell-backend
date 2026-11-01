@@ -131,7 +131,6 @@ ShellRoot {
         if (keep !== "notif") { root.notifOpen = false; root.notifPinned = false }
         if (keep !== "centerDashboard") { root.centerDashboardOpen = false; root.centerDashboardPinned = false }
         if (keep !== "controls") { root.controlsVisible = false; root.controlsPinned = false }
-        if (keep !== "focus") { root.focusHudOpen = false }
     }
 
     property bool smallMusicOpen: false
@@ -2346,9 +2345,16 @@ ShellRoot {
         function open() {
             root.openFocusHud();
         }
-
         function close() {
             root.closeFocusHud();
+        }
+
+        function reveal() {
+            if (root.focusHudItem) root.focusHudItem.isRevealed = true;
+        }
+
+        function conceal() {
+            if (root.focusHudItem) root.focusHudItem.isRevealed = false;
         }
     }
 
@@ -4022,7 +4028,19 @@ ShellRoot {
         }
     }
 
-    /* Focus HUD (Hyper-Tunnel) Window */
+    /* Focus HUD Background (Blueprint & Dimming) */
+    Variants {
+        model: Quickshell.screens
+
+        FocusHUDBackground {
+            required property var modelData
+            modelData: modelData
+            screen: modelData
+            visible: root.focusHudOpen
+        }
+    }
+
+    /* Focus HUD (Hyper-Tunnel) Side Bar */
     Variants {
         model: Quickshell.screens
 

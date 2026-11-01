@@ -8,23 +8,43 @@ import "../Singletons"
 
 /**
  * FocusHUD:
- * High-performance Hyper-Tunnel Focus HUD for Carbon Shell.
- * True Wayland Bottom Layer blackout with tiled Blueprint Grid,
- * OS-level dimming & freezing, zero audio ghosts, and strict monochrome styling.
+ * High-performance Hyper-Tunnel Focus HUD Side Bar for Carbon Shell.
+ * Hover-only sliding drawer on Wayland Layer Top (sits ABOVE windows).
+ * Slides in when mouse hits the leftmost border of the screen,
+ * automatically retracts on mouse leave, strict shortcut-only toggle,
+ * and dynamically matches the active system font.
  */
 PanelWindow {
     id: focusHud
 
-    WlrLayershell.namespace: "carbon-focus-hud"
-    WlrLayershell.layer: WlrLayer.Bottom // Sits ABOVE wallpaper, BELOW normal windows
-    exclusiveZone: 0 
-    anchors { top: true; bottom: true; left: true; right: true }
-    color: "#050608" // Deep obsidian base
+    WlrLayershell.namespace: "carbon-focus-bar"
+    WlrLayershell.layer: WlrLayer.Top
+    aboveWindows: true
+    exclusionMode: ExclusionMode.Ignore
+    color: "transparent"
 
     property var modelData: null
     screen: modelData
     property bool open: visible
     signal closeRequested()
+
+    anchors {
+        left: true
+        top: true
+        bottom: true
+    }
+
+    implicitWidth: 340
+
+    property bool isRevealed: false
+
+    // Input mask: only receptive to mouse on the left edge trigger when closed,
+    // and full 340px sidebar when revealed.
+    mask: Region {
+        item: focusHud.isRevealed ? hudPanel : leftEdgeTrigger
+    }
+
+    WlrLayershell.keyboardFocus: (visible && focusHud.isRevealed) ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
     // ── Focus Engine State ──
     property string focusState: "idle"     // "idle" | "focus" | "break"
@@ -42,8 +62,6 @@ PanelWindow {
         return mm + ":" + ss
     }
 
-    WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
-
     // ── Static Audio Process (Prevents process stacking / audio ghosts) ──
     Process {
         id: audioProcess
@@ -59,6 +77,7 @@ PanelWindow {
 
     onVisibleChanged: {
         GlobalState.isFocusActive = visible; // Broadcast to the rest of the shell
+        focusHud.isRevealed = false;         // Always start tucked away
 
         if (visible) {
             let cmd = [
@@ -148,28 +167,68 @@ PanelWindow {
         }
     }
 
-    // ── The Seamless Blueprint Grid ──
-    Image {
-        anchors.fill: parent
-        source: "/home/shogun/.config/carbon/assets/blueprint-grid.svg"
-        fillMode: Image.Tile // Tiles the 20x20 dot image across the whole screen
-        opacity: 0.15 
-        horizontalAlignment: Image.AlignLeft
-        verticalAlignment: Image.AlignTop
+    // ── Leftmost Screen Edge Trigger Zone ──
+    Item {
+        id: leftEdgeTrigger
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: 14
+
+        HoverHandler {
+            id: edgeHover
+            onHoveredChanged: {
+                if (edgeHover.hovered) {
+                    leaveTimer.stop()
+                    focusHud.isRevealed = true
+                }
+            }
+        }
+    }
+
+    // ── Debounced Retraction Timer ──
+    Timer {
+        id: leaveTimer
+        interval: 350
+        repeat: false
+        onTriggered: {
+            if (!panelHover.hovered && !edgeHover.hovered && !focusInput.activeFocus && !breakInput.activeFocus) {
+                focusHud.isRevealed = false
+            }
+        }
     }
 
     // ── Strict Monochrome Side Panel ──
     Rectangle {
         id: hudPanel
         width: 340
-        anchors.left: parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        color: Qt.rgba(10/255, 11/255, 14/255, 0.8) 
+        x: focusHud.isRevealed ? 0 : -width
+
+        Behavior on x {
+            NumberAnimation {
+                duration: 250
+                easing.type: Easing.OutCubic
+            }
+        }
+
+        color: Qt.rgba(10/255, 11/255, 14/255, 0.90) 
         border.color: Qt.rgba(255/255, 255/255, 255/255, 0.15) 
         border.width: 1
 
-        // Header: Title & Close Button
+        HoverHandler {
+            id: panelHover
+            onHoveredChanged: {
+                if (!panelHover.hovered && !edgeHover.hovered && !focusInput.activeFocus && !breakInput.activeFocus) {
+                    leaveTimer.restart()
+                } else {
+                    leaveTimer.stop()
+                }
+            }
+        }
+
+        // Header: Title (Close button removed, toggled exclusively via bound shortcut)
         RowLayout {
             anchors.left: parent.left
             anchors.right: parent.right
@@ -181,38 +240,13 @@ PanelWindow {
             Text {
                 text: "HYPER-TUNNEL"
                 color: "#ffffff"
-                font.family: "monospace"
+                font.family: Theme.fontFamily
                 font.pixelSize: 13
                 font.bold: true
                 font.letterSpacing: 1.5
             }
 
             Item { Layout.fillWidth: true }
-
-            Rectangle {
-                width: 28
-                height: 28
-                radius: 14
-                color: closeHover.hovered ? Qt.rgba(255/255, 255/255, 255/255, 0.20) : Qt.rgba(255/255, 255/255, 255/255, 0.08)
-                border.width: 1
-                border.color: Qt.rgba(255/255, 255/255, 255/255, 0.25)
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "✕"
-                    color: "#ffffff"
-                    font.pixelSize: 11
-                    font.family: "monospace"
-                }
-
-                HoverHandler { id: closeHover }
-                TapHandler {
-                    onTapped: {
-                        if (audioProcess.running) audioProcess.running = false
-                        focusHud.closeRequested()
-                    }
-                }
-            }
         }
 
         // Main Timer Text
@@ -224,8 +258,8 @@ PanelWindow {
             text: focusHud.formattedTime
             font.pixelSize: 64
             font.weight: Font.Bold
-            font.family: "monospace"
-            color: "#ffffff" // Strict monochrome white
+            font.family: Theme.fontFamily
+            color: "#ffffff"
         }
 
         Text {
@@ -240,7 +274,7 @@ PanelWindow {
             font.pixelSize: 9
             font.bold: true
             font.letterSpacing: 1.0
-            font.family: "monospace"
+            font.family: Theme.fontFamily
         }
 
         // Control Buttons Row (Start Focus, Break, Reset)
@@ -267,7 +301,7 @@ PanelWindow {
                     anchors.centerIn: parent
                     text: focusHud.focusState === "focus" ? "FOCUSING" : "START FOCUS"
                     color: focusHud.focusState === "focus" ? "#000000" : "#ffffff"
-                    font.family: "monospace"
+                    font.family: Theme.fontFamily
                     font.pixelSize: 11
                     font.bold: true
                     font.letterSpacing: 0.8
@@ -298,7 +332,7 @@ PanelWindow {
                     anchors.centerIn: parent
                     text: focusHud.focusState === "break" ? "ON BREAK" : "BREAK"
                     color: focusHud.focusState === "break" ? "#000000" : "#ffffff"
-                    font.family: "monospace"
+                    font.family: Theme.fontFamily
                     font.pixelSize: 11
                     font.bold: true
                     font.letterSpacing: 0.8
@@ -323,7 +357,7 @@ PanelWindow {
                     anchors.centerIn: parent
                     text: "RESET"
                     color: "#aaaaaa"
-                    font.family: "monospace"
+                    font.family: Theme.fontFamily
                     font.pixelSize: 10
                     font.bold: true
                 }
@@ -347,7 +381,7 @@ PanelWindow {
             font.pixelSize: 9
             font.bold: true
             font.letterSpacing: 1.2
-            font.family: "monospace"
+            font.family: Theme.fontFamily
         }
 
         ListModel {
@@ -396,7 +430,7 @@ PanelWindow {
                         color: model.completed ? "#555555" : "#ffffff"
                         font.pixelSize: 13
                         font.strikeout: model.completed
-                        font.family: "monospace" 
+                        font.family: Theme.fontFamily 
                         anchors.verticalCenter: parent.verticalCenter
                     }
                 }
@@ -415,7 +449,7 @@ PanelWindow {
             font.pixelSize: 9
             font.bold: true
             font.letterSpacing: 1.2
-            font.family: "monospace"
+            font.family: Theme.fontFamily
         }
 
         RowLayout {
@@ -445,7 +479,7 @@ PanelWindow {
                     Text {
                         text: "󰖗"
                         color: parent.parent.isSelected ? "#000000" : "#ffffff"
-                        font.family: "monospace"
+                        font.family: Theme.fontMono
                         font.pixelSize: 14
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -453,7 +487,7 @@ PanelWindow {
                     Text {
                         text: "Rain"
                         color: parent.parent.isSelected ? "#000000" : "#ffffff"
-                        font.family: "monospace"
+                        font.family: Theme.fontFamily
                         font.pixelSize: 12
                         font.bold: true
                         anchors.verticalCenter: parent.verticalCenter
@@ -485,7 +519,7 @@ PanelWindow {
                     Text {
                         text: "󰝚"
                         color: parent.parent.isSelected ? "#000000" : "#ffffff"
-                        font.family: "monospace"
+                        font.family: Theme.fontMono
                         font.pixelSize: 14
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -493,7 +527,7 @@ PanelWindow {
                     Text {
                         text: "Brown Noise"
                         color: parent.parent.isSelected ? "#000000" : "#ffffff"
-                        font.family: "monospace"
+                        font.family: Theme.fontFamily
                         font.pixelSize: 12
                         font.bold: true
                         anchors.verticalCenter: parent.verticalCenter
@@ -526,7 +560,7 @@ PanelWindow {
             font.pixelSize: 9
             font.bold: true
             font.letterSpacing: 1.2
-            font.family: "monospace"
+            font.family: Theme.fontFamily
         }
 
         RowLayout {
@@ -555,7 +589,7 @@ PanelWindow {
                     Text {
                         text: "FOCUS"
                         color: "#888888"
-                        font.family: "monospace"
+                        font.family: Theme.fontFamily
                         font.pixelSize: 8
                         font.bold: true
                     }
@@ -565,7 +599,7 @@ PanelWindow {
                         Layout.fillWidth: true
                         text: focusHud.focusTargetMin.toString()
                         color: "#ffffff"
-                        font.family: "monospace"
+                        font.family: Theme.fontFamily
                         font.pixelSize: 15
                         font.bold: true
                         selectByMouse: true
@@ -593,7 +627,7 @@ PanelWindow {
                     Text {
                         text: "BREAK"
                         color: "#888888"
-                        font.family: "monospace"
+                        font.family: Theme.fontFamily
                         font.pixelSize: 8
                         font.bold: true
                     }
@@ -603,7 +637,7 @@ PanelWindow {
                         Layout.fillWidth: true
                         text: focusHud.breakTargetMin.toString()
                         color: "#ffffff"
-                        font.family: "monospace"
+                        font.family: Theme.fontFamily
                         font.pixelSize: 15
                         font.bold: true
                         selectByMouse: true
