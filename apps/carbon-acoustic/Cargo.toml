@@ -1,0 +1,13 @@
+[package]
+name = "carbon-acoustic-engine"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "carbon-acoustic-engine"
+path = "src/main.rs"
+
+[dependencies]
+sysinfo = "0.29"
+cpal = "0.15"
+tokio = { version = "1", features = ["full"] }
