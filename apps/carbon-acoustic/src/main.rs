@@ -1,3 +1,6 @@
+const CLAP_THRESHOLD: f32 = 0.8; // User will lower this based on debug output
+const DEBUG_THRESHOLD: f32 = 0.1; // Print any sound louder than this
+
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -33,7 +36,7 @@ pub fn handle_double_clap() {
         println!("Double-clap detected. Waking system and dismissing Cairo.");
         std::process::Command::new("sh")
             .arg("-c")
-            .arg("hyprctl dispatch dpms on && (sh $HOME/.config/hypr/scripts/carbon-ipc.sh unlock 2>/dev/null || killall cairo-idle 2>/dev/null || true)")
+            .arg("hyprctl dispatch dpms on && (sh $HOME/.config/hypr/scripts/carbon-ipc.sh unlock || killall cairo-idle 2>/dev/null)")
             .spawn()
             .ok();
     }
@@ -42,44 +45,35 @@ pub fn handle_double_clap() {
 struct ClapDetector {
     last_clap: Option<Instant>,
     cooldown_until: Instant,
-    threshold: f32,
 }
 
 impl ClapDetector {
-    fn new(threshold: f32) -> Self {
+    fn new() -> Self {
         Self {
             last_clap: None,
             cooldown_until: Instant::now(),
-            threshold,
         }
     }
 
-    fn process_sample(&mut self, sample: f32) -> bool {
+    fn record_clap(&mut self) -> bool {
         let now = Instant::now();
         if now < self.cooldown_until {
             return false;
         }
 
-        let abs_sample = sample.abs();
-        if abs_sample >= self.threshold {
-            if let Some(first_clap) = self.last_clap {
-                let elapsed = now.duration_since(first_clap);
-                if elapsed >= Duration::from_millis(150) && elapsed <= Duration::from_millis(750) {
-                    // Double clap detected!
-                    self.last_clap = None;
-                    self.cooldown_until = now + Duration::from_millis(1000);
-                    return true;
-                } else if elapsed > Duration::from_millis(750) {
-                    // Reset to this new clap as first clap
-                    self.last_clap = Some(now);
-                }
-            } else {
+        if let Some(first_clap) = self.last_clap {
+            let elapsed = now.duration_since(first_clap);
+            if elapsed >= Duration::from_millis(150) && elapsed <= Duration::from_millis(750) {
+                // Double clap detected!
+                self.last_clap = None;
+                self.cooldown_until = now + Duration::from_millis(1000);
+                return true;
+            } else if elapsed > Duration::from_millis(750) {
+                // Reset to this new clap as first clap
                 self.last_clap = Some(now);
             }
-        } else if let Some(first_clap) = self.last_clap {
-            if now.duration_since(first_clap) > Duration::from_millis(750) {
-                self.last_clap = None;
-            }
+        } else {
+            self.last_clap = Some(now);
         }
         false
     }
@@ -92,7 +86,11 @@ fn start_audio_capture(
     let host = cpal::default_host();
     let device = host
         .default_input_device()
-        .ok_or_else(|| "No audio input device found".to_string())?;
+        .expect("FATAL: No default input device found by cpal.");
+    println!(
+        "SUCCESS: Listening to microphone: {}",
+        device.name().unwrap_or_else(|_| "Unknown".to_string())
+    );
 
     let config = device
         .default_input_config()
@@ -111,12 +109,15 @@ fn start_audio_capture(
                     if !running_clone.load(Ordering::Relaxed) {
                         return;
                     }
-                    for &sample in data {
+                    let peak = data.iter().map(|&s| s.abs()).fold(0.0f32, f32::max);
+                    if peak > DEBUG_THRESHOLD {
+                        println!("Noise detected! Peak amplitude: {:.4}", peak);
+                    }
+                    if peak > CLAP_THRESHOLD {
                         let mut det = detector_clone.lock().unwrap();
-                        if det.process_sample(sample) {
+                        if det.record_clap() {
                             drop(det);
                             handle_double_clap();
-                            break;
                         }
                     }
                 },
@@ -131,13 +132,18 @@ fn start_audio_capture(
                     if !running_clone.load(Ordering::Relaxed) {
                         return;
                     }
-                    for &sample in data {
-                        let normalized = sample as f32 / i16::MAX as f32;
+                    let peak = data
+                        .iter()
+                        .map(|&s| (s as f32 / i16::MAX as f32).abs())
+                        .fold(0.0f32, f32::max);
+                    if peak > DEBUG_THRESHOLD {
+                        println!("Noise detected! Peak amplitude: {:.4}", peak);
+                    }
+                    if peak > CLAP_THRESHOLD {
                         let mut det = detector_clone.lock().unwrap();
-                        if det.process_sample(normalized) {
+                        if det.record_clap() {
                             drop(det);
                             handle_double_clap();
-                            break;
                         }
                     }
                 },
@@ -152,13 +158,20 @@ fn start_audio_capture(
                     if !running_clone.load(Ordering::Relaxed) {
                         return;
                     }
-                    for &sample in data {
-                        let normalized = (sample as f32 - u16::MAX as f32 / 2.0) / (u16::MAX as f32 / 2.0);
+                    let peak = data
+                        .iter()
+                        .map(|&s| {
+                            ((s as f32 - u16::MAX as f32 / 2.0) / (u16::MAX as f32 / 2.0)).abs()
+                        })
+                        .fold(0.0f32, f32::max);
+                    if peak > DEBUG_THRESHOLD {
+                        println!("Noise detected! Peak amplitude: {:.4}", peak);
+                    }
+                    if peak > CLAP_THRESHOLD {
                         let mut det = detector_clone.lock().unwrap();
-                        if det.process_sample(normalized) {
+                        if det.record_clap() {
                             drop(det);
                             handle_double_clap();
-                            break;
                         }
                     }
                 },
@@ -189,7 +202,7 @@ async fn main() {
     println!("[carbon-acoustic] Starting Carbon Acoustic Engine...");
 
     let running = Arc::new(AtomicBool::new(true));
-    let detector = Arc::new(Mutex::new(ClapDetector::new(0.45)));
+    let detector = Arc::new(Mutex::new(ClapDetector::new()));
 
     let _stream = match start_audio_capture(Arc::clone(&running), Arc::clone(&detector)) {
         Ok(s) => {
@@ -225,8 +238,8 @@ async fn main() {
                     .values()
                     .any(|p| p.name().to_lowercase().contains("hyprlock"));
                 println!(
-                    "[carbon-acoustic] Status: running, hyprlock_active={}",
-                    hyprlock_active
+                    "[carbon-acoustic] Status: running, hyprlock_active={}, CLAP_THRESHOLD={}, DEBUG_THRESHOLD={}",
+                    hyprlock_active, CLAP_THRESHOLD, DEBUG_THRESHOLD
                 );
             }
             "quit" | "exit" => {
