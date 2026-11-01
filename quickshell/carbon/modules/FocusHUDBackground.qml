@@ -19,12 +19,16 @@ PanelWindow {
     property var modelData: null
     screen: modelData
 
+    readonly property string homeDir: Quickshell.env("HOME") || ""
+    readonly property string configDir: Quickshell.env("CARBON_CONFIG_DIR") || (homeDir + "/.config/carbon")
+    readonly property string gridSource: configDir + "/assets/blueprint-grid.svg"
+
     // Pass all mouse events through to wallpaper or windows
     mask: Region {}
 
     Image {
         anchors.fill: parent
-        source: "/home/shogun/.config/carbon/assets/blueprint-grid.svg"
+        source: focusHudBg.gridSource
         fillMode: Image.Tile
         opacity: 0.15 
         horizontalAlignment: Image.AlignLeft

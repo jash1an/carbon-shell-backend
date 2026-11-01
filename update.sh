@@ -206,6 +206,13 @@ cp -rf "$REPO_DIR/quickshell/carbon/"* "$QUICKSHELL_DIR/"
 chmod +x "$QUICKSHELL_DIR/scripts/"* 2>/dev/null || true
 ok "Quickshell updated"
 
+# Synchronize shell assets
+if [[ -d "$REPO_DIR/assets" ]]; then
+    mkdir -p "$CONFIG_DIR/assets"
+    cp -rf "$REPO_DIR/assets/"* "$CONFIG_DIR/assets/" 2>/dev/null || true
+    ok "Assets updated"
+fi
+
 # Synchronize runtime scripts & configs
 msg "Updating configurations..."
 mkdir -p "$CONFIG_DIR/scripts" "$CONFIG_DIR/configs"

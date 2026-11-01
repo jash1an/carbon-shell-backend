@@ -282,6 +282,13 @@ cp -rf "$REPO_DIR/quickshell/carbon/"* "$QUICKSHELL_DIR/"
 chmod +x "$QUICKSHELL_DIR/scripts/"* 2>/dev/null || true
 ok "Quickshell components deployed"
 
+# Deploy shell assets
+if [[ -d "$REPO_DIR/assets" ]]; then
+    mkdir -p "$CONFIG_DIR/assets"
+    cp -rf "$REPO_DIR/assets/"* "$CONFIG_DIR/assets/" 2>/dev/null || true
+    ok "Shell assets deployed"
+fi
+
 # Install fonts
 if [[ -d "$REPO_DIR/fonts" ]]; then
     USER_FONT_DIR="$HOME/.local/share/fonts"

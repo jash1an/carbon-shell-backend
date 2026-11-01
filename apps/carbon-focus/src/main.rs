@@ -200,10 +200,11 @@ impl Engine {
 
     fn play_noise(&mut self, kind: &str) {
         self.stop_noise();
-        let rain_mp3 = "/home/shogun/.config/carbon/assets/rain.mp3";
-        let child = if kind == "rain" && std::path::Path::new(rain_mp3).exists() {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let rain_mp3 = format!("{}/.config/carbon/assets/rain.mp3", home);
+        let child = if kind == "rain" && std::path::Path::new(&rain_mp3).exists() {
             Command::new("mpv")
-                .args(["--loop=inf", "--no-video", rain_mp3])
+                .args(["--loop=inf", "--no-video", &rain_mp3])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn()

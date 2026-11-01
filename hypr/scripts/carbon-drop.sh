@@ -11,6 +11,6 @@ if pgrep -x "carbon-drop" > /dev/null; then
         hyprctl dispatch focuswindow "title:Carbon Drop"
     fi
 else
-    nohup /home/shogun/.local/bin/carbon-drop >/dev/null 2>&1 &
+    nohup "${HOME}/.local/bin/carbon-drop" >/dev/null 2>&1 &
 fi
 

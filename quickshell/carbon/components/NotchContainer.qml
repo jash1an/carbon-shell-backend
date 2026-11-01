@@ -305,7 +305,7 @@ Item {
                 : "Buzzheavier";
 
             let engineCmd = [
-                root.dropEngineBin || "/home/shogun/.local/bin/carbon-drop-engine",
+                root.dropEngineBin || (home ? (home + "/.local/bin/carbon-drop-engine") : "carbon-drop-engine"),
                 selectedHost,
                 cleanPath
             ];

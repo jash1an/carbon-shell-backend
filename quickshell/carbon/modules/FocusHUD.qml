@@ -61,11 +61,14 @@ PanelWindow {
         var ss = secs < 10 ? "0" + secs : secs
         return mm + ":" + ss
     }
+    readonly property string homeDir: Quickshell.env("HOME") || ""
+    readonly property string configDir: Quickshell.env("CARBON_CONFIG_DIR") || (homeDir + "/.config/carbon")
+    readonly property string rainAudioPath: configDir + "/assets/rain.mp3"
 
     // ── Static Audio Process (Prevents process stacking / audio ghosts) ──
     Process {
         id: audioProcess
-        command: ["mpv", "--loop=inf", "--no-video", "/home/shogun/.config/carbon/assets/rain.mp3"]
+        command: ["mpv", "--loop=inf", "--no-video", focusHud.rainAudioPath]
         running: false
     }
 
