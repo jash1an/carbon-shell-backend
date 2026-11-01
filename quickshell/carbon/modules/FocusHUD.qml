@@ -113,7 +113,14 @@ Item {
         sendCmd("start_break")
     }
 
+    Process {
+        id: rainProcess
+        command: ["mpv", "--loop=inf", "--no-video", "/home/shogun/.config/carbon/assets/rain.mp3"]
+        running: false
+    }
+
     function stopSession() {
+        if (rainProcess.running) rainProcess.running = false
         sendCmd("stop")
     }
 
@@ -132,6 +139,23 @@ Item {
     }
 
     function toggleNoise(type) {
+        if (type === "rain") {
+            if (rainProcess.running) {
+                rainProcess.running = false
+                root.noiseActive = false
+                root.noiseType = "none"
+                sendCmd("noise_stop")
+            } else {
+                sendCmd("noise_stop")
+                rainProcess.running = true
+                root.noiseActive = true
+                root.noiseType = "rain"
+            }
+            return
+        }
+        if (rainProcess.running) {
+            rainProcess.running = false
+        }
         if (root.noiseActive && root.noiseType === type) {
             sendCmd("noise_stop")
         } else {
@@ -505,7 +529,7 @@ Item {
                             Layout.fillWidth: true
                             Layout.preferredHeight: Theme.px(36)
                             radius: Theme.tokens.rounding.medium
-                            readonly property bool isSelected: root.noiseActive && root.noiseType === "rain"
+                            readonly property bool isSelected: rainProcess.running || (root.noiseActive && root.noiseType === "rain")
                             color: isSelected ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : (rainHover.hovered ? Theme.bgHover : Theme.bg)
                             border.width: Theme.px(1)
                             border.color: isSelected ? Theme.primary : Theme.outline

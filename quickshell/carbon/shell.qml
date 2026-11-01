@@ -4041,17 +4041,8 @@ ShellRoot {
             aboveWindows: true
             visible: root.focusHudOpen
 
-            MouseArea {
-                anchors.fill: parent
-                onClicked: (mouse) => {
-                    var fx = focusHudInst.x
-                    var fy = focusHudInst.y
-                    var fw = focusHudInst.width
-                    var fh = focusHudInst.height
-                    if (mouse.x < fx || mouse.x > fx + fw || mouse.y < fy || mouse.y > fy + fh) {
-                        root.closeFocusHud()
-                    }
-                }
+            mask: Region {
+                item: focusHudInst
             }
 
             FocusHUD {

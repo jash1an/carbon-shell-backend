@@ -89,8 +89,8 @@ Item {
         anchors.fill: parent
         radius: height / 2
         color: Theme.bg
-        border.color: Theme.outline
-        border.width: 1
+        border.color: "transparent"
+        border.width: 0
         visible: root.showBackground
     }
 

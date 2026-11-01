@@ -47,11 +47,14 @@ Item {
         }
     }
 
+    property var uploadHosts: ["Buzzheavier", "x0.at", "kappa.lol"]
+    property int currentHostIndex: 0
+
     property bool attachedBottom: false
     property bool hasAttachedPopup: false
     property real notchOpacity: 0.96
 
-    readonly property color defaultBorderColor: Qt.rgba(1, 1, 1, 0.15)
+    readonly property color defaultBorderColor: "transparent"
     property color borderColor: defaultBorderColor
     property bool dragActive: false
     property bool isUploading: false
@@ -92,8 +95,8 @@ Item {
             height: parent.height + root.bottomRadius
             radius: root.bottomRadius
             color: root.notchBgColor
-            border.width: (root.dragActive || root.isUploading) ? 2 : 1
-            border.color: root.isUploading ? "#f5b86e" : (root.dragActive ? "#8ee8a8" : root.borderColor)
+            border.width: (root.dragActive || root.isUploading) ? 2 : 0
+            border.color: (root.dragActive || root.isUploading) ? (root.isUploading ? "#f5b86e" : "#8ee8a8") : "transparent"
 
             Behavior on border.width {
                 NumberAnimation {
@@ -183,9 +186,47 @@ Item {
         z: 0
     }
 
+    WheelHandler {
+        id: notchWheelHandler
+        target: null
+        onWheel: (event) => {
+            if (event.angleDelta.y > 0) {
+                root.currentHostIndex = (root.currentHostIndex + 1) % root.uploadHosts.length;
+            } else {
+                root.currentHostIndex = (root.currentHostIndex - 1 + root.uploadHosts.length) % root.uploadHosts.length;
+            }
+
+            notchText.text = "API: " + root.uploadHosts[root.currentHostIndex].toUpperCase();
+            hostTextResetTimer.restart();
+        }
+    }
+
+    Timer {
+        id: hostTextResetTimer
+        interval: 1500
+        onTriggered: notchText.text = "" // Revert to default text
+    }
+
+    Text {
+        id: notchText
+        anchors.centerIn: parent
+        z: 95
+        visible: text.length > 0
+        text: ""
+        color: (typeof Theme !== "undefined" && Theme.accentLit) ? Theme.accentLit : "#8ee8a8"
+        font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "JetBrainsMono Nerd Font"
+        font.pixelSize: (typeof Theme !== "undefined" && Theme.fontPx) ? Theme.fontPx(11) : 11
+        font.bold: true
+    }
+
     Row {
         id: contentRow
         z: 1
+        opacity: notchText.text.length > 0 ? 0.0 : 1.0
+        visible: opacity > 0.01
+        Behavior on opacity {
+            NumberAnimation { duration: 150 }
+        }
         height: root.hasAttachedPopup ? root.implicitHeight : root.height
         anchors.verticalCenter: root.hasAttachedPopup ? undefined : parent.verticalCenter
         anchors.top: root.hasAttachedPopup && !root.attachedBottom ? parent.top : undefined
@@ -267,9 +308,13 @@ Item {
 
             root.isUploading = true;
 
+            let selectedHost = (root.uploadHosts && root.uploadHosts.length > root.currentHostIndex)
+                ? root.uploadHosts[root.currentHostIndex]
+                : "Buzzheavier";
+
             let engineCmd = [
                 root.dropEngineBin || "/home/shogun/.local/bin/carbon-drop-engine",
-                "Buzzheavier (10GB+)",
+                selectedHost,
                 cleanPath
             ];
 

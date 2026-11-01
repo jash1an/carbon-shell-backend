@@ -200,7 +200,15 @@ impl Engine {
 
     fn play_noise(&mut self, kind: &str) {
         self.stop_noise();
-        let child = if Command::new("play").arg("-h").output().is_ok() {
+        let rain_mp3 = "/home/shogun/.config/carbon/assets/rain.mp3";
+        let child = if kind == "rain" && std::path::Path::new(rain_mp3).exists() {
+            Command::new("mpv")
+                .args(["--loop=inf", "--no-video", rain_mp3])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .ok()
+        } else if Command::new("play").arg("-h").output().is_ok() {
             let synth_arg = if kind == "rain" { "pinknoise" } else { "brownnoise" };
             Command::new("play")
                 .args(["-q", "-n", "synth", synth_arg])
