@@ -3,27 +3,28 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import "../Singletons"
-import "../components"
 
 /**
  * FocusHUD:
  * High-performance Hyper-Tunnel Focus HUD for Carbon Shell.
- * Directly communicates with carbon-focus-engine (master Pomodoro timer & PID freezer)
- * over asynchronous JSON IPC via stdin/stdout.
- *
- * 100% Theme token bindings (zero hardcoded sizes or colors).
+ * True Wayland Bottom Layer blackout with tiled Blueprint Grid,
+ * OS-level dimming & freezing, zero audio ghosts, and strict monochrome styling.
  */
-Item {
-    id: root
+PanelWindow {
+    id: focusHud
 
-    property bool open: false
+    WlrLayershell.namespace: "carbon-focus-hud"
+    WlrLayershell.layer: WlrLayer.Bottom // Sits ABOVE wallpaper, BELOW normal windows
+    exclusiveZone: 0 
+    anchors { top: true; bottom: true; left: true; right: true }
+    color: "#050608" // Deep obsidian base
+
+    property var modelData: null
+    screen: modelData
+    property bool open: visible
     signal closeRequested()
-
-    implicitWidth: Theme.px(420)
-    implicitHeight: Theme.px(540)
-    width: implicitWidth
-    height: implicitHeight
 
     // ── Focus Engine State ──
     property string focusState: "idle"     // "idle" | "focus" | "break"
@@ -34,56 +35,46 @@ Item {
     property string noiseType: "none"
 
     readonly property string formattedTime: {
-        var mins = Math.floor(root.remainingSec / 60)
-        var secs = root.remainingSec % 60
+        var mins = Math.floor(focusHud.remainingSec / 60)
+        var secs = focusHud.remainingSec % 60
         var mm = mins < 10 ? "0" + mins : mins
         var ss = secs < 10 ? "0" + secs : secs
         return mm + ":" + ss
     }
 
-    readonly property color clockColor: {
-        if (root.focusState === "focus") return Theme.warn
-        if (root.focusState === "break") return Theme.ok
-        return Theme.fgDim
+    WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+
+    // ── Static Audio Process (Prevents process stacking / audio ghosts) ──
+    Process {
+        id: audioProcess
+        command: ["mpv", "--loop=inf", "--no-video", "/home/shogun/.config/carbon/assets/rain.mp3"]
+        running: false
     }
 
-    readonly property string stateLabel: {
-        if (root.focusState === "focus") return "TUNNEL ACTIVE • DISTRACTIONS FROZEN"
-        if (root.focusState === "break") return "REST & RECHARGE • SYSTEM RESTORED"
-        return "READY TO ENTER HYPER-TUNNEL"
-    }
-
-    readonly property string focusEngineBin: {
-        var envPath = Quickshell.env("CARBON_FOCUS_ENGINE")
-        if (envPath && envPath.length > 0) return envPath
-        var home = Quickshell.env("HOME") || ""
-        if (home.length > 0) {
-            return home + "/.local/bin/carbon-focus-engine"
-        }
-        return "carbon-focus-engine"
-    }
-
-    focus: root.open
-    Keys.enabled: root.open
-    Keys.onEscapePressed: (event) => {
-        if (audioProcess.running) audioProcess.running = false
-        root.closeRequested()
-        event.accepted = true
-    }
-
-    onOpenChanged: {
-        if (!open) {
-            if (audioProcess.running) {
-                audioProcess.running = false
-            }
-        }
+    // ── OS Command Dispatcher (Screen Dimming & Distraction Freezing) ──
+    Process {
+        id: osCommandDispatcher
+        running: false
     }
 
     onVisibleChanged: {
-        if (!visible) {
-            if (audioProcess.running) {
-                audioProcess.running = false
-            }
+        if (visible) {
+            let cmd = [
+                "sh", "-c",
+                "hyprctl keyword decoration:dim_inactive true 2>/dev/null; hyprctl keyword decoration:dim_strength 0.90 2>/dev/null; hyprctl repl 'hl.config({ decoration = { dim_inactive = true, dim_strength = 0.90 } })' 2>/dev/null; killall -STOP discord steam telegram-desktop 2>/dev/null || true"
+            ];
+            osCommandDispatcher.command = cmd;
+            osCommandDispatcher.running = true;
+            Quickshell.execDetached(cmd);
+        } else {
+            let cmd = [
+                "sh", "-c",
+                "hyprctl keyword decoration:dim_inactive false 2>/dev/null; hyprctl keyword decoration:dim_strength 0.20 2>/dev/null; hyprctl repl 'hl.config({ decoration = { dim_inactive = false, dim_strength = 0.20 } })' 2>/dev/null; killall -CONT discord steam telegram-desktop 2>/dev/null || true"
+            ];
+            audioProcess.running = false; // Kills the rain audio automatically
+            osCommandDispatcher.command = cmd;
+            osCommandDispatcher.running = true;
+            Quickshell.execDetached(cmd);
         }
     }
 
@@ -111,62 +102,15 @@ Item {
                 try {
                     var msg = JSON.parse(raw)
                     if (!msg) return
-                    if (msg.state !== undefined) {
-                        if (root.focusState === "focus" && msg.state !== "focus") {
-                            root.restoreOS()
-                        }
-                        root.focusState = msg.state
-                    }
-                    if (msg.remaining !== undefined) root.remainingSec = msg.remaining
-                    if (msg.focus_target !== undefined) root.focusTargetMin = msg.focus_target
-                    if (msg.break_target !== undefined) root.breakTargetMin = msg.break_target
-                    if (msg.noise_active !== undefined) root.noiseActive = Boolean(msg.noise_active)
-                    if (msg.noise_type !== undefined) root.noiseType = msg.noise_type
+                    if (msg.state !== undefined) focusHud.focusState = msg.state
+                    if (msg.remaining !== undefined) focusHud.remainingSec = msg.remaining
+                    if (msg.focus_target !== undefined) focusHud.focusTargetMin = msg.focus_target
+                    if (msg.break_target !== undefined) focusHud.breakTargetMin = msg.break_target
+                    if (msg.noise_active !== undefined) focusHud.noiseActive = Boolean(msg.noise_active)
+                    if (msg.noise_type !== undefined) focusHud.noiseType = msg.noise_type
                 } catch(e) {}
             }
         }
-    }
-
-    // ── Audio Process for Rain Noise (Static Process instance to prevent ghosts) ──
-    Process {
-        id: audioProcess
-        command: ["mpv", "--loop=inf", "--no-video", "/home/shogun/.config/carbon/assets/rain.mp3"]
-        running: false
-        onRunningChanged: {
-            if (running) {
-                // If brown noise was running via engine, stop it
-                sendCmd("noise_stop")
-                root.noiseActive = true
-                root.noiseType = "rain"
-            } else {
-                if (root.noiseType === "rain") {
-                    root.noiseActive = false
-                    root.noiseType = "none"
-                }
-            }
-        }
-    }
-
-    // ── OS Command Dispatcher (Screen Dimming & Distraction Freezing) ──
-    Process {
-        id: osCommandDispatcher
-        running: false
-    }
-
-    function engageOSBlackout() {
-        osCommandDispatcher.command = [
-            "sh", "-c",
-            "hyprctl keyword decoration:dim_inactive true 2>/dev/null || hyprctl repl 'hl.config({ decoration = { dim_inactive = true, dim_strength = 0.93 } })' 2>/dev/null || true; hyprctl keyword decoration:dim_strength 0.93 2>/dev/null || true; killall -STOP discord steam telegram-desktop 2>/dev/null || true"
-        ]
-        osCommandDispatcher.running = true
-    }
-
-    function restoreOS() {
-        osCommandDispatcher.command = [
-            "sh", "-c",
-            "hyprctl keyword decoration:dim_inactive false 2>/dev/null || hyprctl repl 'hl.config({ decoration = { dim_inactive = false, dim_strength = 0.2 } })' 2>/dev/null || true; hyprctl keyword decoration:dim_strength 0.2 2>/dev/null || true; killall -CONT discord steam telegram-desktop 2>/dev/null || true"
-        ]
-        osCommandDispatcher.running = true
     }
 
     function sendCmd(cmd) {
@@ -176,18 +120,15 @@ Item {
     }
 
     function startFocus() {
-        engageOSBlackout()
         sendCmd("start")
     }
 
     function startBreak() {
-        restoreOS()
         sendCmd("start_break")
     }
 
     function stopSession() {
         if (audioProcess.running) audioProcess.running = false
-        restoreOS()
         sendCmd("stop")
     }
 
@@ -205,430 +146,468 @@ Item {
         }
     }
 
-    function toggleNoise(type) {
-        if (type === "rain") {
-            audioProcess.running = !audioProcess.running
-            return
-        }
-        if (audioProcess.running) {
-            audioProcess.running = false
-        }
-        if (root.noiseActive && root.noiseType === type) {
-            sendCmd("noise_stop")
-        } else {
-            sendCmd("noise_" + type)
-        }
+    // ── The Seamless Blueprint Grid ──
+    Image {
+        anchors.fill: parent
+        source: "/home/shogun/.config/carbon/assets/blueprint-grid.svg"
+        fillMode: Image.Tile // Tiles the 20x20 dot image across the whole screen
+        opacity: 0.15 
+        horizontalAlignment: Image.AlignLeft
+        verticalAlignment: Image.AlignTop
     }
 
-    // ── Main Glass Card ──
+    // ── Strict Monochrome Side Panel ──
     Rectangle {
-        id: card
-        anchors.fill: parent
-        radius: Theme.tokens.rounding.extraLarge
-        color: Qt.rgba(Theme.m3surfaceContainer.r, Theme.m3surfaceContainer.g, Theme.m3surfaceContainer.b, Theme.shellOpacity)
-        border.width: Theme.px(1)
-        border.color: root.focusState === "focus"
-            ? Qt.rgba(Theme.warn.r, Theme.warn.g, Theme.warn.b, 0.45)
-            : (root.focusState === "break"
-                ? Qt.rgba(Theme.ok.r, Theme.ok.g, Theme.ok.b, 0.45)
-                : Theme.outline)
+        id: hudPanel
+        width: 340
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        color: Qt.rgba(10/255, 11/255, 14/255, 0.8) 
+        border.color: Qt.rgba(255/255, 255/255, 255/255, 0.15) 
+        border.width: 1
 
-        Behavior on border.color {
-            ColorAnimation {
-                duration: Theme.tokens.anim.normal
-                easing.type: Easing.OutCubic
+        // Header: Title & Close Button
+        RowLayout {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.leftMargin: 24
+            anchors.rightMargin: 24
+            anchors.topMargin: 24
+
+            Text {
+                text: "HYPER-TUNNEL"
+                color: "#ffffff"
+                font.family: "monospace"
+                font.pixelSize: 13
+                font.bold: true
+                font.letterSpacing: 1.5
+            }
+
+            Item { Layout.fillWidth: true }
+
+            Rectangle {
+                width: 28
+                height: 28
+                radius: 14
+                color: closeHover.hovered ? Qt.rgba(255/255, 255/255, 255/255, 0.20) : Qt.rgba(255/255, 255/255, 255/255, 0.08)
+                border.width: 1
+                border.color: Qt.rgba(255/255, 255/255, 255/255, 0.25)
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "✕"
+                    color: "#ffffff"
+                    font.pixelSize: 11
+                    font.family: "monospace"
+                }
+
+                HoverHandler { id: closeHover }
+                TapHandler {
+                    onTapped: {
+                        if (audioProcess.running) audioProcess.running = false
+                        focusHud.closeRequested()
+                    }
+                }
             }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: Theme.px(24)
-            spacing: Theme.px(18)
+        // Main Timer Text
+        Text {
+            id: timerText
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: 76
+            text: focusHud.formattedTime
+            font.pixelSize: 64
+            font.weight: Font.Bold
+            font.family: "monospace"
+            color: "#ffffff" // Strict monochrome white
+        }
 
-            // Header Row: Title, State Badge, Close Button
-            RowLayout {
+        Text {
+            id: stateSubtitle
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: timerText.bottom
+            anchors.topMargin: 4
+            text: focusHud.focusState === "focus"
+                ? "TUNNEL ACTIVE • DISTRACTIONS FROZEN"
+                : (focusHud.focusState === "break" ? "REST & RECHARGE • SYSTEM RESTORED" : "READY TO ENTER HYPER-TUNNEL")
+            color: "#888888"
+            font.pixelSize: 9
+            font.bold: true
+            font.letterSpacing: 1.0
+            font.family: "monospace"
+        }
+
+        // Control Buttons Row (Start Focus, Break, Reset)
+        RowLayout {
+            id: controlButtonsRow
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: stateSubtitle.bottom
+            anchors.leftMargin: 24
+            anchors.rightMargin: 24
+            anchors.topMargin: 22
+            spacing: 8
+
+            // Start Focus Button
+            Rectangle {
                 Layout.fillWidth: true
-                spacing: Theme.px(10)
-
-                Rectangle {
-                    width: Theme.px(8)
-                    height: Theme.px(8)
-                    radius: Theme.tokens.rounding.full
-                    color: root.clockColor
-
-                    Behavior on color {
-                        ColorAnimation { duration: Theme.tokens.anim.normal }
-                    }
-                }
+                Layout.preferredHeight: 36
+                radius: 6
+                color: focusHud.focusState === "focus" ? "#ffffff" : (startHover.hovered ? Qt.rgba(255/255, 255/255, 255/255, 0.20) : Qt.rgba(255/255, 255/255, 255/255, 0.08))
+                border.width: 1
+                border.color: focusHud.focusState === "focus" ? "#ffffff" : Qt.rgba(255/255, 255/255, 255/255, 0.25)
 
                 Text {
-                    text: "HYPER-TUNNEL"
-                    color: Theme.fg
-                    font.family: Theme.font
-                    font.pixelSize: Theme.fontPx(13)
-                    font.bold: true
-                    font.letterSpacing: 1.5
-                }
-
-                Item { Layout.fillWidth: true }
-
-                Rectangle {
-                    width: Theme.px(28)
-                    height: Theme.px(28)
-                    radius: Theme.tokens.rounding.full
-                    color: closeHover.hovered ? Theme.bgHover : Theme.bgAlt
-                    border.width: Theme.px(1)
-                    border.color: Theme.outline
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "✕"
-                        color: Theme.fgDim
-                        font.pixelSize: Theme.fontPx(11)
-                    }
-
-                    HoverHandler { id: closeHover }
-                    TapHandler {
-                        onTapped: {
-                            if (audioProcess.running) audioProcess.running = false
-                            root.closeRequested()
-                        }
-                    }
-                }
-            }
-
-            // Big Clock Display Card
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: Theme.px(140)
-                radius: Theme.tokens.rounding.large
-                color: Theme.bgAlt
-                border.width: Theme.px(1)
-                border.color: Theme.outline
-
-                ColumnLayout {
                     anchors.centerIn: parent
-                    spacing: Theme.px(6)
+                    text: focusHud.focusState === "focus" ? "FOCUSING" : "START FOCUS"
+                    color: focusHud.focusState === "focus" ? "#000000" : "#ffffff"
+                    font.family: "monospace"
+                    font.pixelSize: 11
+                    font.bold: true
+                    font.letterSpacing: 0.8
+                }
 
-                    Text {
-                        Layout.alignment: Qt.AlignHCenter
-                        text: root.formattedTime
-                        color: root.clockColor
-                        font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontPx(54)
-                        font.bold: true
-                        font.letterSpacing: 2.0
-
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: Theme.tokens.anim.normal
-                                easing.type: Easing.OutCubic
-                            }
-                        }
-                    }
-
-                    Text {
-                        Layout.alignment: Qt.AlignHCenter
-                        text: root.stateLabel
-                        color: root.clockColor
-                        font.family: Theme.font
-                        font.pixelSize: Theme.fontPx(10)
-                        font.bold: true
-                        font.letterSpacing: 1.2
-                        opacity: 0.85
-
-                        Behavior on color {
-                            ColorAnimation { duration: Theme.tokens.anim.normal }
+                HoverHandler { id: startHover }
+                TapHandler {
+                    onTapped: {
+                        if (focusHud.focusState === "focus") {
+                            focusHud.stopSession()
+                        } else {
+                            focusHud.startFocus()
                         }
                     }
                 }
             }
 
-            // Control Buttons Row (Start Focus, Break, Stop)
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Theme.px(10)
-
-                // Start Focus Button
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: Theme.px(38)
-                    radius: Theme.tokens.rounding.medium
-                    color: root.focusState === "focus" ? Theme.warn : (startHover.hovered ? Theme.bgHover : Theme.bgAlt)
-                    border.width: Theme.px(1)
-                    border.color: root.focusState === "focus" ? Theme.warn : Theme.outline
-
-                    Behavior on color { ColorAnimation { duration: Theme.tokens.anim.fast } }
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: root.focusState === "focus" ? "FOCUSING" : "START FOCUS"
-                        color: root.focusState === "focus" ? Theme.m3background : Theme.fg
-                        font.family: Theme.font
-                        font.pixelSize: Theme.fontPx(11)
-                        font.bold: true
-                        font.letterSpacing: 1.0
-                    }
-
-                    HoverHandler { id: startHover }
-                    TapHandler {
-                        onTapped: {
-                            if (root.focusState === "focus") {
-                                root.stopSession()
-                            } else {
-                                root.startFocus()
-                            }
-                        }
-                    }
-                }
-
-                // Break Button
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: Theme.px(38)
-                    radius: Theme.tokens.rounding.medium
-                    color: root.focusState === "break" ? Theme.ok : (breakHover.hovered ? Theme.bgHover : Theme.bgAlt)
-                    border.width: Theme.px(1)
-                    border.color: root.focusState === "break" ? Theme.ok : Theme.outline
-
-                    Behavior on color { ColorAnimation { duration: Theme.tokens.anim.fast } }
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: root.focusState === "break" ? "ON BREAK" : "TAKE BREAK"
-                        color: root.focusState === "break" ? Theme.m3background : Theme.fg
-                        font.family: Theme.font
-                        font.pixelSize: Theme.fontPx(11)
-                        font.bold: true
-                        font.letterSpacing: 1.0
-                    }
-
-                    HoverHandler { id: breakHover }
-                    TapHandler {
-                        onTapped: root.startBreak()
-                    }
-                }
-
-                // Stop / Reset Button
-                Rectangle {
-                    Layout.preferredWidth: Theme.px(64)
-                    Layout.preferredHeight: Theme.px(38)
-                    radius: Theme.tokens.rounding.medium
-                    color: stopHover.hovered ? Theme.bgHover : Theme.bgAlt
-                    border.width: Theme.px(1)
-                    border.color: Theme.outline
-
-                    Behavior on color { ColorAnimation { duration: Theme.tokens.anim.fast } }
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "RESET"
-                        color: Theme.fgDim
-                        font.family: Theme.font
-                        font.pixelSize: Theme.fontPx(10)
-                        font.bold: true
-                        font.letterSpacing: 1.0
-                    }
-
-                    HoverHandler { id: stopHover }
-                    TapHandler {
-                        onTapped: root.stopSession()
-                    }
-                }
-            }
-
-            // Editable Durations Row: Focus & Break TextInput elements
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Theme.px(12)
-
-                // Focus Duration Box
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: Theme.px(62)
-                    radius: Theme.tokens.rounding.medium
-                    color: Theme.bgAlt
-                    border.width: Theme.px(1)
-                    border.color: focusInput.activeFocus ? Theme.warn : Theme.outline
-
-                    Behavior on border.color { ColorAnimation { duration: Theme.tokens.anim.fast } }
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: Theme.px(8)
-                        spacing: Theme.px(2)
-
-                        Text {
-                            text: "FOCUS TIME (MIN)"
-                            color: Theme.fgDim
-                            font.family: Theme.font
-                            font.pixelSize: Theme.fontPx(9)
-                            font.bold: true
-                            font.letterSpacing: 1.0
-                        }
-
-                        TextInput {
-                            id: focusInput
-                            Layout.fillWidth: true
-                            text: root.focusTargetMin.toString()
-                            color: Theme.fg
-                            font.family: Theme.fontMono
-                            font.pixelSize: Theme.fontPx(16)
-                            font.bold: true
-                            selectByMouse: true
-                            validator: IntValidator { bottom: 1; top: 180 }
-                            onEditingFinished: root.setFocusMins(text)
-                            onAccepted: root.setFocusMins(text)
-                        }
-                    }
-                }
-
-                // Break Duration Box
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: Theme.px(62)
-                    radius: Theme.tokens.rounding.medium
-                    color: Theme.bgAlt
-                    border.width: Theme.px(1)
-                    border.color: breakInput.activeFocus ? Theme.ok : Theme.outline
-
-                    Behavior on border.color { ColorAnimation { duration: Theme.tokens.anim.fast } }
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: Theme.px(8)
-                        spacing: Theme.px(2)
-
-                        Text {
-                            text: "BREAK TIME (MIN)"
-                            color: Theme.fgDim
-                            font.family: Theme.font
-                            font.pixelSize: Theme.fontPx(9)
-                            font.bold: true
-                            font.letterSpacing: 1.0
-                        }
-
-                        TextInput {
-                            id: breakInput
-                            Layout.fillWidth: true
-                            text: root.breakTargetMin.toString()
-                            color: Theme.fg
-                            font.family: Theme.fontMono
-                            font.pixelSize: Theme.fontPx(16)
-                            font.bold: true
-                            selectByMouse: true
-                            validator: IntValidator { bottom: 1; top: 60 }
-                            onEditingFinished: root.setBreakMins(text)
-                            onAccepted: root.setBreakMins(text)
-                        }
-                    }
-                }
-            }
-
-            // Acoustic Isolation Section
+            // Take Break Button
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: Theme.px(90)
-                radius: Theme.tokens.rounding.large
-                color: Theme.bgAlt
-                border.width: Theme.px(1)
-                border.color: Theme.outline
+                Layout.preferredHeight: 36
+                radius: 6
+                color: focusHud.focusState === "break" ? "#ffffff" : (breakHover.hovered ? Qt.rgba(255/255, 255/255, 255/255, 0.20) : Qt.rgba(255/255, 255/255, 255/255, 0.08))
+                border.width: 1
+                border.color: focusHud.focusState === "break" ? "#ffffff" : Qt.rgba(255/255, 255/255, 255/255, 0.25)
+
+                Text {
+                    anchors.centerIn: parent
+                    text: focusHud.focusState === "break" ? "ON BREAK" : "BREAK"
+                    color: focusHud.focusState === "break" ? "#000000" : "#ffffff"
+                    font.family: "monospace"
+                    font.pixelSize: 11
+                    font.bold: true
+                    font.letterSpacing: 0.8
+                }
+
+                HoverHandler { id: breakHover }
+                TapHandler {
+                    onTapped: focusHud.startBreak()
+                }
+            }
+
+            // Reset Button
+            Rectangle {
+                Layout.preferredWidth: 60
+                Layout.preferredHeight: 36
+                radius: 6
+                color: resetHover.hovered ? Qt.rgba(255/255, 255/255, 255/255, 0.20) : Qt.rgba(255/255, 255/255, 255/255, 0.08)
+                border.width: 1
+                border.color: Qt.rgba(255/255, 255/255, 255/255, 0.25)
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "RESET"
+                    color: "#aaaaaa"
+                    font.family: "monospace"
+                    font.pixelSize: 10
+                    font.bold: true
+                }
+
+                HoverHandler { id: resetHover }
+                TapHandler {
+                    onTapped: focusHud.stopSession()
+                }
+            }
+        }
+
+        // Section: Blueprint Task List
+        Text {
+            id: tasksHeader
+            anchors.left: parent.left
+            anchors.top: controlButtonsRow.bottom
+            anchors.leftMargin: 24
+            anchors.topMargin: 28
+            text: "SCHEMATIC CHECKLIST"
+            color: "#888888"
+            font.pixelSize: 9
+            font.bold: true
+            font.letterSpacing: 1.2
+            font.family: "monospace"
+        }
+
+        ListModel {
+            id: taskModel
+            ListElement { taskName: "Architect DBus API"; completed: false }
+            ListElement { taskName: "Migrate QML Physics"; completed: false }
+            ListElement { taskName: "Optimize Rust Daemon"; completed: false }
+        }
+
+        ListView {
+            id: taskList
+            width: parent.width - 48
+            height: 120
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: tasksHeader.bottom
+            anchors.topMargin: 12
+            model: taskModel
+            spacing: 12
+
+            delegate: MouseArea {
+                width: ListView.view.width
+                height: 30
+                onClicked: model.completed = !model.completed
+
+                Row {
+                    spacing: 12
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Rectangle {
+                        width: 18; height: 18
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: "transparent"
+                        border.color: model.completed ? "#555555" : "#ffffff"
+                        border.width: 1
+
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 10; height: 10
+                            color: "#ffffff"
+                            visible: model.completed
+                        }
+                    }
+
+                    Text {
+                        text: model.taskName
+                        color: model.completed ? "#555555" : "#ffffff"
+                        font.pixelSize: 13
+                        font.strikeout: model.completed
+                        font.family: "monospace" 
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+            }
+        }
+
+        // Section: Acoustic Isolation
+        Text {
+            id: audioHeader
+            anchors.left: parent.left
+            anchors.top: taskList.bottom
+            anchors.leftMargin: 24
+            anchors.topMargin: 20
+            text: "ACOUSTIC ISOLATION"
+            color: "#888888"
+            font.pixelSize: 9
+            font.bold: true
+            font.letterSpacing: 1.2
+            font.family: "monospace"
+        }
+
+        RowLayout {
+            id: audioRow
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: audioHeader.bottom
+            anchors.leftMargin: 24
+            anchors.rightMargin: 24
+            anchors.topMargin: 12
+            spacing: 10
+
+            // Rain Noise Button
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 38
+                radius: 6
+                readonly property bool isSelected: audioProcess.running
+                color: isSelected ? "#ffffff" : (rainHover.hovered ? Qt.rgba(255/255, 255/255, 255/255, 0.20) : Qt.rgba(255/255, 255/255, 255/255, 0.08))
+                border.width: 1
+                border.color: isSelected ? "#ffffff" : Qt.rgba(255/255, 255/255, 255/255, 0.25)
+
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 8
+
+                    Text {
+                        text: "󰖗"
+                        color: parent.parent.isSelected ? "#000000" : "#ffffff"
+                        font.family: "monospace"
+                        font.pixelSize: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Text {
+                        text: "Rain"
+                        color: parent.parent.isSelected ? "#000000" : "#ffffff"
+                        font.family: "monospace"
+                        font.pixelSize: 12
+                        font.bold: true
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                HoverHandler { id: rainHover }
+                TapHandler {
+                    onTapped: {
+                        audioProcess.running = !audioProcess.running
+                    }
+                }
+            }
+
+            // Brown Noise Button
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 38
+                radius: 6
+                readonly property bool isSelected: focusHud.noiseActive && focusHud.noiseType === "brown"
+                color: isSelected ? "#ffffff" : (brownHover.hovered ? Qt.rgba(255/255, 255/255, 255/255, 0.20) : Qt.rgba(255/255, 255/255, 255/255, 0.08))
+                border.width: 1
+                border.color: isSelected ? "#ffffff" : Qt.rgba(255/255, 255/255, 255/255, 0.25)
+
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 8
+
+                    Text {
+                        text: "󰝚"
+                        color: parent.parent.isSelected ? "#000000" : "#ffffff"
+                        font.family: "monospace"
+                        font.pixelSize: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Text {
+                        text: "Brown Noise"
+                        color: parent.parent.isSelected ? "#000000" : "#ffffff"
+                        font.family: "monospace"
+                        font.pixelSize: 12
+                        font.bold: true
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                HoverHandler { id: brownHover }
+                TapHandler {
+                    onTapped: {
+                        if (audioProcess.running) audioProcess.running = false
+                        if (focusHud.noiseActive && focusHud.noiseType === "brown") {
+                            focusHud.sendCmd("noise_stop")
+                        } else {
+                            focusHud.sendCmd("noise_brown")
+                        }
+                    }
+                }
+            }
+        }
+
+        // Section: Session Durations
+        Text {
+            id: durationsHeader
+            anchors.left: parent.left
+            anchors.top: audioRow.bottom
+            anchors.leftMargin: 24
+            anchors.topMargin: 20
+            text: "DURATIONS (MINUTES)"
+            color: "#888888"
+            font.pixelSize: 9
+            font.bold: true
+            font.letterSpacing: 1.2
+            font.family: "monospace"
+        }
+
+        RowLayout {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: durationsHeader.bottom
+            anchors.leftMargin: 24
+            anchors.rightMargin: 24
+            anchors.topMargin: 10
+            spacing: 12
+
+            // Focus Minutes
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 52
+                radius: 6
+                color: Qt.rgba(255/255, 255/255, 255/255, 0.05)
+                border.width: 1
+                border.color: focusInput.activeFocus ? "#ffffff" : Qt.rgba(255/255, 255/255, 255/255, 0.20)
 
                 ColumnLayout {
                     anchors.fill: parent
-                    anchors.margins: Theme.px(12)
-                    spacing: Theme.px(8)
+                    anchors.margins: 6
+                    spacing: 2
 
                     Text {
-                        text: "ACOUSTIC ISOLATION"
-                        color: Theme.fgDim
-                        font.family: Theme.font
-                        font.pixelSize: Theme.fontPx(9)
+                        text: "FOCUS"
+                        color: "#888888"
+                        font.family: "monospace"
+                        font.pixelSize: 8
                         font.bold: true
-                        font.letterSpacing: 1.0
                     }
 
-                    RowLayout {
+                    TextInput {
+                        id: focusInput
                         Layout.fillWidth: true
-                        spacing: Theme.px(10)
+                        text: focusHud.focusTargetMin.toString()
+                        color: "#ffffff"
+                        font.family: "monospace"
+                        font.pixelSize: 15
+                        font.bold: true
+                        selectByMouse: true
+                        validator: IntValidator { bottom: 1; top: 180 }
+                        onEditingFinished: focusHud.setFocusMins(text)
+                        onAccepted: focusHud.setFocusMins(text)
+                    }
+                }
+            }
 
-                        // Brown Noise Button
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: Theme.px(36)
-                            radius: Theme.tokens.rounding.medium
-                            readonly property bool isSelected: root.noiseActive && root.noiseType === "brown"
-                            color: isSelected ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : (brownHover.hovered ? Theme.bgHover : Theme.bg)
-                            border.width: Theme.px(1)
-                            border.color: isSelected ? Theme.primary : Theme.outline
+            // Break Minutes
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 52
+                radius: 6
+                color: Qt.rgba(255/255, 255/255, 255/255, 0.05)
+                border.width: 1
+                border.color: breakInput.activeFocus ? "#ffffff" : Qt.rgba(255/255, 255/255, 255/255, 0.20)
 
-                            Behavior on color { ColorAnimation { duration: Theme.tokens.anim.fast } }
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 6
+                    spacing: 2
 
-                            RowLayout {
-                                anchors.centerIn: parent
-                                spacing: Theme.px(6)
+                    Text {
+                        text: "BREAK"
+                        color: "#888888"
+                        font.family: "monospace"
+                        font.pixelSize: 8
+                        font.bold: true
+                    }
 
-                                Text {
-                                    text: "󰝚"
-                                    color: parent.parent.isSelected ? Theme.primary : Theme.fgDim
-                                    font.family: Theme.fontMono
-                                    font.pixelSize: Theme.fontPx(13)
-                                }
-
-                                Text {
-                                    text: "Brown Noise"
-                                    color: parent.parent.isSelected ? Theme.primary : Theme.fg
-                                    font.family: Theme.font
-                                    font.pixelSize: Theme.fontPx(11)
-                                    font.bold: true
-                                }
-                            }
-
-                            HoverHandler { id: brownHover }
-                            TapHandler {
-                                onTapped: root.toggleNoise("brown")
-                            }
-                        }
-
-                        // Rain Noise Button
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: Theme.px(36)
-                            radius: Theme.tokens.rounding.medium
-                            readonly property bool isSelected: audioProcess.running
-                            color: isSelected ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : (rainHover.hovered ? Theme.bgHover : Theme.bg)
-                            border.width: Theme.px(1)
-                            border.color: isSelected ? Theme.primary : Theme.outline
-
-                            Behavior on color { ColorAnimation { duration: Theme.tokens.anim.fast } }
-
-                            RowLayout {
-                                anchors.centerIn: parent
-                                spacing: Theme.px(6)
-
-                                Text {
-                                    text: "󰖗"
-                                    color: parent.parent.isSelected ? Theme.primary : Theme.fgDim
-                                    font.family: Theme.fontMono
-                                    font.pixelSize: Theme.fontPx(13)
-                                }
-
-                                Text {
-                                    text: "Rain"
-                                    color: parent.parent.isSelected ? Theme.primary : Theme.fg
-                                    font.family: Theme.font
-                                    font.pixelSize: Theme.fontPx(11)
-                                    font.bold: true
-                                }
-                            }
-
-                            HoverHandler { id: rainHover }
-                            TapHandler {
-                                onTapped: {
-                                    audioProcess.running = !audioProcess.running
-                                }
-                            }
-                        }
+                    TextInput {
+                        id: breakInput
+                        Layout.fillWidth: true
+                        text: focusHud.breakTargetMin.toString()
+                        color: "#ffffff"
+                        font.family: "monospace"
+                        font.pixelSize: 15
+                        font.bold: true
+                        selectByMouse: true
+                        validator: IntValidator { bottom: 1; top: 60 }
+                        onEditingFinished: focusHud.setBreakMins(text)
+                        onAccepted: focusHud.setBreakMins(text)
                     }
                 }
             }

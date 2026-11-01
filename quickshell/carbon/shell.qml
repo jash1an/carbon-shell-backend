@@ -4022,36 +4022,18 @@ ShellRoot {
         }
     }
 
-    /* Focus HUD (Hyper-Tunnel) Overlay */
+    /* Focus HUD (Hyper-Tunnel) Window */
     Variants {
         model: Quickshell.screens
 
-        PanelWindow {
-            id: focusHudWindow
+        FocusHUD {
+            id: focusHudInst
             required property var modelData
-
+            modelData: modelData
             screen: modelData
-            color: "transparent"
-            WlrLayershell.namespace: "carbon-focus-hud"
-            WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.keyboardFocus: root.focusHudOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
-            exclusionMode: ExclusionMode.Ignore
-            anchors { top: true; left: true; right: true; bottom: true }
-
-            aboveWindows: true
             visible: root.focusHudOpen
-
-            mask: Region {
-                item: focusHudInst
-            }
-
-            FocusHUD {
-                id: focusHudInst
-                anchors.centerIn: parent
-                open: root.focusHudOpen
-                onCloseRequested: root.closeFocusHud()
-                Component.onCompleted: root.focusHudItem = this
-            }
+            onCloseRequested: root.closeFocusHud()
+            Component.onCompleted: root.focusHudItem = this
         }
     }
 
