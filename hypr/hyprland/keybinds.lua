@@ -151,6 +151,7 @@ hl.bind(vars.kbEditor, hl.dsp.exec_cmd(vars.editor))
 hl.bind(vars.kbPomodoro, hl.dsp.exec_cmd(vars.pomodoro))
 hl.bind(vars.kbFileExplorer, hl.dsp.exec_cmd(vars.fileExplorer))
 if vars.kbCarbonDrop then hl.bind(vars.kbCarbonDrop, hl.dsp.exec_cmd("~/.config/carbon/scripts/carbon-drop.sh")) end
+if vars.kbFocus then hl.bind(vars.kbFocus, hl.dsp.exec_cmd("~/.config/hypr/scripts/carbon-focus.sh")) end
 hl.bind("SUPER + H", hl.dsp.exec_cmd("discord"))
 hl.bind("SUPER + E", hl.dsp.exec_cmd("rofi -show drun"))
 hl.bind("CTRL + ALT + V", hl.dsp.exec_cmd(vars.audioSettings))

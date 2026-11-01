@@ -89,6 +89,7 @@ return {
     kbMusicWs                  = "SUPER + M",
     -- kbCommunicationWs          = "SUPER + D",
     kbCarbonDrop               = "SUPER + D",
+    kbFocus                    = "SUPER + SHIFT + F",
     kbTodoWs                   = "SUPER + R",
 
     -- Apps

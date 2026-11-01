@@ -1606,6 +1606,15 @@ ShellRoot {
                         root.startWallpaperTransition("Testing")
                     else if (cmd === "test-wp-finish")
                         root.finishWallpaperTransition()
+                    else if (cmd === "focus" || cmd === "focus-hud" || cmd === "toggle-focus" || cmd === "toggle-focus-hud") {
+                        root.toggleFocusHud()
+                    }
+                    else if (cmd === "open-focus" || cmd === "open-focus-hud") {
+                        root.openFocusHud()
+                    }
+                    else if (cmd === "close-focus" || cmd === "close-focus-hud") {
+                        root.closeFocusHud()
+                    }
                     else if (cmd === "mixer")
                         root.toggleMixer()
                     else if (cmd === "brightness")

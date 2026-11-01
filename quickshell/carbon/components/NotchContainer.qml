@@ -24,7 +24,9 @@ Item {
     default property alias content: contentRow.data
     readonly property real contentImplicitWidth: contentRow.implicitWidth
 
-    implicitHeight: Math.round(34 * (Theme && Theme.shellScale !== undefined ? Theme.shellScale : 1.0))
+    implicitHeight: (root.dragActive || root.isUploading)
+        ? Math.round(48 * (Theme && Theme.shellScale !== undefined ? Theme.shellScale : 1.0))
+        : Math.round(34 * (Theme && Theme.shellScale !== undefined ? Theme.shellScale : 1.0))
     implicitWidth: Math.max(70, contentRow.implicitWidth 
                    + (leftFillet ? filletRadius : 0) 
                    + (rightFillet ? filletRadius : 0) 
@@ -49,7 +51,6 @@ Item {
     property bool hasAttachedPopup: false
     property real notchOpacity: 0.96
 
-    property var notchRoot: root
     readonly property color defaultBorderColor: Qt.rgba(1, 1, 1, 0.15)
     property color borderColor: defaultBorderColor
     property bool dragActive: false
@@ -226,11 +227,9 @@ Item {
 
             if (url && url.length > 0) {
                 Quickshell.execDetached(["wl-copy", url]);
+                Quickshell.execDetached(["notify-send", "-a", "Carbon Drop", "File Uploaded", "Link copied to clipboard:\n" + url]);
             }
 
-            notchBackground.border.color = root.defaultBorderColor;
-            notchBackground.border.width = 1;
-            notchRoot.height = 28;
             root.isUploading = false;
         }
     }
@@ -243,9 +242,6 @@ Item {
         onEntered: (drag) => {
             if (drag.hasUrls) {
                 drag.accept(Qt.CopyAction);
-                notchBackground.border.color = "#8ee8a8";
-                notchBackground.border.width = 2;
-                notchRoot.height = 48;
                 root.dragActive = true;
             }
         }
@@ -258,9 +254,6 @@ Item {
 
         onExited: {
             root.dragActive = false;
-            notchBackground.border.color = root.defaultBorderColor;
-            notchBackground.border.width = 1;
-            notchRoot.height = 28;
         }
 
         onDropped: (drop) => {
@@ -268,18 +261,9 @@ Item {
             if (!drop.hasUrls || drop.urls.length === 0) return;
             drop.acceptProposedAction();
 
-            notchBackground.border.color = "#f5b86e"; // Amber processing state
-            notchBackground.border.width = 2;
-            notchRoot.height = 48;
-
             let rawUrl = drop.urls[0].toString();
             let cleanPath = decodeURIComponent(rawUrl.replace(/^file:\/\//, ""));
-            if (!cleanPath || cleanPath.length === 0) {
-                notchBackground.border.color = root.defaultBorderColor;
-                notchBackground.border.width = 1;
-                notchRoot.height = 28;
-                return;
-            }
+            if (!cleanPath || cleanPath.length === 0) return;
 
             root.isUploading = true;
 

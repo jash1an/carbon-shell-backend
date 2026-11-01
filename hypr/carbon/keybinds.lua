@@ -29,7 +29,7 @@ hl.bind(mainMod .. " + E", hl.dsp.exec_cmd("nautilus"))
 hl.bind(mainMod .. " + Space", hl.dsp.window.float({ action = "toggle" }))
 hl.bind(mainMod .. " + " .. "SHIFT" .. " + R", hl.dsp.exec_cmd("hyprctl reload"))
 hl.bind(mainMod .. " + F", hl.dsp.window.fullscreen())
-hl.bind(mainMod .. " + " .. "SHIFT" .. " + F", hl.dsp.window.float({ action = "toggle" }))
+hl.bind(mainMod .. " + " .. "SHIFT" .. " + F", hl.dsp.exec_cmd(homeDir .. "/.config/hypr/scripts/carbon-focus.sh"))
 hl.bind(mainMod .. " + " .. "SHIFT" .. " + S", hl.dsp.exec_cmd("hyprshot -m region"))
 hl.bind(mainMod .. " + " .. "SHIFT" .. " + Q", hl.dsp.exec_cmd("~/.config/hypr/scripts/KillActiveProcess.sh"))
 
