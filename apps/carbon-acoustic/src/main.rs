@@ -4,6 +4,7 @@ const DEBUG_THRESHOLD: f32 = 0.1; // Print any sound louder than this
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use sysinfo::{ProcessExt, System, SystemExt};
@@ -82,6 +83,7 @@ impl ClapDetector {
 fn start_audio_capture(
     running: Arc<AtomicBool>,
     detector: Arc<Mutex<ClapDetector>>,
+    debug_tx: SyncSender<f32>,
 ) -> Result<cpal::Stream, String> {
     let host = cpal::default_host();
     let device = host
@@ -96,7 +98,10 @@ fn start_audio_capture(
         .default_input_config()
         .map_err(|e| format!("Failed to get default input config: {e}"))?;
 
-    let err_fn = |err| eprintln!("Audio stream error: {err}");
+    let err_fn = |err| {
+        // Log stream errors/xruns without terminating the entire application
+        eprintln!("Audio stream warning: {err}");
+    };
 
     let detector_clone = Arc::clone(&detector);
     let running_clone = Arc::clone(&running);
@@ -111,13 +116,15 @@ fn start_audio_capture(
                     }
                     let peak = data.iter().map(|&s| s.abs()).fold(0.0f32, f32::max);
                     if peak > DEBUG_THRESHOLD {
-                        println!("Noise detected! Peak amplitude: {:.4}", peak);
+                        let _ = debug_tx.try_send(peak);
                     }
                     if peak > CLAP_THRESHOLD {
                         let mut det = detector_clone.lock().unwrap();
                         if det.record_clap() {
                             drop(det);
-                            handle_double_clap();
+                            std::thread::spawn(|| {
+                                handle_double_clap();
+                            });
                         }
                     }
                 },
@@ -137,13 +144,15 @@ fn start_audio_capture(
                         .map(|&s| (s as f32 / i16::MAX as f32).abs())
                         .fold(0.0f32, f32::max);
                     if peak > DEBUG_THRESHOLD {
-                        println!("Noise detected! Peak amplitude: {:.4}", peak);
+                        let _ = debug_tx.try_send(peak);
                     }
                     if peak > CLAP_THRESHOLD {
                         let mut det = detector_clone.lock().unwrap();
                         if det.record_clap() {
                             drop(det);
-                            handle_double_clap();
+                            std::thread::spawn(|| {
+                                handle_double_clap();
+                            });
                         }
                     }
                 },
@@ -165,13 +174,15 @@ fn start_audio_capture(
                         })
                         .fold(0.0f32, f32::max);
                     if peak > DEBUG_THRESHOLD {
-                        println!("Noise detected! Peak amplitude: {:.4}", peak);
+                        let _ = debug_tx.try_send(peak);
                     }
                     if peak > CLAP_THRESHOLD {
                         let mut det = detector_clone.lock().unwrap();
                         if det.record_clap() {
                             drop(det);
-                            handle_double_clap();
+                            std::thread::spawn(|| {
+                                handle_double_clap();
+                            });
                         }
                     }
                 },
@@ -204,7 +215,19 @@ async fn main() {
     let running = Arc::new(AtomicBool::new(true));
     let detector = Arc::new(Mutex::new(ClapDetector::new()));
 
-    let _stream = match start_audio_capture(Arc::clone(&running), Arc::clone(&detector)) {
+    // Dedicated non-blocking debug logging channel to prevent ALSA audio callback overruns
+    let (debug_tx, debug_rx) = sync_channel::<f32>(128);
+    std::thread::spawn(move || {
+        let mut last_print = Instant::now() - Duration::from_secs(1);
+        while let Ok(peak) = debug_rx.recv() {
+            if last_print.elapsed() >= Duration::from_millis(80) {
+                println!("Noise detected! Peak amplitude: {:.4}", peak);
+                last_print = Instant::now();
+            }
+        }
+    });
+
+    let _stream = match start_audio_capture(Arc::clone(&running), Arc::clone(&detector), debug_tx) {
         Ok(s) => {
             println!("[carbon-acoustic] Audio input stream active and listening for double-clap.");
             Some(s)
