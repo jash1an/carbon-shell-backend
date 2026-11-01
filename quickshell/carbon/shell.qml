@@ -4024,7 +4024,7 @@ ShellRoot {
 
     /* Focus HUD (Hyper-Tunnel) Overlay */
     Variants {
-        model: root.focusHudOpen ? Quickshell.screens : []
+        model: Quickshell.screens
 
         PanelWindow {
             id: focusHudWindow
@@ -4050,6 +4050,7 @@ ShellRoot {
                 anchors.centerIn: parent
                 open: root.focusHudOpen
                 onCloseRequested: root.closeFocusHud()
+                Component.onCompleted: root.focusHudItem = this
             }
         }
     }

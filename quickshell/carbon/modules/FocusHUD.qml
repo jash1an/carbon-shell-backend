@@ -66,8 +66,31 @@ Item {
     focus: root.open
     Keys.enabled: root.open
     Keys.onEscapePressed: (event) => {
+        if (audioProcess.running) audioProcess.running = false
         root.closeRequested()
         event.accepted = true
+    }
+
+    onOpenChanged: {
+        if (!open) {
+            if (audioProcess.running) {
+                audioProcess.running = false
+            }
+        }
+    }
+
+    onVisibleChanged: {
+        if (!visible) {
+            if (audioProcess.running) {
+                audioProcess.running = false
+            }
+        }
+    }
+
+    Component.onDestruction: {
+        if (audioProcess.running) {
+            audioProcess.running = false
+        }
     }
 
     // ── Engine Subprocess Pipe ──
@@ -88,7 +111,12 @@ Item {
                 try {
                     var msg = JSON.parse(raw)
                     if (!msg) return
-                    if (msg.state !== undefined) root.focusState = msg.state
+                    if (msg.state !== undefined) {
+                        if (root.focusState === "focus" && msg.state !== "focus") {
+                            root.restoreOS()
+                        }
+                        root.focusState = msg.state
+                    }
                     if (msg.remaining !== undefined) root.remainingSec = msg.remaining
                     if (msg.focus_target !== undefined) root.focusTargetMin = msg.focus_target
                     if (msg.break_target !== undefined) root.breakTargetMin = msg.break_target
@@ -99,6 +127,48 @@ Item {
         }
     }
 
+    // ── Audio Process for Rain Noise (Static Process instance to prevent ghosts) ──
+    Process {
+        id: audioProcess
+        command: ["mpv", "--loop=inf", "--no-video", "/home/shogun/.config/carbon/assets/rain.mp3"]
+        running: false
+        onRunningChanged: {
+            if (running) {
+                // If brown noise was running via engine, stop it
+                sendCmd("noise_stop")
+                root.noiseActive = true
+                root.noiseType = "rain"
+            } else {
+                if (root.noiseType === "rain") {
+                    root.noiseActive = false
+                    root.noiseType = "none"
+                }
+            }
+        }
+    }
+
+    // ── OS Command Dispatcher (Screen Dimming & Distraction Freezing) ──
+    Process {
+        id: osCommandDispatcher
+        running: false
+    }
+
+    function engageOSBlackout() {
+        osCommandDispatcher.command = [
+            "sh", "-c",
+            "hyprctl keyword decoration:dim_inactive true 2>/dev/null || hyprctl repl 'hl.config({ decoration = { dim_inactive = true, dim_strength = 0.93 } })' 2>/dev/null || true; hyprctl keyword decoration:dim_strength 0.93 2>/dev/null || true; killall -STOP discord steam telegram-desktop 2>/dev/null || true"
+        ]
+        osCommandDispatcher.running = true
+    }
+
+    function restoreOS() {
+        osCommandDispatcher.command = [
+            "sh", "-c",
+            "hyprctl keyword decoration:dim_inactive false 2>/dev/null || hyprctl repl 'hl.config({ decoration = { dim_inactive = false, dim_strength = 0.2 } })' 2>/dev/null || true; hyprctl keyword decoration:dim_strength 0.2 2>/dev/null || true; killall -CONT discord steam telegram-desktop 2>/dev/null || true"
+        ]
+        osCommandDispatcher.running = true
+    }
+
     function sendCmd(cmd) {
         if (focusEngineProc.running) {
             focusEngineProc.write(cmd + "\n")
@@ -106,21 +176,18 @@ Item {
     }
 
     function startFocus() {
+        engageOSBlackout()
         sendCmd("start")
     }
 
     function startBreak() {
+        restoreOS()
         sendCmd("start_break")
     }
 
-    Process {
-        id: rainProcess
-        command: ["mpv", "--loop=inf", "--no-video", "/home/shogun/.config/carbon/assets/rain.mp3"]
-        running: false
-    }
-
     function stopSession() {
-        if (rainProcess.running) rainProcess.running = false
+        if (audioProcess.running) audioProcess.running = false
+        restoreOS()
         sendCmd("stop")
     }
 
@@ -140,21 +207,11 @@ Item {
 
     function toggleNoise(type) {
         if (type === "rain") {
-            if (rainProcess.running) {
-                rainProcess.running = false
-                root.noiseActive = false
-                root.noiseType = "none"
-                sendCmd("noise_stop")
-            } else {
-                sendCmd("noise_stop")
-                rainProcess.running = true
-                root.noiseActive = true
-                root.noiseType = "rain"
-            }
+            audioProcess.running = !audioProcess.running
             return
         }
-        if (rainProcess.running) {
-            rainProcess.running = false
+        if (audioProcess.running) {
+            audioProcess.running = false
         }
         if (root.noiseActive && root.noiseType === type) {
             sendCmd("noise_stop")
@@ -232,7 +289,10 @@ Item {
 
                     HoverHandler { id: closeHover }
                     TapHandler {
-                        onTapped: root.closeRequested()
+                        onTapped: {
+                            if (audioProcess.running) audioProcess.running = false
+                            root.closeRequested()
+                        }
                     }
                 }
             }
@@ -312,7 +372,13 @@ Item {
 
                     HoverHandler { id: startHover }
                     TapHandler {
-                        onTapped: root.startFocus()
+                        onTapped: {
+                            if (root.focusState === "focus") {
+                                root.stopSession()
+                            } else {
+                                root.startFocus()
+                            }
+                        }
                     }
                 }
 
@@ -529,7 +595,7 @@ Item {
                             Layout.fillWidth: true
                             Layout.preferredHeight: Theme.px(36)
                             radius: Theme.tokens.rounding.medium
-                            readonly property bool isSelected: rainProcess.running || (root.noiseActive && root.noiseType === "rain")
+                            readonly property bool isSelected: audioProcess.running
                             color: isSelected ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : (rainHover.hovered ? Theme.bgHover : Theme.bg)
                             border.width: Theme.px(1)
                             border.color: isSelected ? Theme.primary : Theme.outline
@@ -558,7 +624,9 @@ Item {
 
                             HoverHandler { id: rainHover }
                             TapHandler {
-                                onTapped: root.toggleNoise("rain")
+                                onTapped: {
+                                    audioProcess.running = !audioProcess.running
+                                }
                             }
                         }
                     }

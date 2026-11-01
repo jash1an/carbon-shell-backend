@@ -111,6 +111,21 @@ Item {
                     easing.type: Easing.OutQuad
                 }
             }
+
+            MouseArea {
+                id: notchWheelMouseArea
+                anchors.fill: parent
+                acceptedButtons: Qt.NoButton
+                onWheel: (wheel) => {
+                    if (wheel.angleDelta.y > 0) {
+                        root.currentHostIndex = (root.currentHostIndex + 1) % root.uploadHosts.length;
+                    } else {
+                        root.currentHostIndex = (root.currentHostIndex - 1 + root.uploadHosts.length) % root.uploadHosts.length;
+                    }
+                    notchText.text = "API: " + root.uploadHosts[root.currentHostIndex].toUpperCase();
+                    hostTextResetTimer.restart();
+                }
+            }
         }
     }
 
@@ -176,30 +191,7 @@ Item {
 
     property bool isPlaying: false
     property string trackTitle: ""
-    property alias mouseArea: notchMouseArea
-
-    MouseArea {
-        id: notchMouseArea
-        anchors.fill: parent
-        hoverEnabled: false
-        cursorShape: Qt.ArrowCursor
-        z: 0
-    }
-
-    WheelHandler {
-        id: notchWheelHandler
-        target: null
-        onWheel: (event) => {
-            if (event.angleDelta.y > 0) {
-                root.currentHostIndex = (root.currentHostIndex + 1) % root.uploadHosts.length;
-            } else {
-                root.currentHostIndex = (root.currentHostIndex - 1 + root.uploadHosts.length) % root.uploadHosts.length;
-            }
-
-            notchText.text = "API: " + root.uploadHosts[root.currentHostIndex].toUpperCase();
-            hostTextResetTimer.restart();
-        }
-    }
+    property alias mouseArea: notchWheelMouseArea
 
     Timer {
         id: hostTextResetTimer
