@@ -1,5 +1,5 @@
-const CLAP_THRESHOLD: f32 = 0.8; // User will lower this based on debug output
-const DEBUG_THRESHOLD: f32 = 0.1; // Print any sound louder than this
+const CLAP_THRESHOLD: f32 = 0.5; // Trigger double-clap above this amplitude
+const DEBUG_THRESHOLD: f32 = 0.25; // Print noise louder than ambient room noise
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::env;
@@ -24,20 +24,26 @@ pub fn handle_double_clap() {
         }
     }
 
+    // Support both Hyprland 0.57+ (Lua engine hl.dsp.dpms) and classic Hyprland (dpms on)
+    let dpms_cmd = "hyprctl dispatch 'hl.dsp.dpms(\"on\")' 2>/dev/null || hyprctl dispatch dpms on 2>/dev/null || true";
+
     if is_secure_lock_active {
         // SECURE MODE: Do NOT bypass the password. Just wake the display.
         println!("Double-clap detected, but hyprlock is active. Waking monitors only.");
         std::process::Command::new("sh")
             .arg("-c")
-            .arg("hyprctl dispatch dpms on")
+            .arg(dpms_cmd)
             .spawn()
             .ok();
     } else {
         // CAIRO IDLE MODE: Safe to wake and fully dismiss screensaver.
         println!("Double-clap detected. Waking system and dismissing Cairo.");
+        let unlock_cmd = format!(
+            "({dpms_cmd}) && (sh $HOME/.config/hypr/scripts/carbon-ipc.sh unlock 2>/dev/null || killall cairo-idle 2>/dev/null || true)"
+        );
         std::process::Command::new("sh")
             .arg("-c")
-            .arg("hyprctl dispatch dpms on && (sh $HOME/.config/hypr/scripts/carbon-ipc.sh unlock || killall cairo-idle 2>/dev/null)")
+            .arg(unlock_cmd)
             .spawn()
             .ok();
     }
