@@ -149,7 +149,7 @@ PanelWindow {
         id: weatherFetcherProc
         command: [
             "sh", "-c",
-            "if [ -f \"$HOME/.local/share/quickshell/carbon/scripts/carbon-weather.py\" ]; then python3 \"$HOME/.local/share/quickshell/carbon/scripts/carbon-weather.py\"; elif [ -f \"/home/shogun/carbon-shell/hypr/scripts/carbon-weather.py\" ]; then python3 \"/home/shogun/carbon-shell/hypr/scripts/carbon-weather.py\"; fi"
+            "if [ -f \"$HOME/.local/share/quickshell/carbon/scripts/carbon-weather.py\" ]; then python3 \"$HOME/.local/share/quickshell/carbon/scripts/carbon-weather.py\"; elif [ -f \"$HOME/carbon-shell/hypr/scripts/carbon-weather.py\" ]; then python3 \"$HOME/carbon-shell/hypr/scripts/carbon-weather.py\"; elif [ -f \"$HOME/.config/hypr/scripts/carbon-weather.py\" ]; then python3 \"$HOME/.config/hypr/scripts/carbon-weather.py\"; fi"
         ]
         running: false
         stdout: StdioCollector {
@@ -201,14 +201,14 @@ PanelWindow {
     property var agendaItems: []
     property var githubPayload: ({
         authenticated: false,
-        username: "xzshogun",
-        total_contributions: 66,
+        username: "",
+        total_contributions: 0,
         contributions: [],
         pull_requests: [],
         repositories: [],
         workspace: {
-            repo_name: "carbon-shell",
-            branch: "main",
+            repo_name: "",
+            branch: "",
             dirty: false,
             ahead: 0,
             behind: 0,
@@ -217,7 +217,7 @@ PanelWindow {
         },
         feedback: ""
     })
-    function getFilteredAgenda() {
+    readonly property var filteredAgenda: {
         if (!agendaItems || !Array.isArray(agendaItems)) return []
         var today = Qt.formatDate(new Date(), "yyyy-MM-dd")
         return agendaItems.filter(function(item) {
@@ -225,6 +225,9 @@ PanelWindow {
             if (item.raw_date) return item.raw_date >= today
             return true
         })
+    }
+    function getFilteredAgenda() {
+        return filteredAgenda
     }
 
     property bool engineConnected: false
@@ -260,7 +263,7 @@ PanelWindow {
         id: radarEngineProc
         command: [
             "sh", "-c",
-            "if command -v carbon-radar-engine >/dev/null 2>&1; then exec carbon-radar-engine; elif [ -x \"$HOME/.local/bin/carbon-radar-engine\" ]; then exec \"$HOME/.local/bin/carbon-radar-engine\"; elif [ -x \"/home/shogun/carbon-shell/apps/carbon-radar/target/release/carbon-radar-engine\" ]; then exec \"/home/shogun/carbon-shell/apps/carbon-radar/target/release/carbon-radar-engine\"; else exec carbon-radar-engine; fi"
+            "if command -v carbon-radar-engine >/dev/null 2>&1; then exec carbon-radar-engine; elif [ -x \"$HOME/.local/bin/carbon-radar-engine\" ]; then exec \"$HOME/.local/bin/carbon-radar-engine\"; elif [ -x \"$HOME/carbon-shell/apps/carbon-radar/target/release/carbon-radar-engine\" ]; then exec \"$HOME/carbon-shell/apps/carbon-radar/target/release/carbon-radar-engine\"; else exec carbon-radar-engine; fi"
         ]
         running: true
         stdinEnabled: true
@@ -317,7 +320,10 @@ PanelWindow {
 
     Process {
         id: calSyncProc
-        command: ["python3", Quickshell.env("HOME") + "/.config/hypr/scripts/carbon-calendar.py", "--agenda"]
+        command: [
+            "sh", "-c",
+            "if [ -f \"$HOME/.config/hypr/scripts/carbon-calendar.py\" ]; then python3 \"$HOME/.config/hypr/scripts/carbon-calendar.py\" --agenda; elif [ -f \"$HOME/carbon-shell/hypr/scripts/carbon-calendar.py\" ]; then python3 \"$HOME/carbon-shell/hypr/scripts/carbon-calendar.py\" --agenda; fi"
+        ]
         running: false
     }
 
@@ -346,7 +352,8 @@ PanelWindow {
         if (radarEngineProc.running) {
             radarEngineProc.write("PUSH_LOCAL\n")
         } else {
-            execCommand("git -C /home/shogun/carbon-shell push 2>/dev/null || true")
+            var ws = (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.workspace && commandCenterWindow.githubPayload.workspace.repo_name) ? (Theme.home + "/" + commandCenterWindow.githubPayload.workspace.repo_name) : (Theme.home + "/carbon-shell")
+            execCommand("git -C \"" + ws + "\" push 2>/dev/null || true")
         }
         showFeedback("Syncing local workspace...")
     }
@@ -411,7 +418,7 @@ PanelWindow {
         if (c.indexOf("obsidian") !== -1) {
             var o = Quickshell.iconPath("obsidian", "") || Quickshell.iconPath("md.obsidian.Obsidian", "")
             if (o) return o
-            return "file:///home/shogun/.local/share/icons/hicolor/scalable/apps/obsidian.svg"
+            return "file://" + Theme.home + "/.local/share/icons/hicolor/scalable/apps/obsidian.svg"
         }
 
         // 2. Direct well-known application mappings
@@ -925,7 +932,7 @@ PanelWindow {
                                 Text {
                                     id: aCountText
                                     anchors.centerIn: parent
-                                    text: commandCenterWindow.getFilteredAgenda().length
+                                    text: commandCenterWindow.filteredAgenda.length
                                     font.family: Theme.font
                                     font.pixelSize: Theme.fontPx(9)
                                     font.weight: Font.Bold
@@ -940,7 +947,7 @@ PanelWindow {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
-                            model: commandCenterWindow.getFilteredAgenda()
+                            model: commandCenterWindow.filteredAgenda
                             spacing: Theme.px(2)
 
                             property bool scrollInitialized: false
@@ -1635,6 +1642,15 @@ PanelWindow {
                                         return filtered
                                     }
 
+                                    Text {
+                                        visible: reposList.count === 0
+                                        anchors.centerIn: parent
+                                        text: "No repositories found"
+                                        font.family: Theme.font
+                                        font.pixelSize: Theme.fontPx(11)
+                                        color: Theme.fgDim
+                                    }
+
                                     delegate: Rectangle {
                                         width: reposList.width
                                         height: Theme.px(40)
@@ -1799,7 +1815,7 @@ PanelWindow {
                                             RowLayout {
                                                 spacing: Theme.px(6)
                                                 Text {
-                                                    text: (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.workspace) ? commandCenterWindow.githubPayload.workspace.repo_name : "carbon-shell"
+                                                    text: (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.workspace && commandCenterWindow.githubPayload.workspace.repo_name) ? commandCenterWindow.githubPayload.workspace.repo_name : "Workspace"
                                                     font.family: Theme.font
                                                     font.pixelSize: Theme.fontPx(11)
                                                     font.weight: Font.DemiBold
@@ -1813,7 +1829,7 @@ PanelWindow {
                                                     Text {
                                                         id: branchText
                                                         anchors.centerIn: parent
-                                                        text: (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.workspace) ? commandCenterWindow.githubPayload.workspace.branch : "main"
+                                                        text: (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.workspace && commandCenterWindow.githubPayload.workspace.branch) ? commandCenterWindow.githubPayload.workspace.branch : "-"
                                                         font.family: Theme.font
                                                         font.pixelSize: Theme.fontPx(9)
                                                         color: Theme.accent
@@ -1898,6 +1914,15 @@ PanelWindow {
                                         spacing: Theme.px(6)
                                         interactive: false
                                         model: (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.pull_requests) ? commandCenterWindow.githubPayload.pull_requests : []
+
+                                        Text {
+                                            visible: prsList.count === 0
+                                            anchors.centerIn: parent
+                                            text: "No open pull requests"
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(11)
+                                            color: Theme.fgDim
+                                        }
 
                                         delegate: Rectangle {
                                             width: prsList.width
@@ -2028,7 +2053,7 @@ PanelWindow {
                                 }
 
                                 Text {
-                                    text: "•  " + (commandCenterWindow.githubPayload ? (commandCenterWindow.githubPayload.total_contributions || 66) : 66) + " contributions in last 30 days"
+                                    text: "•  " + (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.total_contributions !== undefined ? commandCenterWindow.githubPayload.total_contributions : 0) + " contributions in last 30 days"
                                     font.family: Theme.font
                                     font.pixelSize: Theme.fontPx(11)
                                     color: Theme.fgDim
@@ -2068,7 +2093,7 @@ PanelWindow {
                                 spacing: Theme.px(4)
 
                                 Repeater {
-                                    model: (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.contributions) ? commandCenterWindow.githubPayload.contributions : 30
+                                    model: (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.contributions && commandCenterWindow.githubPayload.contributions.length > 0) ? commandCenterWindow.githubPayload.contributions : []
 
                                     Rectangle {
                                         Layout.fillWidth: true

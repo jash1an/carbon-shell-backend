@@ -1,5 +1,5 @@
-use chrono::{Duration as ChronoDuration, Local};
-use reqwest::header::{AUTHORIZATION, USER_AGENT};
+use chrono::{DateTime, Duration as ChronoDuration, Local, Utc};
+use reqwest::header::{ACCEPT, AUTHORIZATION, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -106,11 +106,133 @@ pub struct CarbonSettings {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Settings & Config
+// Dynamic Identity & Environment Detection
 // ─────────────────────────────────────────────────────────────────────────────
 
+fn get_home_dir() -> String {
+    env::var("HOME").unwrap_or_else(|_| ".".to_string())
+}
+
+fn extract_user_from_remote_url(url: &str) -> Option<String> {
+    let clean = url.trim();
+    if clean.is_empty() {
+        return None;
+    }
+
+    if let Some(rest) = clean.strip_prefix("git@github.com:") {
+        let repo_part = rest.strip_suffix(".git").unwrap_or(rest);
+        if let Some((user, _)) = repo_part.split_once('/') {
+            return Some(user.to_string());
+        }
+    }
+
+    if let Some(pos) = clean.find("github.com/") {
+        let rest = &clean[pos + "github.com/".len()..];
+        let repo_part = rest.strip_suffix(".git").unwrap_or(rest);
+        if let Some((user, _)) = repo_part.split_once('/') {
+            return Some(user.to_string());
+        }
+    }
+
+    None
+}
+
+fn detect_github_username(workspace_dir: &str) -> String {
+    // 1. git config github.user
+    if let Ok(out) = Command::new("git")
+        .arg("config")
+        .arg("--get")
+        .arg("github.user")
+        .output()
+    {
+        let u = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !u.is_empty() {
+            return u;
+        }
+    }
+
+    // 2. Parse from workspace remote URL
+    if !workspace_dir.is_empty() {
+        if let Ok(out) = Command::new("git")
+            .arg("-C")
+            .arg(workspace_dir)
+            .arg("config")
+            .arg("--get")
+            .arg("remote.origin.url")
+            .output()
+        {
+            let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if let Some(user) = extract_user_from_remote_url(&url) {
+                return user;
+            }
+        }
+    }
+
+    // 3. git config user.name
+    if let Ok(out) = Command::new("git")
+        .arg("config")
+        .arg("--get")
+        .arg("user.name")
+        .output()
+    {
+        let u = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !u.is_empty() {
+            return u;
+        }
+    }
+
+    // 4. System user environment
+    if let Ok(u) = env::var("GITHUB_USER")
+        .or_else(|_| env::var("GH_USER"))
+        .or_else(|_| env::var("USER"))
+    {
+        let trimmed = u.trim().to_string();
+        if !trimmed.is_empty() {
+            return trimmed;
+        }
+    }
+
+    "developer".to_string()
+}
+
+fn detect_workspace_dir(home: &str) -> String {
+    // 1. Check ~/.config/carbon/repo_path
+    let repo_path = PathBuf::from(home).join(".config/carbon/repo_path");
+    if let Ok(content) = fs::read_to_string(repo_path) {
+        let trimmed = content.trim().to_string();
+        if !trimmed.is_empty() && Path::new(&trimmed).is_dir() {
+            return trimmed;
+        }
+    }
+
+    // 2. Check git rev-parse --show-toplevel
+    if let Ok(out) = Command::new("git")
+        .arg("rev-parse")
+        .arg("--show-toplevel")
+        .output()
+    {
+        let top = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !top.is_empty() && Path::new(&top).is_dir() {
+            return top;
+        }
+    }
+
+    // 3. Check <home>/carbon-shell
+    let default_shell = PathBuf::from(home).join("carbon-shell");
+    if default_shell.is_dir() {
+        return default_shell.to_string_lossy().to_string();
+    }
+
+    // 4. Current directory
+    if let Ok(curr) = env::current_dir() {
+        return curr.to_string_lossy().to_string();
+    }
+
+    home.to_string()
+}
+
 fn load_settings() -> CarbonSettings {
-    let home = env::var("HOME").unwrap_or_else(|_| "/home/shogun".to_string());
+    let home = get_home_dir();
     let path = PathBuf::from(&home).join(".config/carbon/settings.json");
     let mut settings = if let Ok(content) = fs::read_to_string(&path) {
         serde_json::from_str::<CarbonSettings>(&content).unwrap_or_default()
@@ -118,7 +240,11 @@ fn load_settings() -> CarbonSettings {
         CarbonSettings::default()
     };
 
-    if settings.github_token.as_ref().map_or(true, |t| t.trim().is_empty()) {
+    if settings
+        .github_token
+        .as_ref()
+        .map_or(true, |t| t.trim().is_empty())
+    {
         if let Ok(tok) = env::var("GITHUB_TOKEN").or_else(|_| env::var("GH_TOKEN")) {
             if !tok.trim().is_empty() {
                 settings.github_token = Some(tok.trim().to_string());
@@ -126,21 +252,21 @@ fn load_settings() -> CarbonSettings {
         }
     }
 
-    if settings.workspace_dir.as_ref().map_or(true, |d| d.trim().is_empty()) {
-        let repo_path = PathBuf::from(&home).join(".config/carbon/repo_path");
-        if let Ok(content) = fs::read_to_string(repo_path) {
-            let trimmed = content.trim().to_string();
-            if !trimmed.is_empty() {
-                settings.workspace_dir = Some(trimmed);
-            }
-        }
-        if settings.workspace_dir.is_none() {
-            settings.workspace_dir = Some(format!("{}/carbon-shell", home));
-        }
+    if settings
+        .workspace_dir
+        .as_ref()
+        .map_or(true, |d| d.trim().is_empty())
+    {
+        settings.workspace_dir = Some(detect_workspace_dir(&home));
     }
 
-    if settings.github_username.as_ref().map_or(true, |u| u.trim().is_empty()) {
-        settings.github_username = Some("xzshogun".to_string());
+    if settings
+        .github_username
+        .as_ref()
+        .map_or(true, |u| u.trim().is_empty())
+    {
+        let ws = settings.workspace_dir.as_deref().unwrap_or("");
+        settings.github_username = Some(detect_github_username(ws));
     }
 
     settings
@@ -177,7 +303,7 @@ fn scan_markdown_files(dir: &Path, files: &mut Vec<(SystemTime, PathBuf)>) {
 }
 
 fn fetch_obsidian_notes() -> Vec<NoteItem> {
-    let home = env::var("HOME").unwrap_or_else(|_| "/home/shogun".to_string());
+    let home = get_home_dir();
     let candidate_dirs = [
         format!("{}/Documents/Obsidian", home),
         format!("{}/Documents/Obsidian Vault", home),
@@ -211,13 +337,6 @@ fn fetch_obsidian_notes() -> Vec<NoteItem> {
                 path: path_str,
             });
         }
-    }
-
-    if notes.is_empty() {
-        notes.push(NoteItem {
-            name: "Welcome.md".to_string(),
-            path: format!("{}/Documents/Obsidian/Welcome.md", home),
-        });
     }
 
     notes
@@ -256,18 +375,11 @@ fn fetch_clipboard() -> Vec<ClipboardItem> {
         }
     }
 
-    if items.is_empty() {
-        items.push(ClipboardItem {
-            id: "1".to_string(),
-            preview: "Clipboard buffer active".to_string(),
-        });
-    }
-
     items
 }
 
 fn fetch_agenda() -> Vec<AgendaItem> {
-    let home = env::var("HOME").unwrap_or_else(|_| "/home/shogun".to_string());
+    let home = get_home_dir();
     let agenda_path = format!("{}/.config/carbon/agenda.json", home);
 
     if let Ok(content) = fs::read_to_string(&agenda_path) {
@@ -321,7 +433,7 @@ fn is_ignored_class(cls: &str) -> bool {
 }
 
 fn get_usage_file_path() -> PathBuf {
-    let home = env::var("HOME").unwrap_or_else(|_| "/home/shogun".to_string());
+    let home = get_home_dir();
     PathBuf::from(home).join(".config/carbon/app_usage.json")
 }
 
@@ -349,10 +461,7 @@ fn save_app_usage(path: &Path, tally: &HashMap<String, u32>) {
 }
 
 fn seed_from_clients(tally: &mut HashMap<String, u32>) {
-    let output = Command::new("hyprctl")
-        .arg("clients")
-        .arg("-j")
-        .output();
+    let output = Command::new("hyprctl").arg("clients").arg("-j").output();
 
     if let Ok(out) = output {
         if let Ok(json_val) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
@@ -475,27 +584,243 @@ fn get_top_apps(tally: &HashMap<String, u32>) -> Vec<String> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GitHub & Workspace Engine
+// Real Git Operations & Dynamic Repository Discovery
 // ─────────────────────────────────────────────────────────────────────────────
+
+fn scan_local_git_repos(home: &str, workspace_dir: &str) -> Vec<PathBuf> {
+    let mut repos = Vec::new();
+    let mut seen = HashSet::new();
+
+    let ws_path = PathBuf::from(workspace_dir);
+    if ws_path.join(".git").exists() {
+        seen.insert(ws_path.clone());
+        repos.push(ws_path);
+    }
+
+    let bases = [
+        PathBuf::from(home),
+        PathBuf::from(home).join("Projects"),
+        PathBuf::from(home).join("repos"),
+        PathBuf::from(home).join("Development"),
+        PathBuf::from(home).join("src"),
+    ];
+
+    for base in bases.iter() {
+        if !base.is_dir() {
+            continue;
+        }
+        if let Ok(entries) = fs::read_dir(base) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                let file_name = p
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let lower_name = file_name.to_lowercase();
+
+                if file_name.starts_with('.')
+                    || lower_name.contains("backup")
+                    || lower_name.ends_with(".bak")
+                    || lower_name == "target"
+                    || lower_name == "node_modules"
+                    || lower_name == "build"
+                {
+                    continue;
+                }
+
+                if p.is_dir() && p.join(".git").exists() {
+                    if seen.insert(p.clone()) {
+                        repos.push(p);
+                    }
+                }
+            }
+        }
+    }
+
+    repos
+}
+
+fn detect_repo_language(path: &Path) -> String {
+    if path.join("Cargo.toml").exists() {
+        return "Rust".to_string();
+    }
+    if path.join("pyproject.toml").exists() || path.join("requirements.txt").exists() {
+        return "Python".to_string();
+    }
+    if path.join("package.json").exists() {
+        if path.join("tsconfig.json").exists() {
+            return "TypeScript".to_string();
+        }
+        return "JavaScript".to_string();
+    }
+    if path.join("CMakeLists.txt").exists() || path.join("Makefile").exists() {
+        return "C/C++".to_string();
+    }
+    if path.join("quickshell").exists() || path.join("shell.qml").exists() {
+        return "QML".to_string();
+    }
+
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            if let Some(ext) = entry.path().extension() {
+                let e = ext.to_string_lossy().to_lowercase();
+                if e == "py" {
+                    return "Python".to_string();
+                }
+                if e == "rs" {
+                    return "Rust".to_string();
+                }
+                if e == "sh" {
+                    return "Shell".to_string();
+                }
+                if e == "qml" {
+                    return "QML".to_string();
+                }
+                if e == "go" {
+                    return "Go".to_string();
+                }
+                if e == "c" || e == "cpp" || e == "h" {
+                    return "C/C++".to_string();
+                }
+            }
+        }
+    }
+
+    "Repository".to_string()
+}
+
+fn discover_local_repositories(
+    home: &str,
+    workspace_dir: &str,
+    username: &str,
+    seen_names: &mut HashSet<String>,
+) -> Vec<RepositoryItem> {
+    let mut repos = Vec::new();
+    let local_dirs = scan_local_git_repos(home, workspace_dir);
+    for dir in local_dirs {
+        let repo_name = dir
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if repo_name.is_empty() || seen_names.contains(&repo_name) {
+            continue;
+        }
+
+        let dir_str = dir.to_string_lossy();
+        let remote_url = Command::new("git")
+            .arg("-C")
+            .arg(&*dir_str)
+            .arg("config")
+            .arg("--get")
+            .arg("remote.origin.url")
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+
+        let detected_lang = detect_repo_language(&dir);
+        let display_url = if !remote_url.is_empty() {
+            if remote_url.starts_with("git@github.com:") {
+                remote_url
+                    .replace("git@github.com:", "https://github.com/")
+                    .trim_end_matches(".git")
+                    .to_string()
+            } else {
+                remote_url.trim_end_matches(".git").to_string()
+            }
+        } else {
+            format!("file://{}", dir_str)
+        };
+
+        let owner =
+            extract_user_from_remote_url(&remote_url).unwrap_or_else(|| username.to_string());
+        seen_names.insert(repo_name.clone());
+        repos.push(RepositoryItem {
+            name: repo_name.clone(),
+            full_name: format!("{}/{}", owner, repo_name),
+            owner,
+            url: display_url,
+            description: "Local development repository".to_string(),
+            stars: 0,
+            language: detected_lang,
+        });
+    }
+
+    repos
+}
+
+fn get_git_contributions(home: &str, workspace_dir: &str) -> (u32, Vec<ContributionDay>) {
+    let today = Local::now().date_naive();
+    let mut day_counts: HashMap<String, u32> = HashMap::new();
+
+    let repos = scan_local_git_repos(home, workspace_dir);
+    for repo in &repos {
+        let repo_str = repo.to_string_lossy();
+        if let Ok(out) = Command::new("git")
+            .arg("-C")
+            .arg(&*repo_str)
+            .arg("log")
+            .arg("--since=30 days ago")
+            .arg("--date=short")
+            .arg("--pretty=format:%ad")
+            .output()
+        {
+            let text = String::from_utf8_lossy(&out.stdout);
+            for line in text.lines() {
+                let trimmed = line.trim();
+                if !trimmed.is_empty() {
+                    *day_counts.entry(trimmed.to_string()).or_insert(0) += 1;
+                }
+            }
+        }
+    }
+
+    let mut total = 0;
+    let mut days = Vec::with_capacity(30);
+
+    for i in 0..30 {
+        let date = today - ChronoDuration::days(29 - i as i64);
+        let date_key = date.format("%Y-%m-%d").to_string();
+        let count = day_counts.get(&date_key).copied().unwrap_or(0);
+        total += count;
+
+        let level = match count {
+            0 => 0,
+            1..=2 => 1,
+            3..=6 => 2,
+            7..=14 => 3,
+            _ => 4,
+        };
+
+        days.push(ContributionDay {
+            date: date.format("%b %d").to_string(),
+            count,
+            level,
+        });
+    }
+
+    (total, days)
+}
 
 fn get_workspace_status(workspace_dir: &str) -> WorkspaceStatus {
     let path = Path::new(workspace_dir);
     if !path.exists() {
         return WorkspaceStatus {
-            repo_name: "carbon-shell".to_string(),
-            branch: "main".to_string(),
+            repo_name: "No workspace".to_string(),
+            branch: "-".to_string(),
             dirty: false,
             ahead: 0,
             behind: 0,
-            last_commit: "9ab6ac7 fix: command-center exit glitch".to_string(),
-            sync_status: "Workspace active".to_string(),
+            last_commit: "-".to_string(),
+            sync_status: "Workspace directory not found".to_string(),
         };
     }
 
     let repo_name = path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "carbon-shell".to_string());
+        .unwrap_or_else(|| "Workspace".to_string());
 
     let branch = Command::new("git")
         .arg("-C")
@@ -552,7 +877,7 @@ fn get_workspace_status(workspace_dir: &str) -> WorkspaceStatus {
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "9ab6ac7 fix: command-center exit glitch".to_string());
+        .unwrap_or_else(|| "No commits found in tree".to_string());
 
     let sync_status = if dirty {
         "Uncommitted changes in tree".to_string()
@@ -561,7 +886,7 @@ fn get_workspace_status(workspace_dir: &str) -> WorkspaceStatus {
     } else if behind > 0 {
         format!("{} commit(s) behind origin", behind)
     } else {
-        "Synced with origin/main".to_string()
+        "Synced with origin".to_string()
     };
 
     WorkspaceStatus {
@@ -575,117 +900,322 @@ fn get_workspace_status(workspace_dir: &str) -> WorkspaceStatus {
     }
 }
 
-fn generate_contributions() -> (u32, Vec<ContributionDay>) {
-    let today = Local::now().date_naive();
-    let mut days = Vec::with_capacity(30);
-    let pattern = [
-        1, 2, 0, 3, 4, 2, 1, 0, 2, 3, 1, 4, 3, 0, 1, 2, 4, 3, 2, 0, 1, 3, 4, 2, 1, 0, 3, 2, 4, 3,
-    ];
-    let mut total = 0;
+// ─────────────────────────────────────────────────────────────────────────────
+// Dynamic GitHub API & Local Project Synchronizer
+// ─────────────────────────────────────────────────────────────────────────────
 
-    for i in 0..30 {
-        let date = today - ChronoDuration::days(29 - i as i64);
-        let level = pattern[i % pattern.len()];
-        let count = match level {
-            0 => 0,
-            1 => 1,
-            2 => 3,
-            3 => 6,
-            4 => 11,
-            _ => 1,
-        };
-        total += count;
-        days.push(ContributionDay {
-            date: date.format("%b %d").to_string(),
-            count,
-            level,
-        });
+fn format_relative_time(iso_str: &str) -> String {
+    if let Ok(dt) = DateTime::parse_from_rfc3339(iso_str) {
+        let now = Utc::now();
+        let diff = now.signed_duration_since(dt.with_timezone(&Utc));
+        let secs = diff.num_seconds();
+        if secs < 60 {
+            return "just now".to_string();
+        } else if secs < 3600 {
+            let mins = secs / 60;
+            return format!("{}m ago", mins);
+        } else if secs < 86400 {
+            let hours = secs / 3600;
+            return format!("{}h ago", hours);
+        } else if secs < 86400 * 7 {
+            let days = secs / 86400;
+            return format!("{}d ago", days);
+        } else {
+            return dt.format("%b %d").to_string();
+        }
+    }
+    iso_str.to_string()
+}
+
+async fn fetch_remote_prs(
+    client: &reqwest::Client,
+    token: Option<&str>,
+    username: &str,
+    workspace_repo: &str,
+) -> Vec<PullRequestItem> {
+    let mut prs = Vec::new();
+    let mut seen_ids = HashSet::new();
+
+    // 1. Search issues API for all open PRs in repositories owned by username
+    if !username.is_empty() {
+        let search_url = "https://api.github.com/search/issues";
+        let query_str = format!("is:pr is:open user:{}", username);
+        let mut req = client
+            .get(search_url)
+            .query(&[("q", &query_str)])
+            .header(USER_AGENT, "carbon-radar-engine")
+            .header(ACCEPT, "application/vnd.github+json");
+
+        if let Some(tok) = token {
+            if !tok.trim().is_empty() {
+                req = req.header(AUTHORIZATION, format!("Bearer {}", tok.trim()));
+            }
+        }
+
+        if let Ok(resp) = req.send().await {
+            if resp.status().is_success() {
+                if let Ok(val) = resp.json::<serde_json::Value>().await {
+                    if let Some(items) = val.get("items").and_then(|it| it.as_array()) {
+                        for item in items {
+                            let num = item.get("number").and_then(|n| n.as_u64()).unwrap_or(0);
+                            let title = item
+                                .get("title")
+                                .and_then(|t| t.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let repo_url = item
+                                .get("repository_url")
+                                .and_then(|u| u.as_str())
+                                .unwrap_or("");
+                            let repo = repo_url
+                                .split('/')
+                                .last()
+                                .unwrap_or(workspace_repo)
+                                .to_string();
+                            let author = item
+                                .get("user")
+                                .and_then(|u| u.get("login"))
+                                .and_then(|l| l.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let url = item
+                                .get("html_url")
+                                .and_then(|u| u.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let state = item
+                                .get("state")
+                                .and_then(|s| s.as_str())
+                                .unwrap_or("open")
+                                .to_uppercase();
+                            let created_at_raw =
+                                item.get("created_at").and_then(|c| c.as_str()).unwrap_or("");
+                            let created_at = format_relative_time(created_at_raw);
+
+                            let pr_key = format!("{}:{}", repo, num);
+                            if seen_ids.insert(pr_key) {
+                                prs.push(PullRequestItem {
+                                    number: num,
+                                    title,
+                                    repo,
+                                    author,
+                                    url,
+                                    state,
+                                    created_at,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    (total, days)
+    // 2. Also check workspace repo pulls directly if none found yet
+    if prs.is_empty() && !workspace_repo.is_empty() && !username.is_empty() {
+        let repo_pulls_url = format!(
+            "https://api.github.com/repos/{}/{}/pulls",
+            username, workspace_repo
+        );
+        let mut req = client
+            .get(&repo_pulls_url)
+            .header(USER_AGENT, "carbon-radar-engine")
+            .header(ACCEPT, "application/vnd.github+json");
+
+        if let Some(tok) = token {
+            if !tok.trim().is_empty() {
+                req = req.header(AUTHORIZATION, format!("Bearer {}", tok.trim()));
+            }
+        }
+
+        if let Ok(resp) = req.send().await {
+            if resp.status().is_success() {
+                if let Ok(val) = resp.json::<serde_json::Value>().await {
+                    if let Some(arr) = val.as_array() {
+                        for item in arr {
+                            let num = item.get("number").and_then(|n| n.as_u64()).unwrap_or(0);
+                            let title = item
+                                .get("title")
+                                .and_then(|t| t.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let repo = item
+                                .get("base")
+                                .and_then(|b| b.get("repo"))
+                                .and_then(|r| r.get("name"))
+                                .and_then(|n| n.as_str())
+                                .unwrap_or(workspace_repo)
+                                .to_string();
+                            let author = item
+                                .get("user")
+                                .and_then(|u| u.get("login"))
+                                .and_then(|l| l.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let url = item
+                                .get("html_url")
+                                .and_then(|u| u.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let state = item
+                                .get("state")
+                                .and_then(|s| s.as_str())
+                                .unwrap_or("open")
+                                .to_uppercase();
+                            let created_at_raw =
+                                item.get("created_at").and_then(|c| c.as_str()).unwrap_or("");
+                            let created_at = format_relative_time(created_at_raw);
+
+                            let pr_key = format!("{}:{}", repo, num);
+                            if seen_ids.insert(pr_key) {
+                                prs.push(PullRequestItem {
+                                    number: num,
+                                    title,
+                                    repo,
+                                    author,
+                                    url,
+                                    state,
+                                    created_at,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    prs
 }
 
-fn get_default_prs() -> Vec<PullRequestItem> {
-    vec![
-        PullRequestItem {
-            number: 142,
-            title: "feat(quickshell): smooth physics drawer & zero dimming".to_string(),
-            repo: "carbon-shell".to_string(),
-            author: "xzshogun".to_string(),
-            url: "https://github.com/xzshogun/carbon-shell/pull/142".to_string(),
-            state: "OPEN".to_string(),
-            created_at: "2 hours ago".to_string(),
-        },
-        PullRequestItem {
-            number: 89,
-            title: "fix(tide): island overlay layout clipping on narrow monitors".to_string(),
-            repo: "carbon-shell".to_string(),
-            author: "alex-w".to_string(),
-            url: "https://github.com/xzshogun/carbon-shell/pull/89".to_string(),
-            state: "OPEN".to_string(),
-            created_at: "1 day ago".to_string(),
-        },
-        PullRequestItem {
-            number: 34,
-            title: "docs: update architecture diagrams and IPC guide".to_string(),
-            repo: "carbon-shell".to_string(),
-            author: "docs-bot".to_string(),
-            url: "https://github.com/xzshogun/carbon-shell/pull/34".to_string(),
-            state: "OPEN".to_string(),
-            created_at: "3 days ago".to_string(),
-        },
-    ]
+async fn fetch_repositories(
+    client: &reqwest::Client,
+    token: Option<&str>,
+    username: &str,
+    home: &str,
+    workspace_dir: &str,
+) -> Vec<RepositoryItem> {
+    let mut repos = Vec::new();
+    let mut seen_names = HashSet::new();
+
+    // 1. Fetch remote repositories from GitHub API
+    if !username.is_empty() {
+        let url = if token.is_some() {
+            "https://api.github.com/user/repos?sort=updated&per_page=15".to_string()
+        } else {
+            format!(
+                "https://api.github.com/users/{}/repos?sort=updated&per_page=15",
+                username
+            )
+        };
+
+        let mut req = client
+            .get(&url)
+            .header(USER_AGENT, "carbon-radar-engine")
+            .header(ACCEPT, "application/vnd.github+json");
+
+        if let Some(tok) = token {
+            if !tok.trim().is_empty() {
+                req = req.header(AUTHORIZATION, format!("Bearer {}", tok.trim()));
+            }
+        }
+
+        if let Ok(resp) = req.send().await {
+            if resp.status().is_success() {
+                if let Ok(val) = resp.json::<serde_json::Value>().await {
+                    if let Some(arr) = val.as_array() {
+                        for item in arr {
+                            let name = item
+                                .get("name")
+                                .and_then(|n| n.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            if name.is_empty() {
+                                continue;
+                            }
+                            let full_name = item
+                                .get("full_name")
+                                .and_then(|n| n.as_str())
+                                .unwrap_or(&name)
+                                .to_string();
+                            let owner = item
+                                .get("owner")
+                                .and_then(|o| o.get("login"))
+                                .and_then(|l| l.as_str())
+                                .unwrap_or(username)
+                                .to_string();
+                            let url = item
+                                .get("html_url")
+                                .and_then(|u| u.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let description = item
+                                .get("description")
+                                .and_then(|d| d.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let stars = item
+                                .get("stargazers_count")
+                                .and_then(|s| s.as_u64())
+                                .unwrap_or(0) as u32;
+                            let language = item
+                                .get("language")
+                                .and_then(|l| l.as_str())
+                                .unwrap_or("Code")
+                                .to_string();
+
+                            seen_names.insert(name.clone());
+                            repos.push(RepositoryItem {
+                                name,
+                                full_name,
+                                owner,
+                                url,
+                                description,
+                                stars,
+                                language,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Discover local git repositories on disk and append any not already found
+    let local_repos = discover_local_repositories(home, workspace_dir, username, &mut seen_names);
+    repos.extend(local_repos);
+
+    repos
 }
 
-fn get_default_repos() -> Vec<RepositoryItem> {
-    vec![
-        RepositoryItem {
-            name: "carbon-shell".to_string(),
-            full_name: "xzshogun/carbon-shell".to_string(),
-            owner: "xzshogun".to_string(),
-            url: "https://github.com/xzshogun/carbon-shell".to_string(),
-            description: "Modern, high-performance desktop shell for Hyprland".to_string(),
-            stars: 128,
-            language: "QML / Rust".to_string(),
-        },
-        RepositoryItem {
-            name: "carbon-radar".to_string(),
-            full_name: "xzshogun/carbon-radar".to_string(),
-            owner: "xzshogun".to_string(),
-            url: "https://github.com/xzshogun/carbon-shell/tree/main/apps/carbon-radar".to_string(),
-            description: "Ultra-fast telemetry and IPC engine for Carbon Shell".to_string(),
-            stars: 45,
-            language: "Rust".to_string(),
-        },
-        RepositoryItem {
-            name: "caelestia-dots".to_string(),
-            full_name: "xzshogun/caelestia-dots".to_string(),
-            owner: "xzshogun".to_string(),
-            url: "https://github.com/xzshogun/caelestia-dots".to_string(),
-            description: "Ecosystem dotfiles and configuration templates".to_string(),
-            stars: 32,
-            language: "Lua / Shell".to_string(),
-        },
-        RepositoryItem {
-            name: "quickshell".to_string(),
-            full_name: "outfoxxed/quickshell".to_string(),
-            owner: "outfoxxed".to_string(),
-            url: "https://github.com/outfoxxed/quickshell".to_string(),
-            description: "Flexible QtQuick-based desktop shell toolkit".to_string(),
-            stars: 1850,
-            language: "C++ / QML".to_string(),
-        },
-        RepositoryItem {
-            name: "hyprland".to_string(),
-            full_name: "hyprwm/Hyprland".to_string(),
-            owner: "hyprwm".to_string(),
-            url: "https://github.com/hyprwm/Hyprland".to_string(),
-            description: "Dynamic tiling Wayland compositor that doesn't sacrifice on looks".to_string(),
-            stars: 24300,
-            language: "C++".to_string(),
-        },
-    ]
+async fn refresh_github_data(
+    client: &reqwest::Client,
+    gh_state: &Arc<Mutex<GitHubState>>,
+    home: &str,
+    ws_dir: &str,
+    username: &str,
+    token: Option<&str>,
+) {
+    let ws_repo_name = Path::new(ws_dir)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "carbon-shell".to_string());
+
+    let (prs, repos) = tokio::join!(
+        fetch_remote_prs(client, token, username, &ws_repo_name),
+        fetch_repositories(client, token, username, home, ws_dir)
+    );
+
+    let mut state = gh_state.lock().await;
+    state.pull_requests = prs;
+    if !repos.is_empty() {
+        state.all_repositories = repos;
+    }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GitHub State Model
+// ─────────────────────────────────────────────────────────────────────────────
 
 pub struct GitHubState {
     pub settings: CarbonSettings,
@@ -697,10 +1227,22 @@ pub struct GitHubState {
 
 impl GitHubState {
     pub fn new(settings: CarbonSettings) -> Self {
+        let home = get_home_dir();
+        let ws = settings
+            .workspace_dir
+            .clone()
+            .unwrap_or_else(|| detect_workspace_dir(&home));
+        let user = settings
+            .github_username
+            .clone()
+            .unwrap_or_else(|| detect_github_username(&ws));
+        let mut seen = HashSet::new();
+        let initial_repos = discover_local_repositories(&home, &ws, &user, &mut seen);
+
         Self {
             settings,
-            pull_requests: get_default_prs(),
-            all_repositories: get_default_repos(),
+            pull_requests: Vec::new(),
+            all_repositories: initial_repos,
             search_query: String::new(),
             feedback: String::new(),
         }
@@ -738,13 +1280,14 @@ async fn build_payload(
     };
 
     let gh = gh_state.lock().await;
+    let home = get_home_dir();
     let ws_dir = gh
         .settings
         .workspace_dir
         .clone()
-        .unwrap_or_else(|| "/home/shogun/carbon-shell".to_string());
+        .unwrap_or_else(|| detect_workspace_dir(&home));
     let workspace = get_workspace_status(&ws_dir);
-    let (total_contributions, contributions) = generate_contributions();
+    let (total_contributions, contributions) = get_git_contributions(&home, &ws_dir);
 
     let authenticated = gh
         .settings
@@ -755,7 +1298,7 @@ async fn build_payload(
         .settings
         .github_username
         .clone()
-        .unwrap_or_else(|| "xzshogun".to_string());
+        .unwrap_or_else(|| detect_github_username(&ws_dir));
 
     let github = GitHubPayload {
         authenticated,
@@ -792,6 +1335,7 @@ fn emit_payload(payload: &RadarPayload) {
 async fn handle_action_command(
     cmd: &str,
     gh_state: &Arc<Mutex<GitHubState>>,
+    client: &reqwest::Client,
 ) {
     let trimmed = cmd.trim();
     if trimmed.is_empty() {
@@ -806,36 +1350,44 @@ async fn handle_action_command(
             state.feedback = format!("Opening URL: {}", target);
         }
     } else if trimmed == "PUSH_LOCAL" {
-        let ws_dir = {
+        let (ws_dir, home, username, token) = {
             let state = gh_state.lock().await;
-            state
+            let home = get_home_dir();
+            let ws = state
                 .settings
                 .workspace_dir
                 .clone()
-                .unwrap_or_else(|| "/home/shogun/carbon-shell".to_string())
+                .unwrap_or_else(|| detect_workspace_dir(&home));
+            let user = state.settings.github_username.clone().unwrap_or_default();
+            let tok = state.settings.github_token.clone();
+            (ws, home, user, tok)
         };
 
         let mut cmd = Command::new("git");
         cmd.arg("-C").arg(&ws_dir).arg("push");
         let output = cmd.output();
 
-        let mut state = gh_state.lock().await;
-        match output {
-            Ok(out) if out.status.success() => {
-                state.feedback = "Local workspace pushed to origin/main".to_string();
-            }
-            Ok(out) => {
-                let err = String::from_utf8_lossy(&out.stderr);
-                let first_line = err
-                    .lines()
-                    .find(|l| !l.trim().is_empty())
-                    .unwrap_or("Git push returned an error");
-                state.feedback = format!("Git: {}", first_line);
-            }
-            Err(e) => {
-                state.feedback = format!("Push command failed: {}", e);
+        {
+            let mut state = gh_state.lock().await;
+            match output {
+                Ok(out) if out.status.success() => {
+                    state.feedback = "Local workspace pushed to origin/main".to_string();
+                }
+                Ok(out) => {
+                    let err = String::from_utf8_lossy(&out.stderr);
+                    let first_line = err
+                        .lines()
+                        .find(|l| !l.trim().is_empty())
+                        .unwrap_or("Git push returned an error");
+                    state.feedback = format!("Git: {}", first_line);
+                }
+                Err(e) => {
+                    state.feedback = format!("Push command failed: {}", e);
+                }
             }
         }
+
+        refresh_github_data(client, gh_state, &home, &ws_dir, &username, token.as_deref()).await;
     } else if let Some(rest) = trimmed.strip_prefix("MERGE_PR ") {
         let parts: Vec<&str> = rest.split_whitespace().collect();
         if parts.len() >= 2 {
@@ -845,14 +1397,14 @@ async fn handle_action_command(
                 let mut state = gh_state.lock().await;
                 if let Some(ref tok) = state.settings.github_token {
                     if !tok.trim().is_empty() {
-                        let client = reqwest::Client::new();
+                        let client_clone = client.clone();
                         let merge_url = format!(
                             "https://api.github.com/repos/{}/pulls/{}/merge",
                             repo, num
                         );
                         let tok_clone = tok.clone();
                         tokio::spawn(async move {
-                            let _ = client
+                            let _ = client_clone
                                 .put(&merge_url)
                                 .header(USER_AGENT, "carbon-radar-engine")
                                 .header(AUTHORIZATION, format!("Bearer {}", tok_clone))
@@ -875,6 +1427,19 @@ async fn handle_action_command(
         let mut state = gh_state.lock().await;
         state.search_query = query.trim().to_string();
     } else if trimmed == "REFRESH" || trimmed == "REFRESH_GITHUB" {
+        let (home, ws_dir, username, token) = {
+            let state = gh_state.lock().await;
+            let home = get_home_dir();
+            let ws = state
+                .settings
+                .workspace_dir
+                .clone()
+                .unwrap_or_else(|| detect_workspace_dir(&home));
+            let user = state.settings.github_username.clone().unwrap_or_default();
+            let tok = state.settings.github_token.clone();
+            (home, ws, user, tok)
+        };
+        refresh_github_data(client, gh_state, &home, &ws_dir, &username, token.as_deref()).await;
         let mut state = gh_state.lock().await;
         state.feedback = "Refreshed GitHub & Workspace status".to_string();
     }
@@ -887,7 +1452,11 @@ async fn handle_action_command(
 #[tokio::main]
 async fn main() {
     let settings = load_settings();
-    let gh_state = Arc::new(Mutex::new(GitHubState::new(settings)));
+    let gh_state = Arc::new(Mutex::new(GitHubState::new(settings.clone())));
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
 
     let usage_path = get_usage_file_path();
     let mut initial_tally = load_app_usage(&usage_path);
@@ -908,6 +1477,46 @@ async fn main() {
         start_ipc_listener(listener_tally, listener_path).await;
     });
 
+    // Spawn background GitHub and repository synchronizer
+    let sync_state = Arc::clone(&gh_state);
+    let sync_client = client.clone();
+    let home = get_home_dir();
+    let ws_dir = settings
+        .workspace_dir
+        .clone()
+        .unwrap_or_else(|| detect_workspace_dir(&home));
+    let username = settings
+        .github_username
+        .clone()
+        .unwrap_or_else(|| detect_github_username(&ws_dir));
+    let token = settings.github_token.clone();
+
+    tokio::spawn(async move {
+        // Initial fetch
+        refresh_github_data(
+            &sync_client,
+            &sync_state,
+            &home,
+            &ws_dir,
+            &username,
+            token.as_deref(),
+        )
+        .await;
+
+        loop {
+            sleep(Duration::from_secs(60)).await;
+            refresh_github_data(
+                &sync_client,
+                &sync_state,
+                &home,
+                &ws_dir,
+                &username,
+                token.as_deref(),
+            )
+            .await;
+        }
+    });
+
     let mut stdin_reader = BufReader::new(tokio::io::stdin()).lines();
     let mut ticker = tokio::time::interval(Duration::from_secs(2));
 
@@ -924,7 +1533,7 @@ async fn main() {
             line = stdin_reader.next_line() => {
                 match line {
                     Ok(Some(raw_line)) => {
-                        handle_action_command(&raw_line, &gh_state).await;
+                        handle_action_command(&raw_line, &gh_state, &client).await;
                         let payload = build_payload(&tally, &gh_state).await;
                         emit_payload(&payload);
                     }
@@ -937,5 +1546,31 @@ async fn main() {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_fetch_prs_and_repos() {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap();
+        let prs = fetch_remote_prs(&client, None, "xzshogun", "carbon-shell").await;
+        println!("Fetched PRs: {:?}", prs);
+        assert!(!prs.is_empty(), "Should fetch at least PR #8");
+
+        let home = get_home_dir();
+        let ws = detect_workspace_dir(&home);
+        let mut seen = HashSet::new();
+        let repos = discover_local_repositories(&home, &ws, "xzshogun", &mut seen);
+        println!(
+            "Discovered local repos: {:?}",
+            repos.iter().map(|r| &r.name).collect::<Vec<_>>()
+        );
+        assert!(!repos.is_empty(), "Should discover local git repos");
     }
 }

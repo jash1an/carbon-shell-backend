@@ -348,7 +348,7 @@ Item {
             if (t.indexOf("obsidian") !== -1) {
                 var o = Quickshell.iconPath("obsidian", "") || Quickshell.iconPath("md.obsidian.Obsidian", "")
                 if (o) return o
-                return "file:///home/shogun/.local/share/icons/hicolor/scalable/apps/obsidian.svg"
+                return "file://" + (Quickshell.env("HOME") || "") + "/.local/share/icons/hicolor/scalable/apps/obsidian.svg"
             }
         }
         if (appId) {
