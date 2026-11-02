@@ -236,6 +236,7 @@ PanelWindow {
     onCurrentChannelChanged: {
         if (currentChannel === "github") {
             githubUplinkView.contentY = 0
+            if (repoInput) repoInput.forceActiveFocus()
         }
     }
 
@@ -1049,12 +1050,13 @@ PanelWindow {
                         // ── Top: Dynamic Recent Apps Landscape Dock ──
                         Item {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: Theme.px(42)
-                            Layout.maximumHeight: Theme.px(42)
+                            Layout.preferredHeight: Theme.px(40)
+                            Layout.maximumHeight: Theme.px(40)
 
                             Rectangle {
-                                anchors.top: parent.top
+                                anchors.verticalCenter: parent.verticalCenter
                                 anchors.left: parent.left
+                                height: Theme.px(36)
                                 // Length dynamically hugs active apps (up to 8 max)
                                 width: Math.min(parent.width, Math.max(Theme.px(42), commandCenterWindow.appsItems.length * Theme.px(32) + (commandCenterWindow.appsItems.length > 0 ? (commandCenterWindow.appsItems.length - 1) * Theme.px(3) : 0) + Theme.px(10)))
 
@@ -1062,7 +1064,6 @@ PanelWindow {
                                 border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
                                 border.width: 1
                                 radius: Theme.px(10)
-                                clip: true
 
                                 Row {
                                     anchors.centerIn: parent
@@ -1117,6 +1118,34 @@ PanelWindow {
                                                     anchors.fill: parent
                                                     cursorShape: Qt.PointingHandCursor
                                                     onClicked: commandCenterWindow.focusApp(modelData)
+                                                }
+                                            }
+
+                                            // App Name Tooltip
+                                            Rectangle {
+                                                visible: appHover.hovered
+                                                anchors.bottom: iconBg.top
+                                                anchors.horizontalCenter: iconBg.horizontalCenter
+                                                anchors.bottomMargin: Theme.px(4)
+                                                width: appTipText.implicitWidth + Theme.px(10)
+                                                height: Theme.px(18)
+                                                radius: Theme.px(4)
+                                                color: Qt.rgba(0, 0, 0, 0.88)
+                                                border.color: Qt.rgba(1, 1, 1, 0.2)
+                                                border.width: 1
+                                                z: 100
+
+                                                Text {
+                                                    id: appTipText
+                                                    anchors.centerIn: parent
+                                                    text: {
+                                                        var raw = modelData || ""
+                                                        var parts = raw.split(".")
+                                                        return parts[parts.length - 1]
+                                                    }
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(9)
+                                                    color: Theme.fg
                                                 }
                                             }
                                         }
@@ -1497,7 +1526,7 @@ PanelWindow {
                 ColumnLayout {
                     id: githubScrollCol
                     width: githubUplinkView.width
-                    implicitHeight: (githubSplitPanes ? githubSplitPanes.implicitHeight : githubUplinkView.height) + Theme.px(8) + (githubContribMatrix ? githubContribMatrix.implicitHeight : Theme.px(92))
+                    implicitHeight: (githubSplitPanes ? githubSplitPanes.implicitHeight : githubUplinkView.height) + Theme.px(8) + (githubContribMatrix ? githubContribMatrix.implicitHeight : Theme.px(160))
                     spacing: Theme.px(8)
 
                     // 1. TOP: SPLIT PANES (Covers full visible panel height)
@@ -1505,6 +1534,7 @@ PanelWindow {
                         id: githubSplitPanes
                         Layout.fillWidth: true
                         Layout.preferredHeight: githubUplinkView.height
+                        Layout.minimumHeight: githubUplinkView.height
                         implicitHeight: githubUplinkView.height
                         spacing: Theme.px(8)
 
@@ -1581,7 +1611,14 @@ PanelWindow {
                                             topPadding: 0
                                             bottomPadding: 0
                                             verticalAlignment: TextInput.AlignVCenter
-                                            onTextChanged: commandCenterWindow.searchRepositories(text)
+                                            Keys.onDownPressed: function(event) {
+                                                commandCenterWindow.scrollGithubBottom()
+                                                if (event) event.accepted = true
+                                            }
+                                            Keys.onUpPressed: function(event) {
+                                                commandCenterWindow.scrollGithubTop()
+                                                if (event) event.accepted = true
+                                            }
                                             Keys.onLeftPressed: function(event) {
                                                 if (cursorPosition === 0) {
                                                     commandCenterWindow.currentChannel = "overview"
@@ -1616,42 +1653,36 @@ PanelWindow {
                                     }
                                 }
 
-                                // Repositories List
-                                ListView {
-                                    id: reposList
+                                // Repositories List Container
+                                Item {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
-                                    clip: true
-                                    spacing: Theme.px(4)
-                                    interactive: false
-                                    model: {
-                                        var repos = (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.repositories) ? commandCenterWindow.githubPayload.repositories : []
-                                        var q = repoInput.text.trim().toLowerCase()
-                                        if (!q) return repos
-                                        var filtered = []
-                                        for (var i = 0; i < repos.length; i++) {
-                                            var r = repos[i]
-                                            var name = (r.name || "").toLowerCase()
-                                            var owner = (r.owner || "").toLowerCase()
-                                            var lang = (r.language || "").toLowerCase()
-                                            var desc = (r.description || "").toLowerCase()
-                                            if (name.indexOf(q) !== -1 || owner.indexOf(q) !== -1 || lang.indexOf(q) !== -1 || desc.indexOf(q) !== -1) {
-                                                filtered.push(r)
+
+                                    ListView {
+                                        id: reposList
+                                        anchors.fill: parent
+                                        clip: true
+                                        spacing: Theme.px(4)
+                                        interactive: true
+                                        model: {
+                                            var repos = (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.repositories) ? commandCenterWindow.githubPayload.repositories : []
+                                            var q = repoInput.text.trim().toLowerCase()
+                                            if (!q) return repos
+                                            var filtered = []
+                                            for (var i = 0; i < repos.length; i++) {
+                                                var r = repos[i]
+                                                var name = (r.name || "").toLowerCase()
+                                                var owner = (r.owner || "").toLowerCase()
+                                                var lang = (r.language || "").toLowerCase()
+                                                var desc = (r.description || "").toLowerCase()
+                                                if (name.indexOf(q) !== -1 || owner.indexOf(q) !== -1 || lang.indexOf(q) !== -1 || desc.indexOf(q) !== -1) {
+                                                    filtered.push(r)
+                                                }
                                             }
+                                            return filtered
                                         }
-                                        return filtered
-                                    }
 
-                                    Text {
-                                        visible: reposList.count === 0
-                                        anchors.centerIn: parent
-                                        text: "No repositories found"
-                                        font.family: Theme.font
-                                        font.pixelSize: Theme.fontPx(11)
-                                        color: Theme.fgDim
-                                    }
-
-                                    delegate: Rectangle {
+                                        delegate: Rectangle {
                                         width: reposList.width
                                         height: Theme.px(40)
                                         radius: Theme.px(6)
@@ -1718,9 +1749,19 @@ PanelWindow {
                                             onClicked: commandCenterWindow.openUrl(modelData.url)
                                         }
                                     }
+                                } // closes ListView
+
+                                Text {
+                                    visible: reposList.count === 0
+                                    anchors.centerIn: parent
+                                    text: "No repositories found"
+                                    font.family: Theme.font
+                                    font.pixelSize: Theme.fontPx(11)
+                                    color: Theme.fgDim
                                 }
-                            }
-                        }
+                            } // closes Item
+                        } // closes ColumnLayout
+                    } // closes Rectangle
 
                         // RIGHT: WORKSPACE & PR GATEKEEPER
                         ColumnLayout {
@@ -2015,22 +2056,26 @@ PanelWindow {
                         }
                     }
 
-                    // 2. BOTTOM: FULL-WIDTH CONTRIBUTION MATRIX
+                    // 2. BOTTOM: FULL-WIDTH CONTRIBUTION MATRIX (Authentic GitHub Square Calendar)
                     Rectangle {
                         id: githubContribMatrix
                         Layout.fillWidth: true
-                        Layout.preferredHeight: Theme.px(92)
-                        implicitHeight: Theme.px(92)
+                        Layout.preferredHeight: Theme.px(160)
+                        implicitHeight: Theme.px(160)
                         color: Qt.rgba(1, 1, 1, 0.02)
                         border.color: Qt.rgba(1, 1, 1, 0.15)
                         border.width: 1
                         radius: Theme.px(10)
-                        clip: true
+                        clip: false
+
+                        property var hoveredDay: null
+                        property real tooltipX: 0
+                        property real tooltipY: 0
 
                         ColumnLayout {
                             anchors.fill: parent
-                            anchors.margins: Theme.px(8)
-                            spacing: Theme.px(4)
+                            anchors.margins: Theme.px(10)
+                            spacing: Theme.px(6)
 
                             // Matrix Header & Legend
                             RowLayout {
@@ -2053,10 +2098,19 @@ PanelWindow {
                                 }
 
                                 Text {
-                                    text: "•  " + (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.total_contributions !== undefined ? commandCenterWindow.githubPayload.total_contributions : 0) + " contributions in last 30 days"
+                                    text: {
+                                        if (githubContribMatrix.hoveredDay && !githubContribMatrix.hoveredDay.is_future) {
+                                            var c = githubContribMatrix.hoveredDay.count
+                                            var d = githubContribMatrix.hoveredDay.date
+                                            return "•  " + d + ": " + (c > 0 ? (c + (c === 1 ? " commit" : " commits")) : "No commits")
+                                        }
+                                        var total = (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.total_contributions !== undefined) ? commandCenterWindow.githubPayload.total_contributions : 0
+                                        return "•  " + total + " contributions in last 36 weeks"
+                                    }
                                     font.family: Theme.font
                                     font.pixelSize: Theme.fontPx(11)
-                                    color: Theme.fgDim
+                                    font.weight: githubContribMatrix.hoveredDay ? Font.Medium : Font.Normal
+                                    color: githubContribMatrix.hoveredDay ? Theme.accent : Theme.fgDim
                                 }
 
                                 Item { Layout.fillWidth: true }
@@ -2073,10 +2127,10 @@ PanelWindow {
                                         color: Theme.fgDim
                                     }
                                     Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: Qt.rgba(1, 1, 1, 0.04); border.color: Qt.rgba(1, 1, 1, 0.1); border.width: 1 }
-                                    Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: Qt.rgba(1, 1, 1, 0.1) }
-                                    Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: Qt.rgba(0.557, 0.910, 0.659, 0.5) }
+                                    Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: Qt.rgba(0.557, 0.910, 0.659, 0.28) }
+                                    Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: Qt.rgba(0.557, 0.910, 0.659, 0.58) }
                                     Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: "#8ee8a8" }
-                                    Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: "#f5b86e" }
+                                    Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: "#39d353" }
                                     Text {
                                         text: "More"
                                         font.family: Theme.font
@@ -2086,56 +2140,163 @@ PanelWindow {
                                 }
                             }
 
-                            // Matrix 30-Day Activity Cells
-                            RowLayout {
+                            // Calendar Grid Area
+                            Item {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                spacing: Theme.px(4)
 
-                                Repeater {
-                                    model: (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.contributions && commandCenterWindow.githubPayload.contributions.length > 0) ? commandCenterWindow.githubPayload.contributions : []
+                                Row {
+                                    anchors.centerIn: parent
+                                    spacing: Theme.px(5)
 
-                                    Rectangle {
-                                        Layout.fillWidth: true
-                                        Layout.fillHeight: true
-                                        radius: Theme.px(4)
-                                        color: {
-                                            var lvl = modelData ? modelData.level : 0
-                                            if (lvl === 4) return "#f5b86e"
-                                            if (lvl === 3) return "#8ee8a8"
-                                            if (lvl === 2) return Qt.rgba(0.557, 0.910, 0.659, 0.5)
-                                            if (lvl === 1) return Qt.rgba(1, 1, 1, 0.1)
-                                            return "transparent"
+                                    // Day of Week Labels (Left Column)
+                                    Column {
+                                        spacing: Theme.px(3)
+                                        // Offset for month header row
+                                        Item { width: Theme.px(1); height: Theme.px(14) }
+                                        // Sun
+                                        Item { width: Theme.px(20); height: Theme.px(11) }
+                                        // Mon
+                                        Text {
+                                            width: Theme.px(20); height: Theme.px(11)
+                                            text: "Mon"
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(8)
+                                            color: Theme.fgDim
+                                            verticalAlignment: Text.AlignVCenter
                                         }
-                                        border.color: (modelData && modelData.level > 0) ? "transparent" : Qt.rgba(1, 1, 1, 0.08)
-                                        border.width: 1
+                                        // Tue
+                                        Item { width: Theme.px(20); height: Theme.px(11) }
+                                        // Wed
+                                        Text {
+                                            width: Theme.px(20); height: Theme.px(11)
+                                            text: "Wed"
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(8)
+                                            color: Theme.fgDim
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                        // Thu
+                                        Item { width: Theme.px(20); height: Theme.px(11) }
+                                        // Fri
+                                        Text {
+                                            width: Theme.px(20); height: Theme.px(11)
+                                            text: "Fri"
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(8)
+                                            color: Theme.fgDim
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                        // Sat
+                                        Item { width: Theme.px(20); height: Theme.px(11) }
+                                    }
 
-                                        HoverHandler { id: dayHover }
+                                    // Week Columns
+                                    Row {
+                                        spacing: Theme.px(3)
 
-                                        Rectangle {
-                                            visible: dayHover.hovered
-                                            anchors.bottom: parent.top
-                                            anchors.horizontalCenter: parent.horizontalCenter
-                                            anchors.bottomMargin: Theme.px(4)
-                                            width: tipText.implicitWidth + Theme.px(12)
-                                            height: Theme.px(22)
-                                            radius: Theme.px(4)
-                                            color: Qt.rgba(0, 0, 0, 0.85)
-                                            border.color: Qt.rgba(1, 1, 1, 0.2)
-                                            border.width: 1
-                                            z: 100
+                                        Repeater {
+                                            model: (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.weeks && commandCenterWindow.githubPayload.weeks.length > 0) ? commandCenterWindow.githubPayload.weeks : []
 
-                                            Text {
-                                                id: tipText
-                                                anchors.centerIn: parent
-                                                text: modelData ? (modelData.date + ": " + modelData.count + " commits") : ""
-                                                font.family: Theme.font
-                                                font.pixelSize: Theme.fontPx(9)
-                                                color: Theme.fg
+                                            Column {
+                                                id: weekCol
+                                                spacing: Theme.px(3)
+
+                                                // Month label header
+                                                Item {
+                                                    width: Theme.px(11)
+                                                    height: Theme.px(14)
+
+                                                    Text {
+                                                        visible: modelData.month_label && modelData.month_label.length > 0
+                                                        text: modelData.month_label || ""
+                                                        font.family: Theme.font
+                                                        font.pixelSize: Theme.fontPx(8)
+                                                        font.weight: Font.Medium
+                                                        color: Theme.fgDim
+                                                        anchors.left: parent.left
+                                                        anchors.bottom: parent.bottom
+                                                    }
+                                                }
+
+                                                // 7 Days in Week (Sun to Sat)
+                                                Repeater {
+                                                    model: modelData.days || []
+
+                                                    Rectangle {
+                                                        id: dayCell
+                                                        width: Theme.px(11)
+                                                        height: Theme.px(11)
+                                                        radius: Theme.px(2)
+                                                        opacity: modelData.is_future ? 0.0 : 1.0
+
+                                                        color: {
+                                                            if (!modelData || modelData.is_future) return "transparent"
+                                                            var lvl = modelData.level || 0
+                                                            if (lvl === 4) return "#39d353"
+                                                            if (lvl === 3) return "#8ee8a8"
+                                                            if (lvl === 2) return Qt.rgba(0.557, 0.910, 0.659, 0.58)
+                                                            if (lvl === 1) return Qt.rgba(0.557, 0.910, 0.659, 0.28)
+                                                            return Qt.rgba(1, 1, 1, 0.04)
+                                                        }
+                                                        border.color: (cellHover.hovered && !modelData.is_future) ? Theme.accent : ((modelData && modelData.level > 0 && !modelData.is_future) ? "transparent" : Qt.rgba(1, 1, 1, 0.08))
+                                                        border.width: (cellHover.hovered && !modelData.is_future) ? 1.5 : 1
+                                                        scale: (cellHover.hovered && !modelData.is_future) ? 1.25 : 1.0
+                                                        z: cellHover.hovered ? 50 : 1
+
+                                                        Behavior on scale { NumberAnimation { duration: 120 } }
+                                                        Behavior on border.color { ColorAnimation { duration: 100 } }
+
+                                                        HoverHandler {
+                                                            id: cellHover
+                                                            enabled: !modelData.is_future
+                                                            onHoveredChanged: {
+                                                                if (hovered) {
+                                                                    githubContribMatrix.hoveredDay = modelData
+                                                                    var pt = dayCell.mapToItem(githubContribMatrix, dayCell.width / 2, 0)
+                                                                    githubContribMatrix.tooltipX = pt.x
+                                                                    githubContribMatrix.tooltipY = pt.y
+                                                                } else if (githubContribMatrix.hoveredDay === modelData) {
+                                                                    githubContribMatrix.hoveredDay = null
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
                                 }
+                            }
+                        }
+
+                        // Floating Tooltip above hovered square
+                        Rectangle {
+                            id: matrixTooltip
+                            visible: githubContribMatrix.hoveredDay !== null && !githubContribMatrix.hoveredDay.is_future
+                            x: Math.max(Theme.px(8), Math.min(githubContribMatrix.width - width - Theme.px(8), githubContribMatrix.tooltipX - width / 2))
+                            y: Math.max(Theme.px(4), githubContribMatrix.tooltipY - height - Theme.px(5))
+                            z: 200
+                            width: matrixTipText.implicitWidth + Theme.px(12)
+                            height: Theme.px(22)
+                            radius: Theme.px(4)
+                            color: Qt.rgba(0, 0, 0, 0.90)
+                            border.color: Qt.rgba(1, 1, 1, 0.25)
+                            border.width: 1
+
+                            Text {
+                                id: matrixTipText
+                                anchors.centerIn: parent
+                                text: {
+                                    if (!githubContribMatrix.hoveredDay) return ""
+                                    var c = githubContribMatrix.hoveredDay.count
+                                    var d = githubContribMatrix.hoveredDay.date
+                                    return (c > 0 ? (c + (c === 1 ? " commit" : " commits")) : "No commits") + " on " + d
+                                }
+                                font.family: Theme.font
+                                font.pixelSize: Theme.fontPx(9)
+                                font.weight: Font.Medium
+                                color: Theme.fg
                             }
                         }
                     }

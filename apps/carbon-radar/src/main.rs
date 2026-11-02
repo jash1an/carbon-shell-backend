@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration as ChronoDuration, Local, Utc};
+use chrono::{DateTime, Datelike, Duration as ChronoDuration, Local, Utc};
 use reqwest::header::{ACCEPT, AUTHORIZATION, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -42,6 +42,14 @@ pub struct ContributionDay {
     pub date: String,
     pub count: u32,
     pub level: u8, // 0 (empty), 1 (dim), 2 (soft mint), 3 (mint), 4 (amber)
+    #[serde(default)]
+    pub is_future: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ContributionWeek {
+    pub month_label: String,
+    pub days: Vec<ContributionDay>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -83,6 +91,8 @@ pub struct GitHubPayload {
     pub username: String,
     pub total_contributions: u32,
     pub contributions: Vec<ContributionDay>,
+    #[serde(default)]
+    pub weeks: Vec<ContributionWeek>,
     pub pull_requests: Vec<PullRequestItem>,
     pub repositories: Vec<RepositoryItem>,
     pub workspace: WorkspaceStatus,
@@ -750,7 +760,7 @@ fn discover_local_repositories(
     repos
 }
 
-fn get_git_contributions(home: &str, workspace_dir: &str) -> (u32, Vec<ContributionDay>) {
+fn get_git_contributions(home: &str, workspace_dir: &str) -> (u32, Vec<ContributionDay>, Vec<ContributionWeek>) {
     let today = Local::now().date_naive();
     let mut day_counts: HashMap<String, u32> = HashMap::new();
 
@@ -761,7 +771,7 @@ fn get_git_contributions(home: &str, workspace_dir: &str) -> (u32, Vec<Contribut
             .arg("-C")
             .arg(&*repo_str)
             .arg("log")
-            .arg("--since=30 days ago")
+            .arg("--since=300 days ago")
             .arg("--date=short")
             .arg("--pretty=format:%ad")
             .output()
@@ -777,30 +787,77 @@ fn get_git_contributions(home: &str, workspace_dir: &str) -> (u32, Vec<Contribut
     }
 
     let mut total = 0;
-    let mut days = Vec::with_capacity(30);
+    let num_weeks: usize = 36;
+    let days_since_sunday = today.weekday().num_days_from_sunday();
+    let this_sunday = today - ChronoDuration::days(days_since_sunday as i64);
+    let start_sunday = this_sunday - ChronoDuration::weeks((num_weeks - 1) as i64);
 
-    for i in 0..30 {
-        let date = today - ChronoDuration::days(29 - i as i64);
-        let date_key = date.format("%Y-%m-%d").to_string();
-        let count = day_counts.get(&date_key).copied().unwrap_or(0);
-        total += count;
+    let mut all_days = Vec::with_capacity(num_weeks * 7);
+    let mut weeks = Vec::with_capacity(num_weeks);
+    let mut last_label_week: i32 = -99;
 
-        let level = match count {
-            0 => 0,
-            1..=2 => 1,
-            3..=6 => 2,
-            7..=14 => 3,
-            _ => 4,
-        };
+    for w in 0..num_weeks {
+        let week_start = start_sunday + ChronoDuration::weeks(w as i64);
+        let mut week_days = Vec::with_capacity(7);
+        let mut month_label = String::new();
 
-        days.push(ContributionDay {
-            date: date.format("%b %d").to_string(),
-            count,
-            level,
+        for d in 0..7 {
+            let date = week_start + ChronoDuration::days(d as i64);
+            let date_key = date.format("%Y-%m-%d").to_string();
+            let is_future = date > today;
+            let count = if is_future {
+                0
+            } else {
+                day_counts.get(&date_key).copied().unwrap_or(0)
+            };
+            total += count;
+
+            if date.day() == 1 && month_label.is_empty() {
+                month_label = date.format("%b").to_string();
+            }
+
+            let level = if is_future {
+                0
+            } else {
+                match count {
+                    0 => 0,
+                    1..=2 => 1,
+                    3..=6 => 2,
+                    7..=14 => 3,
+                    _ => 4,
+                }
+            };
+
+            let day_item = ContributionDay {
+                date: date.format("%b %d, %Y").to_string(),
+                count,
+                level,
+                is_future,
+            };
+
+            all_days.push(day_item.clone());
+            week_days.push(day_item);
+        }
+
+        if w == 0 && month_label.is_empty() {
+            month_label = week_start.format("%b").to_string();
+        }
+
+        if !month_label.is_empty() {
+            if (w as i32) - last_label_week < 3 {
+                month_label.clear();
+            } else {
+                last_label_week = w as i32;
+            }
+        }
+
+        weeks.push(ContributionWeek {
+            month_label,
+            days: week_days,
         });
     }
 
-    (total, days)
+    (total, all_days, weeks)
 }
 
 fn get_workspace_status(workspace_dir: &str) -> WorkspaceStatus {
@@ -1287,7 +1344,7 @@ async fn build_payload(
         .clone()
         .unwrap_or_else(|| detect_workspace_dir(&home));
     let workspace = get_workspace_status(&ws_dir);
-    let (total_contributions, contributions) = get_git_contributions(&home, &ws_dir);
+    let (total_contributions, contributions, weeks) = get_git_contributions(&home, &ws_dir);
 
     let authenticated = gh
         .settings
@@ -1305,8 +1362,9 @@ async fn build_payload(
         username,
         total_contributions,
         contributions,
+        weeks,
         pull_requests: gh.pull_requests.clone(),
-        repositories: gh.filtered_repositories(),
+        repositories: gh.all_repositories.clone(),
         workspace,
         feedback: gh.feedback.clone(),
     };
@@ -1420,10 +1478,10 @@ async fn handle_action_command(
                 state.feedback = format!("PR #{} merged into {}", num, repo);
             }
         }
-    } else if let Some(query) = trimmed.strip_prefix("SEARCH_REPOS ") {
+    } else if let Some(query) = trimmed.strip_prefix("SEARCH_REPOS") {
         let mut state = gh_state.lock().await;
         state.search_query = query.trim().to_string();
-    } else if let Some(query) = trimmed.strip_prefix("SEARCH ") {
+    } else if let Some(query) = trimmed.strip_prefix("SEARCH") {
         let mut state = gh_state.lock().await;
         state.search_query = query.trim().to_string();
     } else if trimmed == "REFRESH" || trimmed == "REFRESH_GITHUB" {
