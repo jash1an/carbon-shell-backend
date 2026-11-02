@@ -43,6 +43,20 @@ ShellRoot {
     property var calendarItem: null
     property var centerDashboardItem: null
     property var focusHudItem: null
+    property var commandCenterItem: null
+
+    property bool commandCenterOpen: false
+    function openCommandCenter() {
+        root.closeAllPopupsExcept("commandCenter")
+        root.commandCenterOpen = true
+    }
+    function closeCommandCenter() {
+        root.commandCenterOpen = false
+    }
+    function toggleCommandCenter() {
+        if (root.commandCenterOpen) root.closeCommandCenter()
+        else root.openCommandCenter()
+    }
 
     property bool focusHudOpen: false
     function openFocusHud() {
@@ -131,6 +145,8 @@ ShellRoot {
         if (keep !== "notif") { root.notifOpen = false; root.notifPinned = false }
         if (keep !== "centerDashboard") { root.centerDashboardOpen = false; root.centerDashboardPinned = false }
         if (keep !== "controls") { root.controlsVisible = false; root.controlsPinned = false }
+        if (keep !== "commandCenter") { root.commandCenterOpen = false }
+        if (keep !== "focus") { root.focusHudOpen = false }
     }
 
     property bool smallMusicOpen: false
@@ -1613,6 +1629,15 @@ ShellRoot {
                     }
                     else if (cmd === "close-focus" || cmd === "close-focus-hud") {
                         root.closeFocusHud()
+                    }
+                    else if (cmd === "command-center" || cmd === "toggle-command-center" || cmd === "notch-command-center" || cmd === "radar") {
+                        root.toggleCommandCenter()
+                    }
+                    else if (cmd === "open-command-center" || cmd === "open-radar") {
+                        root.openCommandCenter()
+                    }
+                    else if (cmd === "close-command-center" || cmd === "close-radar") {
+                        root.closeCommandCenter()
                     }
                     else if (cmd === "mixer")
                         root.toggleMixer()
@@ -4052,6 +4077,22 @@ ShellRoot {
             visible: root.focusHudOpen
             onCloseRequested: root.closeFocusHud()
             Component.onCompleted: root.focusHudItem = this
+        }
+    }
+
+    /* Notch Command Center (Radar 2x2 Blueprint Panel) */
+    Variants {
+        model: Quickshell.screens
+
+        CommandCenter {
+            id: commandCenterInst
+            required property var modelData
+            modelData: modelData
+            screen: modelData
+            visible: true
+            isOpen: root.commandCenterOpen
+            onCloseRequested: root.closeCommandCenter()
+            Component.onCompleted: root.commandCenterItem = this
         }
     }
 

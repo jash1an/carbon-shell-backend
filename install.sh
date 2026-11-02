@@ -310,6 +310,17 @@ for s in "$CONFIG_DIR/scripts/carbon-screenshot-"*.sh; do
         cp -f "$s" "$BIN_DIR/$base.sh"
     fi
 done
+
+# Build & deploy Rust apps
+if command -v cargo >/dev/null 2>&1 && [[ -d "$REPO_DIR/apps" ]]; then
+    msg "Compiling Carbon backend apps..."
+    for app_dir in "$REPO_DIR/apps/"*; do
+        if [[ -d "$app_dir" && -f "$app_dir/Cargo.toml" ]]; then
+            (cd "$app_dir" && cargo build --release 2>/dev/null && cp -f target/release/carbon-* "$BIN_DIR/" 2>/dev/null) || true
+        fi
+    done
+fi
+
 chmod +x "$BIN_DIR/carbon-"* 2>/dev/null || true
 
 # Systemd user service

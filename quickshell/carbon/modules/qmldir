@@ -62,3 +62,4 @@ NetworkTab NetworkTab.qml
 ModesTab ModesTab.qml
 FocusHUD FocusHUD.qml
 FocusHUDBackground FocusHUDBackground.qml
+CommandCenter CommandCenter.qml

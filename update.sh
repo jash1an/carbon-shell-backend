@@ -277,6 +277,16 @@ if [[ -f "$CONFIG_DIR/scripts/carbon-mode-keybinds.sh" ]]; then
     bash "$CONFIG_DIR/scripts/carbon-mode-keybinds.sh" >/dev/null 2>&1 || true
 fi
 
+# Build & deploy Rust apps
+if command -v cargo >/dev/null 2>&1 && [[ -d "$REPO_DIR/apps" ]]; then
+    msg "Compiling Carbon backend apps..."
+    for app_dir in "$REPO_DIR/apps/"*; do
+        if [[ -d "$app_dir" && -f "$app_dir/Cargo.toml" ]]; then
+            (cd "$app_dir" && cargo build --release 2>/dev/null && cp -f target/release/carbon-* "$BIN_DIR/" 2>/dev/null) || true
+        fi
+    done
+fi
+
 # Reload services
 if [[ "$NO_RELOAD" -eq 0 ]]; then
     if prompt_confirm "Restart Carbon Quickshell and reload Hyprland now? [Y/n]: " "Y"; then
