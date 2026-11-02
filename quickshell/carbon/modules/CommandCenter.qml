@@ -39,7 +39,7 @@ PanelWindow {
 
     // Only visible when open or during slide-out animation to completely prevent blocking clicks/scrolls
     visible: isOpen || animatingOut
-    WlrLayershell.keyboardFocus: (isOpen && !animatingOut) ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: (isOpen && !animatingOut) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
     onIsOpenChanged: {
         if (!isOpen) {
@@ -49,6 +49,7 @@ PanelWindow {
             animatingOut = false
             closeAnimTimer.stop()
             commandCenterWindow.refreshWeather()
+            escHandler.forceActiveFocus()
         }
     }
 
@@ -223,9 +224,14 @@ PanelWindow {
 
     function resolveAppIcon(cls) {
         if (!cls) return ""
+        var c = cls.toLowerCase().trim()
+        if (c.indexOf("obsidian") !== -1) {
+            var o = Quickshell.iconPath("obsidian", "") || Quickshell.iconPath("md.obsidian.Obsidian", "")
+            if (o) return o
+            return "file:///home/shogun/.local/share/icons/hicolor/scalable/apps/obsidian.svg"
+        }
         var p = Quickshell.iconPath(cls, "")
         if (p) return p
-        var c = cls.toLowerCase().trim()
         p = Quickshell.iconPath(c, "")
         if (p) return p
         var parts = cls.split(".")
@@ -247,6 +253,11 @@ PanelWindow {
     // ── Main Compact Floating Card ──
     Rectangle {
         id: mainPanel
+        focus: true
+        Keys.onEscapePressed: function(event) {
+            commandCenterWindow.closeRequested()
+            if (event) event.accepted = true
+        }
         width: Math.min(Theme.px(640), parent.width - Theme.px(32))
         height: Theme.px(360)
         anchors.horizontalCenter: parent.horizontalCenter
@@ -412,15 +423,18 @@ PanelWindow {
                             Layout.fillWidth: true
                             spacing: Theme.px(6)
 
-                            Text {
-                                text: "description"
-                                font.family: Theme.fontIcon
-                                font.pixelSize: Theme.fontPx(14)
-                                color: Theme.accent
+                            Image {
+                                Layout.preferredWidth: Theme.px(16)
+                                Layout.preferredHeight: Theme.px(16)
+                                Layout.alignment: Qt.AlignVCenter
+                                source: commandCenterWindow.resolveAppIcon("obsidian")
+                                sourceSize: Qt.size(32, 32)
+                                fillMode: Image.PreserveAspectFit
                             }
 
                             Text {
                                 text: "Obsidian Notes"
+                                Layout.alignment: Qt.AlignVCenter
                                 font.family: Theme.font
                                 font.pixelSize: Theme.fontPx(11)
                                 font.weight: Font.DemiBold
@@ -1093,9 +1107,11 @@ PanelWindow {
 
     // Keyboard listener for Escape key to dismiss
     Item {
-        focus: commandCenterWindow.isOpen
-        Keys.onEscapePressed: {
+        id: escHandler
+        focus: true
+        Keys.onEscapePressed: function(event) {
             commandCenterWindow.closeRequested()
+            if (event) event.accepted = true
         }
     }
 }
