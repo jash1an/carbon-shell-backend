@@ -3,6 +3,7 @@ local fn   = require("hyprland.functions")
 
 hl.on("hyprland.start", function()
     -- Keyring, auth and screen-sharing portal
+    hl.exec_cmd("awww-daemon --format argb")
     hl.exec_cmd("gnome-keyring-daemon --start --components=secrets")
     hl.exec_cmd("/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1")
     hl.exec_cmd("sh ~/.config/hypr/scripts/carbon-audio-init.sh")

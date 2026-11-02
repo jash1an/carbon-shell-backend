@@ -51,6 +51,7 @@ ShellRoot {
         root.closeAllPopupsExcept("commandCenter")
         root.commandCenterAnimatingOut = false
         root.commandCenterOpen = true
+        if (root.commandCenterItem) root.commandCenterItem.currentChannel = "overview"
     }
     function closeCommandCenter() {
         if (!root.commandCenterOpen && !root.commandCenterAnimatingOut) return

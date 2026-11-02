@@ -89,7 +89,7 @@ PanelWindow {
 
     // Only visible when open or during slide-out animation to completely prevent blocking clicks/scrolls
     visible: isOpen || animatingOut
-    WlrLayershell.keyboardFocus: (isOpen && !animatingOut) ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: (isOpen && !animatingOut) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
     onIsOpenChanged: {
         if (!isOpen) {
@@ -99,7 +99,8 @@ PanelWindow {
             animatingOut = false
             closeAnimTimer.stop()
             commandCenterWindow.refreshWeather()
-            escHandler.forceActiveFocus()
+            commandCenterWindow.currentChannel = "overview"
+            centerKeyHandler.forceActiveFocus()
         }
     }
 
@@ -410,6 +411,30 @@ PanelWindow {
         width: commandCenterWindow.width
         height: commandCenterWindow.height
 
+        // Full-surface keyboard handler for immediate arrow and escape keys
+        Item {
+            id: centerKeyHandler
+            anchors.fill: parent
+            focus: commandCenterWindow.isOpen
+            Keys.enabled: commandCenterWindow.isOpen
+            Keys.onPressed: (event) => {
+                if (event.key === Qt.Key_Escape) {
+                    commandCenterWindow.closeRequested()
+                    event.accepted = true
+                } else if (event.key === Qt.Key_Right) {
+                    if (commandCenterWindow.currentChannel === "overview") {
+                        commandCenterWindow.currentChannel = "github"
+                        event.accepted = true
+                    }
+                } else if (event.key === Qt.Key_Left) {
+                    if (commandCenterWindow.currentChannel === "github") {
+                        commandCenterWindow.currentChannel = "overview"
+                        event.accepted = true
+                    }
+                }
+            }
+        }
+
         // Transparent dismiss surface (zero screen dimming, matching notch center panel)
         MouseArea {
             anchors.fill: parent
@@ -425,16 +450,21 @@ PanelWindow {
                 commandCenterWindow.closeRequested()
                 if (event) event.accepted = true
             }
-            width: Math.min(Theme.px(760), container.width - Theme.px(32))
-            height: commandCenterWindow.currentChannel === "github" ? Theme.px(540) : Theme.px(360)
-            x: Math.round((container.width - width) / 2)
-
-            Behavior on height {
-                NumberAnimation {
-                    duration: 250
-                    easing.type: Easing.OutCubic
+            Keys.onRightPressed: function(event) {
+                if (commandCenterWindow.currentChannel === "overview") {
+                    commandCenterWindow.currentChannel = "github"
+                    if (event) event.accepted = true
                 }
             }
+            Keys.onLeftPressed: function(event) {
+                if (commandCenterWindow.currentChannel === "github") {
+                    commandCenterWindow.currentChannel = "overview"
+                    if (event) event.accepted = true
+                }
+            }
+            width: Math.min(Theme.px(760), container.width - Theme.px(32))
+            height: Theme.px(360)
+            x: Math.round((container.width - width) / 2)
 
             // THE DYNAMIC POSITIONING ENGINE
             y: {
@@ -491,7 +521,7 @@ PanelWindow {
                 }
 
                 Text {
-                    text: "View Point"
+                    text: commandCenterWindow.currentChannel === "github" ? "GitHub Uplink" : "View Point"
                     Layout.alignment: Qt.AlignVCenter
                     font.family: Theme.font
                     font.pixelSize: Theme.fontPx(12)
@@ -499,87 +529,27 @@ PanelWindow {
                     color: Theme.fg
                 }
 
-                // Channel Segmented Switcher
+                // Minimal page indicator dots (smooth indicator for Normal vs GitHub)
                 RowLayout {
                     Layout.alignment: Qt.AlignVCenter
                     spacing: Theme.px(4)
 
-                    // Channel 1: Overview
                     Rectangle {
-                        height: Theme.px(22)
-                        radius: Theme.px(11)
-                        width: ovText.implicitWidth + Theme.px(16)
-                        color: commandCenterWindow.currentChannel === "overview" ?
-                            Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) :
-                            (ovHover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08) : "transparent")
-                        border.color: commandCenterWindow.currentChannel === "overview" ?
-                            Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : "transparent"
-                        border.width: 1
-
-                        RowLayout {
-                            anchors.centerIn: parent
-                            spacing: Theme.px(4)
-                            Text {
-                                text: "dashboard"
-                                font.family: Theme.fontIcon
-                                font.pixelSize: Theme.fontPx(12)
-                                color: commandCenterWindow.currentChannel === "overview" ? Theme.accent : Theme.fgDim
-                            }
-                            Text {
-                                id: ovText
-                                text: "Overview"
-                                font.family: Theme.font
-                                font.pixelSize: Theme.fontPx(11)
-                                font.weight: commandCenterWindow.currentChannel === "overview" ? Font.DemiBold : Font.Normal
-                                color: commandCenterWindow.currentChannel === "overview" ? Theme.fg : Theme.fgDim
-                            }
-                        }
-
-                        HoverHandler { id: ovHover }
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: commandCenterWindow.currentChannel = "overview"
-                        }
+                        width: commandCenterWindow.currentChannel === "overview" ? Theme.px(12) : Theme.px(5)
+                        height: Theme.px(5)
+                        radius: Theme.px(2.5)
+                        color: commandCenterWindow.currentChannel === "overview" ? Theme.accent : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.3)
+                        Behavior on width { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+                        Behavior on color { ColorAnimation { duration: 200 } }
                     }
 
-                    // Channel 2: GitHub Uplink
                     Rectangle {
-                        height: Theme.px(22)
-                        radius: Theme.px(11)
-                        width: ghText.implicitWidth + Theme.px(16)
-                        color: commandCenterWindow.currentChannel === "github" ?
-                            Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) :
-                            (ghHover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08) : "transparent")
-                        border.color: commandCenterWindow.currentChannel === "github" ?
-                            Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : "transparent"
-                        border.width: 1
-
-                        RowLayout {
-                            anchors.centerIn: parent
-                            spacing: Theme.px(4)
-                            Text {
-                                text: "terminal"
-                                font.family: Theme.fontIcon
-                                font.pixelSize: Theme.fontPx(12)
-                                color: commandCenterWindow.currentChannel === "github" ? Theme.accent : Theme.fgDim
-                            }
-                            Text {
-                                id: ghText
-                                text: "GitHub Uplink"
-                                font.family: Theme.font
-                                font.pixelSize: Theme.fontPx(11)
-                                font.weight: commandCenterWindow.currentChannel === "github" ? Font.DemiBold : Font.Normal
-                                color: commandCenterWindow.currentChannel === "github" ? Theme.fg : Theme.fgDim
-                            }
-                        }
-
-                        HoverHandler { id: ghHover }
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: commandCenterWindow.currentChannel = "github"
-                        }
+                        width: commandCenterWindow.currentChannel === "github" ? Theme.px(12) : Theme.px(5)
+                        height: Theme.px(5)
+                        radius: Theme.px(2.5)
+                        color: commandCenterWindow.currentChannel === "github" ? Theme.accent : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.3)
+                        Behavior on width { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+                        Behavior on color { ColorAnimation { duration: 200 } }
                     }
                 }
 
@@ -665,9 +635,19 @@ PanelWindow {
                 // ── CHANNEL 1: OVERVIEW ──
                 ColumnLayout {
                     id: overviewChannelView
-                    anchors.fill: parent
-                    visible: commandCenterWindow.currentChannel === "overview"
+                    width: parent.width
+                    height: parent.height
+                    x: commandCenterWindow.currentChannel === "overview" ? 0 : -channelViewport.width
+                    opacity: commandCenterWindow.currentChannel === "overview" ? 1.0 : 0.0
+                    visible: opacity > 0.01
                     spacing: Theme.px(8)
+
+                    Behavior on x {
+                        NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
+                    }
+                    Behavior on opacity {
+                        NumberAnimation { duration: 200 }
+                    }
 
                 // ── ROW 1: Obsidian Notes (Left) + Events / Schedule (Right) ──
                 RowLayout {
@@ -1379,27 +1359,57 @@ PanelWindow {
             }
         } // end overviewChannelView
 
-            // ── CHANNEL 2: GITHUB UPLINK ──
-            ColumnLayout {
+            // ── CHANNEL 2: GITHUB UPLINK (Scrollable to fit 360px height) ──
+            Flickable {
                 id: githubUplinkView
-                anchors.fill: parent
-                visible: commandCenterWindow.currentChannel === "github"
-                spacing: Theme.px(10)
+                width: parent.width
+                height: parent.height
+                x: commandCenterWindow.currentChannel === "github" ? 0 : channelViewport.width
+                opacity: commandCenterWindow.currentChannel === "github" ? 1.0 : 0.0
+                visible: opacity > 0.01
+                clip: true
+                contentWidth: width
+                contentHeight: githubScrollCol.implicitHeight
+                boundsBehavior: Flickable.StopAtBounds
 
-                // 1. TOP: FULL-WIDTH CONTRIBUTION MATRIX
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: Theme.px(120)
-                    color: Qt.rgba(1, 1, 1, 0.02)
-                    border.color: Qt.rgba(1, 1, 1, 0.15)
-                    border.width: 1
-                    radius: Theme.px(12)
-                    clip: true
+                ScrollBar.vertical: ScrollBar {
+                    id: ghScroll
+                    policy: ScrollBar.AsNeeded
+                    contentItem: Rectangle {
+                        implicitWidth: Theme.px(3)
+                        radius: Theme.px(2)
+                        color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.4)
+                        opacity: ghScroll.active ? 1.0 : 0.0
+                        Behavior on opacity { NumberAnimation { duration: 200 } }
+                    }
+                }
 
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: Theme.px(12)
-                        spacing: Theme.px(8)
+                Behavior on x {
+                    NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
+                }
+                Behavior on opacity {
+                    NumberAnimation { duration: 200 }
+                }
+
+                ColumnLayout {
+                    id: githubScrollCol
+                    width: githubUplinkView.width
+                    spacing: Theme.px(8)
+
+                    // 1. TOP: FULL-WIDTH CONTRIBUTION MATRIX
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Theme.px(92)
+                        color: Qt.rgba(1, 1, 1, 0.02)
+                        border.color: Qt.rgba(1, 1, 1, 0.15)
+                        border.width: 1
+                        radius: Theme.px(10)
+                        clip: true
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: Theme.px(8)
+                            spacing: Theme.px(4)
 
                         // Matrix Header & Legend
                         RowLayout {
@@ -1512,8 +1522,8 @@ PanelWindow {
                 // 2. BOTTOM: SPLIT PANES
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    spacing: Theme.px(12)
+                    Layout.preferredHeight: Theme.px(200)
+                    spacing: Theme.px(8)
 
                     // LEFT: NARROW GLOBAL SEARCH TILE (35% width)
                     Rectangle {
@@ -1554,7 +1564,7 @@ PanelWindow {
                             // Search Input Field
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: Theme.px(28)
+                                Layout.preferredHeight: Theme.px(26)
                                 color: Qt.rgba(1, 1, 1, 0.04)
                                 border.color: repoInput.activeFocus ? Theme.accent : Qt.rgba(1, 1, 1, 0.12)
                                 border.width: 1
@@ -1589,6 +1599,23 @@ PanelWindow {
                                         bottomPadding: 0
                                         verticalAlignment: TextInput.AlignVCenter
                                         onTextChanged: commandCenterWindow.searchRepositories(text)
+                                        Keys.onLeftPressed: function(event) {
+                                            if (cursorPosition === 0) {
+                                                commandCenterWindow.currentChannel = "overview"
+                                                escHandler.forceActiveFocus()
+                                                if (event) event.accepted = true
+                                            } else {
+                                                if (event) event.accepted = false
+                                            }
+                                        }
+                                        Keys.onEscapePressed: function(event) {
+                                            if (text.length > 0) {
+                                                text = ""
+                                            } else {
+                                                commandCenterWindow.closeRequested()
+                                            }
+                                            if (event) event.accepted = true
+                                        }
                                     }
 
                                     Text {
@@ -1633,7 +1660,7 @@ PanelWindow {
 
                                 delegate: Rectangle {
                                     width: reposList.width
-                                    height: Theme.px(38)
+                                    height: Theme.px(34)
                                     radius: Theme.px(6)
                                     color: repoHover.hovered ? Qt.rgba(1, 1, 1, 0.05) : "transparent"
 
@@ -1706,12 +1733,12 @@ PanelWindow {
                     ColumnLayout {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        spacing: Theme.px(12)
+                        spacing: Theme.px(8)
 
                         // TOP RIGHT: WORKSPACE NODE
                         Rectangle {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: Theme.px(100)
+                            Layout.preferredHeight: Theme.px(84)
                             color: Qt.rgba(1, 1, 1, 0.02)
                             border.color: Qt.rgba(1, 1, 1, 0.15)
                             border.width: 1
@@ -1896,7 +1923,7 @@ PanelWindow {
 
                                     delegate: Rectangle {
                                         width: prsList.width
-                                        height: Theme.px(42)
+                                        height: Theme.px(36)
                                         radius: Theme.px(6)
                                         color: prHover.hovered ? Qt.rgba(1, 1, 1, 0.04) : Qt.rgba(1, 1, 1, 0.015)
                                         border.color: Qt.rgba(1, 1, 1, 0.08)
@@ -1987,16 +2014,9 @@ PanelWindow {
             }
         }
     }
-
-        // Keyboard listener for Escape key to dismiss
-        Item {
-            id: escHandler
-            focus: true
-            Keys.onEscapePressed: function(event) {
-                commandCenterWindow.closeRequested()
-                if (event) event.accepted = true
-            }
+        } // closes ColumnLayout of mainPanel
         }
     }
 }
-}
+
+
