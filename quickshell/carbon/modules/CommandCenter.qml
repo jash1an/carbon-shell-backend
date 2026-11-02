@@ -330,7 +330,7 @@ PanelWindow {
                         font.family: Theme.font
                         font.pixelSize: Theme.fontPx(10)
                         font.weight: Font.Medium
-                        color: Theme.accentLit
+                        color: Theme.accent
                     }
                 }
 
@@ -612,8 +612,8 @@ PanelWindow {
                                             Layout.preferredHeight: Theme.px(18)
                                             Layout.preferredWidth: dText.implicitWidth + Theme.px(10)
                                             radius: Theme.px(4)
-                                            color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.14)
-                                            border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.28)
+                                            color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
+                                            border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.40)
                                             border.width: 1
 
                                             Text {
@@ -623,7 +623,7 @@ PanelWindow {
                                                 font.family: Theme.font
                                                 font.pixelSize: Theme.fontPx(9)
                                                 font.weight: Font.Bold
-                                                color: Theme.accentLit
+                                                color: Theme.accent
                                             }
                                         }
 
@@ -752,19 +752,14 @@ PanelWindow {
                             }
                         }
 
-                        // ── Bottom: Aesthetic Clock & Weather Card ──
-                        Rectangle {
+                        // ── Bottom: Aesthetic Floating Clock & Weather (Transparent, not in a tile) ──
+                        Item {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.03)
-                            border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
-                            border.width: 1
-                            radius: Theme.px(12)
-                            clip: true
 
                             RowLayout {
                                 anchors.fill: parent
-                                anchors.margins: Theme.px(8)
+                                anchors.margins: Theme.px(4)
                                 spacing: Theme.px(6)
 
                                 // Clock Section (Left)
@@ -794,20 +789,20 @@ PanelWindow {
                                             Text {
                                                 text: Qt.formatDateTime(sysClock.date, commandCenterWindow.use24h ? "HH:mm" : "hh:mm")
                                                 font.family: Theme.font
-                                                font.pixelSize: Theme.fontPx(21)
+                                                font.pixelSize: Theme.fontPx(22)
                                                 font.weight: Font.Bold
-                                                color: clockHover.hovered ? Theme.accentLit : Theme.fg
+                                                color: clockHover.hovered ? Theme.accent : Theme.fg
                                                 Behavior on color { ColorAnimation { duration: 120 } }
                                             }
 
                                             Rectangle {
                                                 visible: !commandCenterWindow.use24h
-                                                Layout.preferredHeight: Theme.px(15)
+                                                Layout.preferredHeight: Theme.px(16)
                                                 Layout.preferredWidth: amPmText.implicitWidth + Theme.px(8)
                                                 Layout.alignment: Qt.AlignVCenter
                                                 radius: Theme.px(4)
-                                                color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.15)
-                                                border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.3)
+                                                color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
+                                                border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.40)
                                                 border.width: 1
 
                                                 Text {
@@ -817,7 +812,7 @@ PanelWindow {
                                                     font.family: Theme.font
                                                     font.pixelSize: Theme.fontPx(9)
                                                     font.weight: Font.Bold
-                                                    color: Theme.accentLit
+                                                    color: Theme.accent
                                                 }
                                             }
                                         }
@@ -833,12 +828,12 @@ PanelWindow {
                                     }
                                 }
 
-                                // Subtle Divider
+                                // Subtle Hairline Divider
                                 Rectangle {
                                     Layout.preferredWidth: 1
-                                    Layout.preferredHeight: Theme.px(42)
+                                    Layout.preferredHeight: Theme.px(34)
                                     Layout.alignment: Qt.AlignVCenter
-                                    color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.14)
+                                    color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.15)
                                 }
 
                                 // Weather Section (Right)
@@ -869,16 +864,16 @@ PanelWindow {
                                                 text: commandCenterWindow.resolveWeatherIcon(commandCenterWindow.weatherDesc)
                                                 font.family: Theme.fontIcon
                                                 font.pixelSize: Theme.fontPx(20)
-                                                color: weatherHover.hovered ? Theme.accentLit : Theme.accent
-                                                Behavior on color { ColorAnimation { duration: 120 } }
+                                                color: Theme.accent
                                             }
 
                                             Text {
                                                 text: commandCenterWindow.weatherTemp !== "" ? commandCenterWindow.weatherTemp : "--"
                                                 font.family: Theme.font
-                                                font.pixelSize: Theme.fontPx(17)
+                                                font.pixelSize: Theme.fontPx(18)
                                                 font.weight: Font.Bold
-                                                color: weatherHover.hovered ? Theme.fg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.95)
+                                                color: weatherHover.hovered ? Theme.accent : Theme.fg
+                                                Behavior on color { ColorAnimation { duration: 120 } }
                                             }
                                         }
 
@@ -1039,7 +1034,7 @@ PanelWindow {
                                             font.family: Theme.font
                                             font.pixelSize: Theme.fontPx(9)
                                             font.weight: Font.Bold
-                                            color: Theme.accentLit
+                                            color: Theme.accent
                                         }
                                     }
 
