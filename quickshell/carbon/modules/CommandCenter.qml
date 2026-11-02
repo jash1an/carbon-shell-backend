@@ -31,7 +31,7 @@ PanelWindow {
     readonly property bool isTopBarUp: barEdge !== "bottom"
 
     WlrLayershell.namespace: "carbon-command-center"
-    WlrLayershell.layer: WlrLayer.Top
+    WlrLayershell.layer: WlrLayer.Overlay
     aboveWindows: true
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
@@ -192,10 +192,29 @@ PanelWindow {
     }
 
     // Data models populated by carbon-radar-engine
+    property string currentChannel: "overview" // "overview" | "github"
     property var vaultItems: []
     property var clipboardItems: []
     property var appsItems: []
     property var agendaItems: []
+    property var githubPayload: ({
+        authenticated: false,
+        username: "xzshogun",
+        total_contributions: 66,
+        contributions: [],
+        pull_requests: [],
+        repositories: [],
+        workspace: {
+            repo_name: "carbon-shell",
+            branch: "main",
+            dirty: false,
+            ahead: 0,
+            behind: 0,
+            last_commit: "",
+            sync_status: ""
+        },
+        feedback: ""
+    })
     property bool engineConnected: false
     property string feedbackMessage: ""
 
@@ -232,6 +251,12 @@ PanelWindow {
                     if (payload.clipboard !== undefined) commandCenterWindow.clipboardItems = payload.clipboard
                     if (payload.apps !== undefined) commandCenterWindow.appsItems = payload.apps
                     if (payload.agenda !== undefined) commandCenterWindow.agendaItems = payload.agenda
+                    if (payload.github !== undefined) {
+                        commandCenterWindow.githubPayload = payload.github
+                        if (payload.github.feedback) {
+                            commandCenterWindow.showFeedback(payload.github.feedback)
+                        }
+                    }
                     commandCenterWindow.engineConnected = true
                 } catch(e) {}
             }
@@ -246,6 +271,47 @@ PanelWindow {
     function execCommand(cmd) {
         actionRunner.command = ["sh", "-c", cmd]
         actionRunner.running = true
+    }
+
+    function openUrl(url) {
+        if (!url) return
+        if (radarEngineProc.running) {
+            radarEngineProc.write("OPEN_URL " + url + "\n")
+        } else {
+            execCommand("xdg-open " + JSON.stringify(url) + " 2>/dev/null || true")
+        }
+        showFeedback("Opening URL")
+    }
+
+    function pushLocalWorkspace() {
+        if (radarEngineProc.running) {
+            radarEngineProc.write("PUSH_LOCAL\n")
+        } else {
+            execCommand("git -C /home/shogun/carbon-shell push 2>/dev/null || true")
+        }
+        showFeedback("Syncing local workspace...")
+    }
+
+    function mergePullRequest(repo, prNumber) {
+        if (!repo || !prNumber) return
+        if (radarEngineProc.running) {
+            radarEngineProc.write("MERGE_PR " + repo + " " + prNumber + "\n")
+        }
+        if (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.pull_requests) {
+            var updatedPrs = []
+            for (var i = 0; i < commandCenterWindow.githubPayload.pull_requests.length; i++) {
+                var p = commandCenterWindow.githubPayload.pull_requests[i]
+                if (p.number !== prNumber) updatedPrs.push(p)
+            }
+            commandCenterWindow.githubPayload.pull_requests = updatedPrs
+        }
+        showFeedback("Merging PR #" + prNumber + "...")
+    }
+
+    function searchRepositories(query) {
+        if (radarEngineProc.running) {
+            radarEngineProc.write("SEARCH_REPOS " + (query || "") + "\n")
+        }
     }
 
     function openNote(notePath) {
@@ -359,9 +425,16 @@ PanelWindow {
                 commandCenterWindow.closeRequested()
                 if (event) event.accepted = true
             }
-            width: Math.min(Theme.px(640), container.width - Theme.px(32))
-            height: Theme.px(360)
+            width: Math.min(Theme.px(760), container.width - Theme.px(32))
+            height: commandCenterWindow.currentChannel === "github" ? Theme.px(540) : Theme.px(360)
             x: Math.round((container.width - width) / 2)
+
+            Behavior on height {
+                NumberAnimation {
+                    duration: 250
+                    easing.type: Easing.OutCubic
+                }
+            }
 
             // THE DYNAMIC POSITIONING ENGINE
             y: {
@@ -424,6 +497,90 @@ PanelWindow {
                     font.pixelSize: Theme.fontPx(12)
                     font.weight: Font.DemiBold
                     color: Theme.fg
+                }
+
+                // Channel Segmented Switcher
+                RowLayout {
+                    Layout.alignment: Qt.AlignVCenter
+                    spacing: Theme.px(4)
+
+                    // Channel 1: Overview
+                    Rectangle {
+                        height: Theme.px(22)
+                        radius: Theme.px(11)
+                        width: ovText.implicitWidth + Theme.px(16)
+                        color: commandCenterWindow.currentChannel === "overview" ?
+                            Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) :
+                            (ovHover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08) : "transparent")
+                        border.color: commandCenterWindow.currentChannel === "overview" ?
+                            Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : "transparent"
+                        border.width: 1
+
+                        RowLayout {
+                            anchors.centerIn: parent
+                            spacing: Theme.px(4)
+                            Text {
+                                text: "dashboard"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: Theme.fontPx(12)
+                                color: commandCenterWindow.currentChannel === "overview" ? Theme.accent : Theme.fgDim
+                            }
+                            Text {
+                                id: ovText
+                                text: "Overview"
+                                font.family: Theme.font
+                                font.pixelSize: Theme.fontPx(11)
+                                font.weight: commandCenterWindow.currentChannel === "overview" ? Font.DemiBold : Font.Normal
+                                color: commandCenterWindow.currentChannel === "overview" ? Theme.fg : Theme.fgDim
+                            }
+                        }
+
+                        HoverHandler { id: ovHover }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: commandCenterWindow.currentChannel = "overview"
+                        }
+                    }
+
+                    // Channel 2: GitHub Uplink
+                    Rectangle {
+                        height: Theme.px(22)
+                        radius: Theme.px(11)
+                        width: ghText.implicitWidth + Theme.px(16)
+                        color: commandCenterWindow.currentChannel === "github" ?
+                            Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) :
+                            (ghHover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08) : "transparent")
+                        border.color: commandCenterWindow.currentChannel === "github" ?
+                            Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : "transparent"
+                        border.width: 1
+
+                        RowLayout {
+                            anchors.centerIn: parent
+                            spacing: Theme.px(4)
+                            Text {
+                                text: "terminal"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: Theme.fontPx(12)
+                                color: commandCenterWindow.currentChannel === "github" ? Theme.accent : Theme.fgDim
+                            }
+                            Text {
+                                id: ghText
+                                text: "GitHub Uplink"
+                                font.family: Theme.font
+                                font.pixelSize: Theme.fontPx(11)
+                                font.weight: commandCenterWindow.currentChannel === "github" ? Font.DemiBold : Font.Normal
+                                color: commandCenterWindow.currentChannel === "github" ? Theme.fg : Theme.fgDim
+                            }
+                        }
+
+                        HoverHandler { id: ghHover }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: commandCenterWindow.currentChannel = "github"
+                        }
+                    }
                 }
 
                 Item { Layout.fillWidth: true }
@@ -498,8 +655,22 @@ PanelWindow {
                 }
             }
 
-            // ── ROW 1: Obsidian Notes (Left) + Events / Schedule (Right) ──
-            RowLayout {
+            // ── Channel Content Viewport ──
+            Item {
+                id: channelViewport
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+
+                // ── CHANNEL 1: OVERVIEW ──
+                ColumnLayout {
+                    id: overviewChannelView
+                    anchors.fill: parent
+                    visible: commandCenterWindow.currentChannel === "overview"
+                    spacing: Theme.px(8)
+
+                // ── ROW 1: Obsidian Notes (Left) + Events / Schedule (Right) ──
+                RowLayout {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Theme.px(144)
                 Layout.maximumHeight: Theme.px(144)
@@ -1206,6 +1377,614 @@ PanelWindow {
                     }
                 }
             }
+        } // end overviewChannelView
+
+            // ── CHANNEL 2: GITHUB UPLINK ──
+            ColumnLayout {
+                id: githubUplinkView
+                anchors.fill: parent
+                visible: commandCenterWindow.currentChannel === "github"
+                spacing: Theme.px(10)
+
+                // 1. TOP: FULL-WIDTH CONTRIBUTION MATRIX
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Theme.px(120)
+                    color: Qt.rgba(1, 1, 1, 0.02)
+                    border.color: Qt.rgba(1, 1, 1, 0.15)
+                    border.width: 1
+                    radius: Theme.px(12)
+                    clip: true
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: Theme.px(12)
+                        spacing: Theme.px(8)
+
+                        // Matrix Header & Legend
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.px(8)
+
+                            Text {
+                                text: "commit"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: Theme.fontPx(14)
+                                color: Theme.accent
+                            }
+
+                            Text {
+                                text: "Contribution Matrix"
+                                font.family: Theme.font
+                                font.pixelSize: Theme.fontPx(12)
+                                font.weight: Font.DemiBold
+                                color: Theme.fg
+                            }
+
+                            Text {
+                                text: "•  " + (commandCenterWindow.githubPayload ? (commandCenterWindow.githubPayload.total_contributions || 66) : 66) + " contributions in last 30 days"
+                                font.family: Theme.font
+                                font.pixelSize: Theme.fontPx(11)
+                                color: Theme.fgDim
+                            }
+
+                            Item { Layout.fillWidth: true }
+
+                            // Legend Dots
+                            RowLayout {
+                                spacing: Theme.px(4)
+                                Layout.alignment: Qt.AlignVCenter
+
+                                Text {
+                                    text: "Less"
+                                    font.family: Theme.font
+                                    font.pixelSize: Theme.fontPx(9)
+                                    color: Theme.fgDim
+                                }
+                                Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: Qt.rgba(1, 1, 1, 0.04); border.color: Qt.rgba(1, 1, 1, 0.1); border.width: 1 }
+                                Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: Qt.rgba(1, 1, 1, 0.1) }
+                                Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: Qt.rgba(0.557, 0.910, 0.659, 0.5) }
+                                Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: "#8ee8a8" }
+                                Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: "#f5b86e" }
+                                Text {
+                                    text: "More"
+                                    font.family: Theme.font
+                                    font.pixelSize: Theme.fontPx(9)
+                                    color: Theme.fgDim
+                                }
+                            }
+                        }
+
+                        // Matrix 30-Day Activity Cells
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            spacing: Theme.px(4)
+
+                            Repeater {
+                                model: (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.contributions) ? commandCenterWindow.githubPayload.contributions : 30
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    radius: Theme.px(4)
+                                    color: {
+                                        var lvl = modelData ? modelData.level : 0
+                                        if (lvl === 4) return "#f5b86e"
+                                        if (lvl === 3) return "#8ee8a8"
+                                        if (lvl === 2) return Qt.rgba(0.557, 0.910, 0.659, 0.5)
+                                        if (lvl === 1) return Qt.rgba(1, 1, 1, 0.1)
+                                        return "transparent"
+                                    }
+                                    border.color: (modelData && modelData.level > 0) ? "transparent" : Qt.rgba(1, 1, 1, 0.08)
+                                    border.width: 1
+
+                                    HoverHandler { id: dayHover }
+
+                                    Rectangle {
+                                        visible: dayHover.hovered
+                                        anchors.bottom: parent.top
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        anchors.bottomMargin: Theme.px(4)
+                                        width: tipText.implicitWidth + Theme.px(12)
+                                        height: Theme.px(22)
+                                        radius: Theme.px(4)
+                                        color: Qt.rgba(0, 0, 0, 0.85)
+                                        border.color: Qt.rgba(1, 1, 1, 0.2)
+                                        border.width: 1
+                                        z: 100
+
+                                        Text {
+                                            id: tipText
+                                            anchors.centerIn: parent
+                                            text: modelData ? (modelData.date + ": " + modelData.count + " commits") : ""
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(9)
+                                            color: Theme.fg
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2. BOTTOM: SPLIT PANES
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    spacing: Theme.px(12)
+
+                    // LEFT: NARROW GLOBAL SEARCH TILE (35% width)
+                    Rectangle {
+                        Layout.preferredWidth: Math.round(mainPanel.width * 0.35)
+                        Layout.fillHeight: true
+                        color: Qt.rgba(1, 1, 1, 0.02)
+                        border.color: Qt.rgba(1, 1, 1, 0.15)
+                        border.width: 1
+                        radius: Theme.px(12)
+                        clip: true
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: Theme.px(10)
+                            spacing: Theme.px(8)
+
+                            // Search Tile Header
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.px(6)
+
+                                Text {
+                                    text: "search"
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: Theme.fontPx(14)
+                                    color: Theme.accent
+                                }
+
+                                Text {
+                                    text: "Repositories"
+                                    font.family: Theme.font
+                                    font.pixelSize: Theme.fontPx(12)
+                                    font.weight: Font.DemiBold
+                                    color: Theme.fg
+                                }
+                            }
+
+                            // Search Input Field
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: Theme.px(28)
+                                color: Qt.rgba(1, 1, 1, 0.04)
+                                border.color: repoInput.activeFocus ? Theme.accent : Qt.rgba(1, 1, 1, 0.12)
+                                border.width: 1
+                                radius: Theme.px(6)
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: Theme.px(8)
+                                    anchors.rightMargin: Theme.px(8)
+                                    spacing: Theme.px(6)
+
+                                    Text {
+                                        text: "filter_list"
+                                        font.family: Theme.fontIcon
+                                        font.pixelSize: Theme.fontPx(12)
+                                        color: Theme.fgDim
+                                    }
+
+                                    TextField {
+                                        id: repoInput
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        placeholderText: "Search repositories..."
+                                        font.family: Theme.font
+                                        font.pixelSize: Theme.fontPx(11)
+                                        color: Theme.fg
+                                        placeholderTextColor: Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.6)
+                                        background: Item {}
+                                        leftPadding: 0
+                                        rightPadding: 0
+                                        topPadding: 0
+                                        bottomPadding: 0
+                                        verticalAlignment: TextInput.AlignVCenter
+                                        onTextChanged: commandCenterWindow.searchRepositories(text)
+                                    }
+
+                                    Text {
+                                        visible: repoInput.text.length > 0
+                                        text: "close"
+                                        font.family: Theme.fontIcon
+                                        font.pixelSize: Theme.fontPx(12)
+                                        color: Theme.fgDim
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: repoInput.text = ""
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Repositories List
+                            ListView {
+                                id: reposList
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                clip: true
+                                spacing: Theme.px(4)
+                                model: {
+                                    var repos = (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.repositories) ? commandCenterWindow.githubPayload.repositories : []
+                                    var q = repoInput.text.trim().toLowerCase()
+                                    if (!q) return repos
+                                    var filtered = []
+                                    for (var i = 0; i < repos.length; i++) {
+                                        var r = repos[i]
+                                        var name = (r.name || "").toLowerCase()
+                                        var owner = (r.owner || "").toLowerCase()
+                                        var lang = (r.language || "").toLowerCase()
+                                        var desc = (r.description || "").toLowerCase()
+                                        if (name.indexOf(q) !== -1 || owner.indexOf(q) !== -1 || lang.indexOf(q) !== -1 || desc.indexOf(q) !== -1) {
+                                            filtered.push(r)
+                                        }
+                                    }
+                                    return filtered
+                                }
+
+                                delegate: Rectangle {
+                                    width: reposList.width
+                                    height: Theme.px(38)
+                                    radius: Theme.px(6)
+                                    color: repoHover.hovered ? Qt.rgba(1, 1, 1, 0.05) : "transparent"
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: Theme.px(8)
+                                        anchors.rightMargin: Theme.px(8)
+                                        spacing: Theme.px(8)
+
+                                        Text {
+                                            text: "book"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: Theme.fontPx(13)
+                                            color: repoHover.hovered ? Theme.accent : Theme.fgDim
+                                        }
+
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 1
+
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: modelData.name
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(11)
+                                                font.weight: Font.DemiBold
+                                                color: repoHover.hovered ? Theme.fg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.85)
+                                                elide: Text.ElideRight
+                                            }
+
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: modelData.owner + (modelData.language ? (" • " + modelData.language) : "")
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(9)
+                                                color: Theme.fgDim
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+
+                                        RowLayout {
+                                            spacing: 2
+                                            Text {
+                                                text: "star"
+                                                font.family: Theme.fontIcon
+                                                font.pixelSize: Theme.fontPx(10)
+                                                color: "#f5b86e"
+                                            }
+                                            Text {
+                                                text: modelData.stars
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(9)
+                                                color: Theme.fgDim
+                                            }
+                                        }
+                                    }
+
+                                    HoverHandler { id: repoHover }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: commandCenterWindow.openUrl(modelData.url)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // RIGHT: WORKSPACE & PR GATEKEEPER
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        spacing: Theme.px(12)
+
+                        // TOP RIGHT: WORKSPACE NODE
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: Theme.px(100)
+                            color: Qt.rgba(1, 1, 1, 0.02)
+                            border.color: Qt.rgba(1, 1, 1, 0.15)
+                            border.width: 1
+                            radius: Theme.px(12)
+                            clip: true
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: Theme.px(10)
+                                spacing: Theme.px(6)
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.px(6)
+
+                                    Text {
+                                        text: "deployed_code"
+                                        font.family: Theme.fontIcon
+                                        font.pixelSize: Theme.fontPx(14)
+                                        color: Theme.accent
+                                    }
+
+                                    Text {
+                                        text: "Workspace Node"
+                                        font.family: Theme.font
+                                        font.pixelSize: Theme.fontPx(12)
+                                        font.weight: Font.DemiBold
+                                        color: Theme.fg
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    // Sync Button
+                                    Rectangle {
+                                        height: Theme.px(24)
+                                        width: syncBtnText.implicitWidth + Theme.px(16)
+                                        radius: Theme.px(6)
+                                        color: syncHover.hovered ? Theme.accent : Qt.rgba(1, 1, 1, 0.05)
+                                        border.color: syncHover.hovered ? Theme.accent : Qt.rgba(1, 1, 1, 0.18)
+                                        border.width: 1
+
+                                        RowLayout {
+                                            anchors.centerIn: parent
+                                            spacing: Theme.px(4)
+
+                                            Text {
+                                                text: "sync"
+                                                font.family: Theme.fontIcon
+                                                font.pixelSize: Theme.fontPx(11)
+                                                color: syncHover.hovered ? "#000000" : Theme.fg
+                                            }
+
+                                            Text {
+                                                id: syncBtnText
+                                                text: "SYNC LOCAL WORKSPACE"
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(9)
+                                                font.weight: Font.Bold
+                                                color: syncHover.hovered ? "#000000" : Theme.fg
+                                            }
+                                        }
+
+                                        HoverHandler { id: syncHover }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: commandCenterWindow.pushLocalWorkspace()
+                                        }
+                                    }
+                                }
+
+                                // Workspace Status Information
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.px(10)
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+
+                                        RowLayout {
+                                            spacing: Theme.px(6)
+                                            Text {
+                                                text: (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.workspace) ? commandCenterWindow.githubPayload.workspace.repo_name : "carbon-shell"
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(11)
+                                                font.weight: Font.DemiBold
+                                                color: Theme.fg
+                                            }
+                                            Rectangle {
+                                                height: Theme.px(14)
+                                                width: branchText.implicitWidth + Theme.px(8)
+                                                radius: Theme.px(3)
+                                                color: Qt.rgba(1, 1, 1, 0.08)
+                                                Text {
+                                                    id: branchText
+                                                    anchors.centerIn: parent
+                                                    text: (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.workspace) ? commandCenterWindow.githubPayload.workspace.branch : "main"
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(9)
+                                                    color: Theme.accent
+                                                }
+                                            }
+                                        }
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.workspace) ? commandCenterWindow.githubPayload.workspace.last_commit : ""
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(9)
+                                            color: Theme.fgDim
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.workspace) ? commandCenterWindow.githubPayload.workspace.sync_status : ""
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(9)
+                                            font.weight: Font.Medium
+                                            color: {
+                                                if (!commandCenterWindow.githubPayload || !commandCenterWindow.githubPayload.workspace) return Theme.fgDim
+                                                if (commandCenterWindow.githubPayload.workspace.dirty) return "#f5b86e"
+                                                if (commandCenterWindow.githubPayload.workspace.ahead > 0) return Theme.accent
+                                                return "#8ee8a8"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // BOTTOM RIGHT: PR GATEKEEPER
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            color: Qt.rgba(1, 1, 1, 0.02)
+                            border.color: Qt.rgba(1, 1, 1, 0.15)
+                            border.width: 1
+                            radius: Theme.px(12)
+                            clip: true
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: Theme.px(10)
+                                spacing: Theme.px(8)
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.px(6)
+
+                                    Text {
+                                        text: "call_merge"
+                                        font.family: Theme.fontIcon
+                                        font.pixelSize: Theme.fontPx(14)
+                                        color: "#8ee8a8"
+                                    }
+
+                                    Text {
+                                        text: "PR Gatekeeper"
+                                        font.family: Theme.font
+                                        font.pixelSize: Theme.fontPx(12)
+                                        font.weight: Font.DemiBold
+                                        color: Theme.fg
+                                    }
+
+                                    Text {
+                                        text: "(" + ((commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.pull_requests) ? commandCenterWindow.githubPayload.pull_requests.length : 0) + " incoming)"
+                                        font.family: Theme.font
+                                        font.pixelSize: Theme.fontPx(10)
+                                        color: Theme.fgDim
+                                    }
+                                }
+
+                                ListView {
+                                    id: prsList
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    clip: true
+                                    spacing: Theme.px(6)
+                                    model: (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.pull_requests) ? commandCenterWindow.githubPayload.pull_requests : []
+
+                                    delegate: Rectangle {
+                                        width: prsList.width
+                                        height: Theme.px(42)
+                                        radius: Theme.px(6)
+                                        color: prHover.hovered ? Qt.rgba(1, 1, 1, 0.04) : Qt.rgba(1, 1, 1, 0.015)
+                                        border.color: Qt.rgba(1, 1, 1, 0.08)
+                                        border.width: 1
+
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.leftMargin: Theme.px(8)
+                                            anchors.rightMargin: Theme.px(8)
+                                            spacing: Theme.px(8)
+
+                                            ColumnLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 1
+
+                                                RowLayout {
+                                                    spacing: Theme.px(6)
+
+                                                    Text {
+                                                        text: "#" + modelData.number
+                                                        font.family: Theme.font
+                                                        font.pixelSize: Theme.fontPx(10)
+                                                        font.weight: Font.Bold
+                                                        color: "#8ee8a8"
+                                                    }
+
+                                                    Text {
+                                                        Layout.fillWidth: true
+                                                        text: modelData.title
+                                                        font.family: Theme.font
+                                                        font.pixelSize: Theme.fontPx(11)
+                                                        font.weight: Font.DemiBold
+                                                        color: Theme.fg
+                                                        elide: Text.ElideRight
+                                                    }
+                                                }
+
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    text: modelData.repo + " by " + modelData.author + " • " + modelData.created_at
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(9)
+                                                    color: Theme.fgDim
+                                                    elide: Text.ElideRight
+                                                }
+                                            }
+
+                                            // Merge Button
+                                            Rectangle {
+                                                height: Theme.px(24)
+                                                width: mergeText.implicitWidth + Theme.px(14)
+                                                radius: Theme.px(4)
+                                                color: mergeHover.hovered ? "#8ee8a8" : Qt.rgba(0.557, 0.910, 0.659, 0.15)
+                                                border.color: "#8ee8a8"
+                                                border.width: 1
+
+                                                Text {
+                                                    id: mergeText
+                                                    anchors.centerIn: parent
+                                                    text: "MERGE"
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(9)
+                                                    font.weight: Font.Bold
+                                                    color: mergeHover.hovered ? "#000000" : "#8ee8a8"
+                                                }
+
+                                                HoverHandler { id: mergeHover }
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: commandCenterWindow.mergePullRequest(modelData.repo, modelData.number)
+                                                }
+                                            }
+                                        }
+
+                                        HoverHandler { id: prHover }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: commandCenterWindow.openUrl(modelData.url)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1219,4 +1998,5 @@ PanelWindow {
             }
         }
     }
+}
 }

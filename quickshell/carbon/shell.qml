@@ -1644,6 +1644,14 @@ ShellRoot {
                     else if (cmd === "open-command-center" || cmd === "open-radar") {
                         root.openCommandCenter()
                     }
+                    else if (cmd === "github-uplink" || cmd === "github") {
+                        root.openCommandCenter()
+                        if (root.commandCenterItem) root.commandCenterItem.currentChannel = "github"
+                    }
+                    else if (cmd === "command-center-overview" || cmd === "overview") {
+                        root.openCommandCenter()
+                        if (root.commandCenterItem) root.commandCenterItem.currentChannel = "overview"
+                    }
                     else if (cmd === "close-command-center" || cmd === "close-radar") {
                         root.closeCommandCenter()
                     }
