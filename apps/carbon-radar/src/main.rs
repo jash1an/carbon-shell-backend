@@ -157,8 +157,7 @@ fn fetch_system_radar() -> Vec<String> {
         .arg("-j")
         .output();
 
-    let mut apps = Vec::new();
-    let mut seen = HashSet::new();
+    let mut client_entries: Vec<(i64, String)> = Vec::new();
 
     if let Ok(out) = output {
         if let Ok(json_val) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
@@ -166,17 +165,40 @@ fn fetch_system_radar() -> Vec<String> {
                 for item in arr {
                     if let Some(cls) = item.get("class").and_then(|c| c.as_str()) {
                         let trimmed = cls.trim();
-                        if !trimmed.is_empty() && seen.insert(trimmed.to_string()) {
-                            apps.push(trimmed.to_string());
+                        let lower = trimmed.to_lowercase();
+                        if trimmed.is_empty()
+                            || lower.contains("quickshell")
+                            || lower.contains("carbon-shell")
+                            || lower.contains("xwaylandvideobridge")
+                            || lower.contains("desktop-portal")
+                        {
+                            continue;
                         }
+
+                        let focus_id = item
+                            .get("focusHistoryID")
+                            .and_then(|f| f.as_i64())
+                            .unwrap_or(999);
+
+                        client_entries.push((focus_id, trimmed.to_string()));
                     }
                 }
             }
         }
     }
 
-    if apps.is_empty() {
-        apps.push("hyprland".to_string());
+    // Sort by focusHistoryID ascending (0 is the most recently focused window)
+    client_entries.sort_by_key(|e| e.0);
+
+    let mut apps = Vec::new();
+    let mut seen = HashSet::new();
+    for (_, cls) in client_entries {
+        if seen.insert(cls.clone()) {
+            apps.push(cls);
+            if apps.len() >= 5 {
+                break;
+            }
+        }
     }
 
     apps

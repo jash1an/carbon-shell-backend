@@ -4089,7 +4089,7 @@ ShellRoot {
             required property var modelData
             modelData: modelData
             screen: modelData
-            visible: true
+            visible: root.commandCenterOpen || commandCenterInst.animatingOut
             isOpen: root.commandCenterOpen
             onCloseRequested: root.closeCommandCenter()
             Component.onCompleted: root.commandCenterItem = this

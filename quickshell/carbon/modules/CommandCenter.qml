@@ -8,20 +8,20 @@ import "../Singletons"
 
 /**
  * CommandCenter:
- * Hybrid "Notch Command Center" Bottom-Up Panel for Carbon Shell.
+ * Sleek, modern bottom-up Notch Command Center for Carbon Shell.
  *
- * Sits anchored to the bottom of the screen (height: 600, WlrLayer.Top).
- * Houses a 760x580 child panel with magnetic slide-up animation (Easing.OutExpo, 450ms).
- * Subtractive / Blueprint aesthetic with 2x2 Grid:
- *   - Tile 1: Obsidian Vault (ListView + 4px custom ScrollBar + Mint kinetic hover)
- *   - Tile 2: System Radar (Running App Classes from Hyprland)
- *   - Tile 3: Clipboard History (ListView + 4px custom ScrollBar + Amber kinetic hover)
- *   - Tile 4: Mission Agenda / Schedule
+ * Sits anchored to the bottom with organic Material Design 3 / Caelestia styling:
+ *   - Row 1: Obsidian Notes Tile (Left) + Events / Schedule Tile (Right)
+ *   - Row 2: Recent Apps Tile (Compact Dock with icons only, dynamic length) + Clipboard History Tile (Right)
+ *
+ * Uses Theme.font ("Plus Jakarta Sans") and Theme.fontIcon ("Material Symbols Rounded")
+ * to match Carbon Shell perfectly.
  */
 PanelWindow {
     id: commandCenterWindow
 
     property bool isOpen: false
+    property bool animatingOut: false
     signal closeRequested()
 
     WlrLayershell.namespace: "carbon-command-center"
@@ -35,7 +35,29 @@ PanelWindow {
         left: true
         right: true
     }
-    implicitHeight: 600
+    implicitHeight: Theme.px(390)
+
+    // Only visible when open or during slide-out animation to completely prevent blocking clicks/scrolls
+    visible: isOpen || animatingOut
+    WlrLayershell.keyboardFocus: (isOpen && !animatingOut) ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+
+    onIsOpenChanged: {
+        if (!isOpen) {
+            animatingOut = true
+            closeAnimTimer.restart()
+        } else {
+            animatingOut = false
+            closeAnimTimer.stop()
+        }
+    }
+
+    Timer {
+        id: closeAnimTimer
+        interval: 340
+        onTriggered: {
+            commandCenterWindow.animatingOut = false
+        }
+    }
 
     // Data models populated by carbon-radar-engine
     property var vaultItems: []
@@ -47,7 +69,7 @@ PanelWindow {
 
     Timer {
         id: feedbackClearTimer
-        interval: 2200
+        interval: 2000
         onTriggered: commandCenterWindow.feedbackMessage = ""
     }
 
@@ -79,9 +101,7 @@ PanelWindow {
                     if (payload.apps !== undefined) commandCenterWindow.appsItems = payload.apps
                     if (payload.agenda !== undefined) commandCenterWindow.agendaItems = payload.agenda
                     commandCenterWindow.engineConnected = true
-                } catch(e) {
-                    console.log("[CommandCenter] JSON Parse error: " + e)
-                }
+                } catch(e) {}
             }
         }
     }
@@ -99,19 +119,19 @@ PanelWindow {
     function openNote(notePath) {
         if (!notePath) return
         execCommand("xdg-open " + JSON.stringify(notePath) + " 2>/dev/null || true")
-        showFeedback("OPENING: " + notePath.split("/").pop())
+        showFeedback("Opening note")
     }
 
     function copyClipboard(clipId) {
         if (!clipId) return
-        execCommand("echo " + JSON.stringify(clipId) + " | cliphist decode | wl-copy 2>/dev/null || true")
-        showFeedback("COPIED CLIP #" + clipId)
+        execCommand("echo -n " + JSON.stringify(clipId) + " | cliphist decode | wl-copy 2>/dev/null || true")
+        showFeedback("Copied to clipboard")
     }
 
     function focusApp(appClass) {
         if (!appClass) return
         execCommand("hyprctl dispatch focuswindow " + JSON.stringify("class:" + appClass) + " 2>/dev/null || true")
-        showFeedback("FOCUSED: " + appClass)
+        showFeedback("Focused: " + appClass)
     }
 
     function triggerManualRefresh() {
@@ -120,39 +140,54 @@ PanelWindow {
         }
     }
 
-    // Dismiss overlay background click detector
-    MouseArea {
-        anchors.fill: parent
-        onClicked: {
-            commandCenterWindow.closeRequested()
-        }
+    function resolveAppIcon(cls) {
+        if (!cls) return ""
+        var p = Quickshell.iconPath(cls, "")
+        if (p) return p
+        var c = cls.toLowerCase().trim()
+        p = Quickshell.iconPath(c, "")
+        if (p) return p
+        var parts = cls.split(".")
+        var last = parts[parts.length - 1]
+        p = Quickshell.iconPath(last, "")
+        if (p) return p
+        p = Quickshell.iconPath(last.toLowerCase(), "")
+        if (p) return p
+        return Quickshell.iconPath("application-x-executable", "")
     }
 
-    // ── Main Floating Blueprint Panel ──
+    // Scrim overlay to dismiss on outside click (only active when open)
+    MouseArea {
+        anchors.fill: parent
+        enabled: commandCenterWindow.isOpen
+        onClicked: commandCenterWindow.closeRequested()
+    }
+
+    // ── Main Compact Floating Card ──
     Rectangle {
         id: mainPanel
-        width: 760
-        height: 580
+        width: Math.min(Theme.px(640), parent.width - Theme.px(32))
+        height: Theme.px(360)
         anchors.horizontalCenter: parent.horizontalCenter
 
-        // Slide-up physics: y: isOpen ? 20 : 600 with Easing.OutExpo 450ms
-        y: commandCenterWindow.isOpen ? 20 : 600
+        // Slide-up animation
+        y: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? Theme.px(16) : commandCenterWindow.implicitHeight
 
         Behavior on y {
             NumberAnimation {
-                duration: 450
+                duration: 320
                 easing.type: Easing.OutExpo
             }
         }
 
-        // Subtractive panel styling
-        color: Qt.rgba(5/255, 6/255, 8/255, 0.85)
-        border.color: Qt.rgba(1, 1, 1, 0.15)
+        // Carbon Shell Modern Frosted Glass Aesthetic
+        color: Theme.isDark ? Qt.rgba(0.06, 0.07, 0.09, 0.90) : Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.90)
+        border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.16)
         border.width: 1
-        radius: 12
+        radius: Theme.px(16)
         clip: true
 
-        // Absorb mouse clicks inside the main panel so they don't dismiss the window
+        // Absorb clicks inside card so they don't dismiss
         MouseArea {
             anchors.fill: parent
             hoverEnabled: true
@@ -160,111 +195,77 @@ PanelWindow {
             onClicked: {}
         }
 
-        // Subtle background grid aesthetic
-        Item {
+        ColumnLayout {
             anchors.fill: parent
-            opacity: 0.15
-            Canvas {
-                anchors.fill: parent
-                onPaint: {
-                    var ctx = getContext("2d")
-                    ctx.clearRect(0, 0, width, height)
-                    ctx.strokeStyle = "rgba(255, 255, 255, 0.25)"
-                    ctx.lineWidth = 0.5
-                    var step = 20
-                    for (var x = 0; x < width; x += step) {
-                        ctx.beginPath()
-                        ctx.moveTo(x, 0)
-                        ctx.lineTo(x, height)
-                        ctx.stroke()
-                    }
-                    for (var y = 0; y < height; y += step) {
-                        ctx.beginPath()
-                        ctx.moveTo(0, y)
-                        ctx.lineTo(width, y)
-                        ctx.stroke()
-                    }
-                }
-            }
-        }
+            anchors.margins: Theme.px(12)
+            spacing: Theme.px(8)
 
-        // ── Header Bar ──
-        Rectangle {
-            id: headerBar
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: 44
-            color: Qt.rgba(1, 1, 1, 0.03)
-            border.color: Qt.rgba(1, 1, 1, 0.1)
-            border.width: 1
-
+            // ── Minimal Sleek Header ──
             RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 12
+                Layout.fillWidth: true
+                Layout.preferredHeight: Theme.px(24)
+                Layout.maximumHeight: Theme.px(24)
+                spacing: Theme.px(8)
 
-                // Status Indicator
+                // Drag pill / status indicator
                 Rectangle {
-                    width: 8
-                    height: 8
-                    radius: 4
-                    color: commandCenterWindow.engineConnected ? "#8ee8a8" : "#f5b86e"
+                    width: Theme.px(8)
+                    height: Theme.px(8)
+                    radius: Theme.px(4)
+                    color: commandCenterWindow.engineConnected ? Theme.accent : Theme.outline
 
                     SequentialAnimation on opacity {
                         loops: Animation.Infinite
                         running: true
-                        NumberAnimation { from: 0.4; to: 1.0; duration: 800; easing.type: Easing.InOutQuad }
-                        NumberAnimation { from: 1.0; to: 0.4; duration: 800; easing.type: Easing.InOutQuad }
+                        NumberAnimation { from: 0.5; to: 1.0; duration: 900; easing.type: Easing.InOutQuad }
+                        NumberAnimation { from: 1.0; to: 0.5; duration: 900; easing.type: Easing.InOutQuad }
                     }
                 }
 
-                // Monospace Title
                 Text {
-                    text: "// NOTCH COMMAND CENTER [RADAR LIVE]"
-                    color: "#ffffff"
-                    font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                    font.pixelSize: 12
+                    text: "Command Center"
+                    font.family: Theme.font
+                    font.pixelSize: Theme.fontPx(12)
                     font.weight: Font.DemiBold
+                    color: Theme.fg
                 }
 
                 Item { Layout.fillWidth: true }
 
-                // Dynamic Action Feedback Pill
+                // Action Feedback Badge
                 Rectangle {
                     visible: commandCenterWindow.feedbackMessage !== ""
-                    Layout.preferredHeight: 22
-                    Layout.preferredWidth: fbText.implicitWidth + 16
-                    radius: 4
-                    color: Qt.rgba(142/255, 232/255, 168/255, 0.15)
-                    border.color: "#8ee8a8"
+                    Layout.preferredHeight: Theme.px(20)
+                    Layout.preferredWidth: fbText.implicitWidth + Theme.px(14)
+                    radius: Theme.px(10)
+                    color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.15)
+                    border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.3)
                     border.width: 1
 
                     Text {
                         id: fbText
                         anchors.centerIn: parent
                         text: commandCenterWindow.feedbackMessage
-                        color: "#8ee8a8"
-                        font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                        font.pixelSize: 10
+                        font.family: Theme.font
+                        font.pixelSize: Theme.fontPx(10)
+                        font.weight: Font.Medium
+                        color: Theme.accentLit
                     }
                 }
 
                 // Refresh Button
                 Rectangle {
-                    width: 26
-                    height: 22
-                    radius: 4
-                    color: rHover.hovered ? Qt.rgba(1, 1, 1, 0.15) : Qt.rgba(1, 1, 1, 0.05)
-                    border.color: Qt.rgba(1, 1, 1, 0.2)
-                    border.width: 1
+                    width: Theme.px(24)
+                    height: Theme.px(24)
+                    radius: Theme.px(12)
+                    color: rHover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08) : "transparent"
 
                     Text {
                         anchors.centerIn: parent
-                        text: "󰑐"
-                        color: "#cccccc"
-                        font.pixelSize: 12
+                        text: "refresh"
+                        font.family: Theme.fontIcon
+                        font.pixelSize: Theme.fontPx(14)
+                        color: rHover.hovered ? Theme.accent : Theme.fgDim
                     }
 
                     HoverHandler { id: rHover }
@@ -276,21 +277,19 @@ PanelWindow {
                     }
                 }
 
-                // Close ESC button
+                // Close Button
                 Rectangle {
-                    width: 54
-                    height: 22
-                    radius: 4
-                    color: cBtnHover.hovered ? Qt.rgba(245/255, 184/255, 110/255, 0.25) : Qt.rgba(1, 1, 1, 0.05)
-                    border.color: cBtnHover.hovered ? "#f5b86e" : Qt.rgba(1, 1, 1, 0.2)
-                    border.width: 1
+                    width: Theme.px(24)
+                    height: Theme.px(24)
+                    radius: Theme.px(12)
+                    color: cBtnHover.hovered ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.15) : "transparent"
 
                     Text {
                         anchors.centerIn: parent
-                        text: "ESC"
-                        color: cBtnHover.hovered ? "#f5b86e" : "#aaaaaa"
-                        font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                        font.pixelSize: 11
+                        text: "close"
+                        font.family: Theme.fontIcon
+                        font.pixelSize: Theme.fontPx(14)
+                        color: cBtnHover.hovered ? Theme.error : Theme.fgDim
                     }
 
                     HoverHandler { id: cBtnHover }
@@ -302,524 +301,482 @@ PanelWindow {
                     }
                 }
             }
-        }
 
-        // ── 2x2 Blueprint Grid ──
-        GridLayout {
-            id: blueprintGrid
-            anchors.top: headerBar.bottom
-            anchors.bottom: parent.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.margins: 12
-            columns: 2
-            rows: 2
-            columnSpacing: 12
-            rowSpacing: 12
-
-            // ══════════════════════════════════════════════════════
-            // TILE 1 (Top-Left): OBSIDIAN VAULT
-            // ══════════════════════════════════════════════════════
-            Rectangle {
+            // ── ROW 1: Obsidian Notes (Left) + Events / Schedule (Right) ──
+            RowLayout {
                 Layout.fillWidth: true
-                Layout.fillHeight: true
-                color: Qt.rgba(1, 1, 1, 0.02)
-                border.color: Qt.rgba(1, 1, 1, 0.15)
-                border.width: 1
-                radius: 8
-                clip: true
+                Layout.preferredHeight: Theme.px(144)
+                Layout.maximumHeight: Theme.px(144)
+                spacing: Theme.px(8)
 
-                // Blueprint Corner Accents
-                Text { anchors.top: parent.top; anchors.left: parent.left; anchors.margins: 4; text: "┌"; color: Qt.rgba(1, 1, 1, 0.3); font.family: "monospace"; font.pixelSize: 10 }
-                Text { anchors.top: parent.top; anchors.right: parent.right; anchors.margins: 4; text: "┐"; color: Qt.rgba(1, 1, 1, 0.3); font.family: "monospace"; font.pixelSize: 10 }
-                Text { anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.margins: 4; text: "└"; color: Qt.rgba(1, 1, 1, 0.3); font.family: "monospace"; font.pixelSize: 10 }
-                Text { anchors.bottom: parent.bottom; anchors.right: parent.right; anchors.margins: 4; text: "┘"; color: Qt.rgba(1, 1, 1, 0.3); font.family: "monospace"; font.pixelSize: 10 }
-
-                // Tile Header
-                RowLayout {
-                    id: t1Header
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: 10
-                    spacing: 8
-
-                    Text {
-                        text: "// 01. OBSIDIAN VAULT"
-                        color: "#8ee8a8"
-                        font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                        font.pixelSize: 11
-                        font.weight: Font.DemiBold
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    Text {
-                        text: "[" + commandCenterWindow.vaultItems.length + " NOTES]"
-                        color: Qt.rgba(1, 1, 1, 0.4)
-                        font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                        font.pixelSize: 10
-                    }
-                }
-
-                // Vault Notes ListView
-                ListView {
-                    id: vaultListView
-                    anchors.top: t1Header.bottom
-                    anchors.bottom: parent.bottom
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: 8
+                // ══════════════════════════════════════════════════
+                // TILE 1: OBSIDIAN NOTES
+                // ══════════════════════════════════════════════════
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.03)
+                    border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
+                    border.width: 1
+                    radius: Theme.px(12)
                     clip: true
-                    model: commandCenterWindow.vaultItems
 
-                    // Clean 4px styled ScrollBar
-                    ScrollBar.vertical: ScrollBar {
-                        id: vaultScrollBar
-                        policy: ScrollBar.AsNeeded
-                        contentItem: Rectangle {
-                            implicitWidth: 4
-                            radius: 2
-                            color: "#555555"
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: Theme.px(10)
+                        spacing: Theme.px(6)
+
+                        // Tile Header
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.px(6)
+
+                            Text {
+                                text: "description"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: Theme.fontPx(14)
+                                color: Theme.accent
+                            }
+
+                            Text {
+                                text: "Obsidian Notes"
+                                font.family: Theme.font
+                                font.pixelSize: Theme.fontPx(11)
+                                font.weight: Font.DemiBold
+                                color: Theme.fg
+                            }
+
+                            Item { Layout.fillWidth: true }
+
+                            Rectangle {
+                                Layout.preferredHeight: Theme.px(16)
+                                Layout.preferredWidth: vCountText.implicitWidth + Theme.px(10)
+                                radius: Theme.px(8)
+                                color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.06)
+
+                                Text {
+                                    id: vCountText
+                                    anchors.centerIn: parent
+                                    text: commandCenterWindow.vaultItems.length
+                                    font.family: Theme.font
+                                    font.pixelSize: Theme.fontPx(9)
+                                    font.weight: Font.Bold
+                                    color: Theme.fgDim
+                                }
+                            }
                         }
-                    }
 
-                    delegate: Item {
-                        width: vaultListView.width
-                        height: 34
+                        // Notes ListView
+                        ListView {
+                            id: vaultListView
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+                            model: commandCenterWindow.vaultItems
+                            spacing: Theme.px(2)
 
-                        HoverHandler { id: noteHover }
-
-                        Rectangle {
-                            anchors.fill: parent
-                            color: noteHover.hovered ? Qt.rgba(142/255, 232/255, 168/255, 0.08) : "transparent"
-                            radius: 4
-
-                            Behavior on color { ColorAnimation { duration: 150 } }
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 8
-                                anchors.rightMargin: 8
-
-                                // Kinetic left indent
-                                x: noteHover.hovered ? 8 : 0
-                                Behavior on x {
-                                    NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
-                                }
-
-                                Text {
-                                    text: "󰠮"
-                                    color: noteHover.hovered ? "#8ee8a8" : Qt.rgba(1, 1, 1, 0.4)
-                                    font.pixelSize: 12
-                                    Behavior on color { ColorAnimation { duration: 150 } }
-                                }
-
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: modelData.name
-                                    elide: Text.ElideRight
-                                    // Transition text color to Mint (#8ee8a8) on hover
-                                    color: noteHover.hovered ? "#8ee8a8" : "#d0d0d0"
-                                    font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                                    font.pixelSize: 11
-
-                                    Behavior on color { ColorAnimation { duration: 150 } }
-                                }
-
-                                Text {
-                                    text: "MD"
-                                    color: Qt.rgba(1, 1, 1, 0.25)
-                                    font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                                    font.pixelSize: 9
+                            ScrollBar.vertical: ScrollBar {
+                                policy: ScrollBar.AsNeeded
+                                contentItem: Rectangle {
+                                    implicitWidth: Theme.px(3)
+                                    radius: Theme.px(2)
+                                    color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.3)
                                 }
                             }
 
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: commandCenterWindow.openNote(modelData.path)
-                            }
-                        }
-                    }
-                }
-            }
+                            delegate: Item {
+                                width: vaultListView.width
+                                height: Theme.px(28)
 
-            // ══════════════════════════════════════════════════════
-            // TILE 2 (Top-Right): SYSTEM RADAR / RUNNING APPS
-            // ══════════════════════════════════════════════════════
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                color: Qt.rgba(1, 1, 1, 0.02)
-                border.color: Qt.rgba(1, 1, 1, 0.15)
-                border.width: 1
-                radius: 8
-                clip: true
-
-                // Blueprint Corner Accents
-                Text { anchors.top: parent.top; anchors.left: parent.left; anchors.margins: 4; text: "┌"; color: Qt.rgba(1, 1, 1, 0.3); font.family: "monospace"; font.pixelSize: 10 }
-                Text { anchors.top: parent.top; anchors.right: parent.right; anchors.margins: 4; text: "┐"; color: Qt.rgba(1, 1, 1, 0.3); font.family: "monospace"; font.pixelSize: 10 }
-                Text { anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.margins: 4; text: "└"; color: Qt.rgba(1, 1, 1, 0.3); font.family: "monospace"; font.pixelSize: 10 }
-                Text { anchors.bottom: parent.bottom; anchors.right: parent.right; anchors.margins: 4; text: "┘"; color: Qt.rgba(1, 1, 1, 0.3); font.family: "monospace"; font.pixelSize: 10 }
-
-                // Tile Header
-                RowLayout {
-                    id: t2Header
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: 10
-                    spacing: 8
-
-                    Text {
-                        text: "// 02. SYSTEM RADAR"
-                        color: "#8ee8a8"
-                        font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                        font.pixelSize: 11
-                        font.weight: Font.DemiBold
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    Text {
-                        text: "[" + commandCenterWindow.appsItems.length + " ACTIVE]"
-                        color: Qt.rgba(1, 1, 1, 0.4)
-                        font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                        font.pixelSize: 10
-                    }
-                }
-
-                // Apps Radar View
-                ListView {
-                    id: appsListView
-                    anchors.top: t2Header.bottom
-                    anchors.bottom: parent.bottom
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: 8
-                    clip: true
-                    model: commandCenterWindow.appsItems
-
-                    ScrollBar.vertical: ScrollBar {
-                        policy: ScrollBar.AsNeeded
-                        contentItem: Rectangle {
-                            implicitWidth: 4
-                            radius: 2
-                            color: "#555555"
-                        }
-                    }
-
-                    delegate: Item {
-                        width: appsListView.width
-                        height: 36
-
-                        HoverHandler { id: appHover }
-
-                        Rectangle {
-                            anchors.fill: parent
-                            color: appHover.hovered ? Qt.rgba(142/255, 232/255, 168/255, 0.08) : Qt.rgba(1, 1, 1, 0.03)
-                            border.color: appHover.hovered ? "#8ee8a8" : Qt.rgba(1, 1, 1, 0.1)
-                            border.width: 1
-                            radius: 4
-
-                            Behavior on color { ColorAnimation { duration: 150 } }
-                            Behavior on border.color { ColorAnimation { duration: 150 } }
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 10
-                                anchors.rightMargin: 10
-                                spacing: 8
-
-                                x: appHover.hovered ? 6 : 0
-                                Behavior on x {
-                                    NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
-                                }
+                                HoverHandler { id: noteHover }
 
                                 Rectangle {
-                                    width: 6
-                                    height: 6
-                                    radius: 3
-                                    color: "#8ee8a8"
-                                }
+                                    anchors.fill: parent
+                                    radius: Theme.px(6)
+                                    color: noteHover.hovered ? (Theme.isDark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(0, 0, 0, 0.06)) : "transparent"
 
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: modelData
-                                    elide: Text.ElideRight
-                                    color: appHover.hovered ? "#8ee8a8" : "#ffffff"
-                                    font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                                    font.pixelSize: 11
-                                    font.weight: Font.Medium
-                                    Behavior on color { ColorAnimation { duration: 150 } }
-                                }
+                                    Behavior on color { ColorAnimation { duration: 120 } }
 
-                                Text {
-                                    text: "[FOCUS]"
-                                    color: appHover.hovered ? "#8ee8a8" : Qt.rgba(1, 1, 1, 0.3)
-                                    font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                                    font.pixelSize: 9
-                                }
-                            }
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: Theme.px(6)
+                                        anchors.rightMargin: Theme.px(6)
+                                        spacing: Theme.px(8)
 
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: commandCenterWindow.focusApp(modelData)
-                            }
-                        }
-                    }
-                }
-            }
+                                        Text {
+                                            text: "draft"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: Theme.fontPx(13)
+                                            color: noteHover.hovered ? Theme.accent : Theme.fgDim
+                                        }
 
-            // ══════════════════════════════════════════════════════
-            // TILE 3 (Bottom-Left): CLIPBOARD HISTORY
-            // ══════════════════════════════════════════════════════
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                color: Qt.rgba(1, 1, 1, 0.02)
-                border.color: Qt.rgba(1, 1, 1, 0.15)
-                border.width: 1
-                radius: 8
-                clip: true
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: modelData.name
+                                            elide: Text.ElideRight
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(11)
+                                            font.weight: noteHover.hovered ? Font.Medium : Font.Normal
+                                            color: noteHover.hovered ? Theme.accentLit : Theme.fg
+                                        }
+                                    }
 
-                // Blueprint Corner Accents
-                Text { anchors.top: parent.top; anchors.left: parent.left; anchors.margins: 4; text: "┌"; color: Qt.rgba(1, 1, 1, 0.3); font.family: "monospace"; font.pixelSize: 10 }
-                Text { anchors.top: parent.top; anchors.right: parent.right; anchors.margins: 4; text: "┐"; color: Qt.rgba(1, 1, 1, 0.3); font.family: "monospace"; font.pixelSize: 10 }
-                Text { anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.margins: 4; text: "└"; color: Qt.rgba(1, 1, 1, 0.3); font.family: "monospace"; font.pixelSize: 10 }
-                Text { anchors.bottom: parent.bottom; anchors.right: parent.right; anchors.margins: 4; text: "┘"; color: Qt.rgba(1, 1, 1, 0.3); font.family: "monospace"; font.pixelSize: 10 }
-
-                // Tile Header
-                RowLayout {
-                    id: t3Header
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: 10
-                    spacing: 8
-
-                    Text {
-                        text: "// 03. CLIPBOARD BUFFER"
-                        color: "#f5b86e"
-                        font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                        font.pixelSize: 11
-                        font.weight: Font.DemiBold
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    Text {
-                        text: "[" + commandCenterWindow.clipboardItems.length + " CLIPS]"
-                        color: Qt.rgba(1, 1, 1, 0.4)
-                        font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                        font.pixelSize: 10
-                    }
-                }
-
-                // Clipboard ListView
-                ListView {
-                    id: clipListView
-                    anchors.top: t3Header.bottom
-                    anchors.bottom: parent.bottom
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: 8
-                    clip: true
-                    model: commandCenterWindow.clipboardItems
-
-                    // Clean 4px styled ScrollBar
-                    ScrollBar.vertical: ScrollBar {
-                        id: clipScrollBar
-                        policy: ScrollBar.AsNeeded
-                        contentItem: Rectangle {
-                            implicitWidth: 4
-                            radius: 2
-                            color: "#555555"
-                        }
-                    }
-
-                    delegate: Item {
-                        width: clipListView.width
-                        height: 34
-
-                        HoverHandler { id: clipHover }
-
-                        Rectangle {
-                            anchors.fill: parent
-                            color: clipHover.hovered ? Qt.rgba(245/255, 184/255, 110/255, 0.08) : "transparent"
-                            radius: 4
-
-                            Behavior on color { ColorAnimation { duration: 150 } }
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 8
-                                anchors.rightMargin: 8
-                                spacing: 8
-
-                                // Kinetic left indent
-                                x: clipHover.hovered ? 8 : 0
-                                Behavior on x {
-                                    NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
-                                }
-
-                                Text {
-                                    text: "#" + modelData.id
-                                    color: clipHover.hovered ? "#f5b86e" : Qt.rgba(1, 1, 1, 0.35)
-                                    font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                                    font.pixelSize: 10
-                                    Behavior on color { ColorAnimation { duration: 150 } }
-                                }
-
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: modelData.preview
-                                    elide: Text.ElideRight
-                                    // Transition text color to Amber (#f5b86e) on hover
-                                    color: clipHover.hovered ? "#f5b86e" : "#b0b0b0"
-                                    font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                                    font.pixelSize: 11
-
-                                    Behavior on color { ColorAnimation { duration: 150 } }
-                                }
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: commandCenterWindow.copyClipboard(modelData.id)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ══════════════════════════════════════════════════════
-            // TILE 4 (Bottom-Right): AGENDA / SCHEDULE
-            // ══════════════════════════════════════════════════════
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                color: Qt.rgba(1, 1, 1, 0.02)
-                border.color: Qt.rgba(1, 1, 1, 0.15)
-                border.width: 1
-                radius: 8
-                clip: true
-
-                // Blueprint Corner Accents
-                Text { anchors.top: parent.top; anchors.left: parent.left; anchors.margins: 4; text: "┌"; color: Qt.rgba(1, 1, 1, 0.3); font.family: "monospace"; font.pixelSize: 10 }
-                Text { anchors.top: parent.top; anchors.right: parent.right; anchors.margins: 4; text: "┐"; color: Qt.rgba(1, 1, 1, 0.3); font.family: "monospace"; font.pixelSize: 10 }
-                Text { anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.margins: 4; text: "└"; color: Qt.rgba(1, 1, 1, 0.3); font.family: "monospace"; font.pixelSize: 10 }
-                Text { anchors.bottom: parent.bottom; anchors.right: parent.right; anchors.margins: 4; text: "┘"; color: Qt.rgba(1, 1, 1, 0.3); font.family: "monospace"; font.pixelSize: 10 }
-
-                // Tile Header
-                RowLayout {
-                    id: t4Header
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: 10
-                    spacing: 8
-
-                    Text {
-                        text: "// 04. MISSION AGENDAS"
-                        color: "#f5b86e"
-                        font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                        font.pixelSize: 11
-                        font.weight: Font.DemiBold
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    Text {
-                        text: "[" + commandCenterWindow.agendaItems.length + " SLOTS]"
-                        color: Qt.rgba(1, 1, 1, 0.4)
-                        font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                        font.pixelSize: 10
-                    }
-                }
-
-                // Agenda Timeline List
-                ListView {
-                    id: agendaListView
-                    anchors.top: t4Header.bottom
-                    anchors.bottom: parent.bottom
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: 8
-                    clip: true
-                    model: commandCenterWindow.agendaItems
-
-                    ScrollBar.vertical: ScrollBar {
-                        policy: ScrollBar.AsNeeded
-                        contentItem: Rectangle {
-                            implicitWidth: 4
-                            radius: 2
-                            color: "#555555"
-                        }
-                    }
-
-                    delegate: Item {
-                        width: agendaListView.width
-                        height: 38
-
-                        HoverHandler { id: aHover }
-
-                        Rectangle {
-                            anchors.fill: parent
-                            color: aHover.hovered ? Qt.rgba(1, 1, 1, 0.05) : "transparent"
-                            radius: 4
-
-                            Behavior on color { ColorAnimation { duration: 150 } }
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 8
-                                anchors.rightMargin: 8
-                                spacing: 10
-
-                                x: aHover.hovered ? 6 : 0
-                                Behavior on x {
-                                    NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
-                                }
-
-                                // Date Badge
-                                Rectangle {
-                                    Layout.preferredHeight: 20
-                                    Layout.preferredWidth: dText.implicitWidth + 12
-                                    radius: 3
-                                    color: Qt.rgba(245/255, 184/255, 110/255, 0.15)
-                                    border.color: "#f5b86e"
-                                    border.width: 1
-
-                                    Text {
-                                        id: dText
-                                        anchors.centerIn: parent
-                                        text: modelData.date
-                                        color: "#f5b86e"
-                                        font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                                        font.pixelSize: 10
-                                        font.weight: Font.DemiBold
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: commandCenterWindow.openNote(modelData.path)
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+
+                // ══════════════════════════════════════════════════
+                // TILE 2: EVENTS / SCHEDULE (Beside Obsidian Notes)
+                // ══════════════════════════════════════════════════
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.03)
+                    border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
+                    border.width: 1
+                    radius: Theme.px(12)
+                    clip: true
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: Theme.px(10)
+                        spacing: Theme.px(6)
+
+                        // Tile Header
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.px(6)
+
+                            Text {
+                                text: "calendar_today"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: Theme.fontPx(14)
+                                color: Theme.accent
+                            }
+
+                            Text {
+                                text: "Events & Agenda"
+                                font.family: Theme.font
+                                font.pixelSize: Theme.fontPx(11)
+                                font.weight: Font.DemiBold
+                                color: Theme.fg
+                            }
+
+                            Item { Layout.fillWidth: true }
+
+                            Rectangle {
+                                Layout.preferredHeight: Theme.px(16)
+                                Layout.preferredWidth: aCountText.implicitWidth + Theme.px(10)
+                                radius: Theme.px(8)
+                                color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.06)
 
                                 Text {
-                                    text: "──"
-                                    color: Qt.rgba(1, 1, 1, 0.2)
-                                    font.family: "monospace"
-                                    font.pixelSize: 10
+                                    id: aCountText
+                                    anchors.centerIn: parent
+                                    text: commandCenterWindow.agendaItems.length
+                                    font.family: Theme.font
+                                    font.pixelSize: Theme.fontPx(9)
+                                    font.weight: Font.Bold
+                                    color: Theme.fgDim
                                 }
+                            }
+                        }
+
+                        // Agenda ListView
+                        ListView {
+                            id: agendaListView
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+                            model: commandCenterWindow.agendaItems
+                            spacing: Theme.px(2)
+
+                            ScrollBar.vertical: ScrollBar {
+                                policy: ScrollBar.AsNeeded
+                                contentItem: Rectangle {
+                                    implicitWidth: Theme.px(3)
+                                    radius: Theme.px(2)
+                                    color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.3)
+                                }
+                            }
+
+                            delegate: Item {
+                                width: agendaListView.width
+                                height: Theme.px(28)
+
+                                HoverHandler { id: aHover }
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: Theme.px(6)
+                                    color: aHover.hovered ? (Theme.isDark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(0, 0, 0, 0.06)) : "transparent"
+
+                                    Behavior on color { ColorAnimation { duration: 120 } }
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: Theme.px(6)
+                                        anchors.rightMargin: Theme.px(6)
+                                        spacing: Theme.px(8)
+
+                                        // Date Pill
+                                        Rectangle {
+                                            Layout.preferredHeight: Theme.px(18)
+                                            Layout.preferredWidth: dText.implicitWidth + Theme.px(10)
+                                            radius: Theme.px(4)
+                                            color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.14)
+                                            border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.28)
+                                            border.width: 1
+
+                                            Text {
+                                                id: dText
+                                                anchors.centerIn: parent
+                                                text: modelData.date
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(9)
+                                                font.weight: Font.Bold
+                                                color: Theme.accentLit
+                                            }
+                                        }
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: modelData.title
+                                            elide: Text.ElideRight
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(11)
+                                            color: aHover.hovered ? Theme.fg : Theme.fgDim
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── ROW 2: Recent Apps Tile (Left, Compact Dock) + Clipboard Tile (Right) ──
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.preferredHeight: Theme.px(154)
+                spacing: Theme.px(8)
+
+                // ══════════════════════════════════════════════════
+                // TILE 3: RECENT APPS (Compact Dock, Icons Only, Dynamic Length)
+                // ══════════════════════════════════════════════════
+                Item {
+                    Layout.preferredWidth: Theme.px(48)
+                    Layout.fillHeight: true
+
+                    // Dynamic length card fitting only the active apps (max 5)
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: Theme.px(44)
+                        // Height dynamically hugs only the active apps (up to 5 max)
+                        height: Math.max(Theme.px(36), commandCenterWindow.appsItems.length * Theme.px(36) + Theme.px(8))
+
+                        color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.03)
+                        border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
+                        border.width: 1
+                        radius: Theme.px(10)
+                        clip: true
+
+                        Column {
+                            anchors.fill: parent
+                            anchors.margins: Theme.px(4)
+                            spacing: Theme.px(4)
+
+                            Repeater {
+                                model: commandCenterWindow.appsItems
+
+                                delegate: Item {
+                                    width: parent.width
+                                    height: Theme.px(32)
+
+                                    HoverHandler { id: appHover }
+
+                                    Rectangle {
+                                        id: iconBg
+                                        anchors.centerIn: parent
+                                        width: Theme.px(28)
+                                        height: Theme.px(28)
+                                        radius: Theme.px(6)
+                                        color: appHover.hovered ? (Theme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
+                                        scale: appHover.hovered ? 1.15 : 1.0
+
+                                        Behavior on scale {
+                                            NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+                                        }
+                                        Behavior on color {
+                                            ColorAnimation { duration: 120 }
+                                        }
+
+                                        Image {
+                                            id: appImg
+                                            anchors.centerIn: parent
+                                            width: Theme.px(20)
+                                            height: Theme.px(20)
+                                            source: commandCenterWindow.resolveAppIcon(modelData)
+                                            sourceSize: Qt.size(40, 40)
+                                            fillMode: Image.PreserveAspectFit
+                                            visible: status === Image.Ready
+                                        }
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            visible: appImg.status !== Image.Ready
+                                            text: "apps"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: Theme.fontPx(16)
+                                            color: appHover.hovered ? Theme.accent : Theme.fgDim
+                                        }
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: commandCenterWindow.focusApp(modelData)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ══════════════════════════════════════════════════
+                // TILE 4: CLIPBOARD HISTORY (Beside Recent Apps)
+                // ══════════════════════════════════════════════════
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.03)
+                    border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
+                    border.width: 1
+                    radius: Theme.px(12)
+                    clip: true
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: Theme.px(10)
+                        spacing: Theme.px(6)
+
+                        // Tile Header
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.px(6)
+
+                            Text {
+                                text: "content_paste"
+                                font.family: Theme.fontIcon
+                                font.pixelSize: Theme.fontPx(14)
+                                color: Theme.accent
+                            }
+
+                            Text {
+                                text: "Clipboard Buffer"
+                                font.family: Theme.font
+                                font.pixelSize: Theme.fontPx(11)
+                                font.weight: Font.DemiBold
+                                color: Theme.fg
+                            }
+
+                            Item { Layout.fillWidth: true }
+
+                            Rectangle {
+                                Layout.preferredHeight: Theme.px(16)
+                                Layout.preferredWidth: cCountText.implicitWidth + Theme.px(10)
+                                radius: Theme.px(8)
+                                color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.06)
 
                                 Text {
-                                    Layout.fillWidth: true
-                                    text: modelData.title
-                                    elide: Text.ElideRight
-                                    color: aHover.hovered ? "#ffffff" : "#cccccc"
-                                    font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "monospace"
-                                    font.pixelSize: 11
-                                    Behavior on color { ColorAnimation { duration: 150 } }
+                                    id: cCountText
+                                    anchors.centerIn: parent
+                                    text: commandCenterWindow.clipboardItems.length
+                                    font.family: Theme.font
+                                    font.pixelSize: Theme.fontPx(9)
+                                    font.weight: Font.Bold
+                                    color: Theme.fgDim
+                                }
+                            }
+                        }
+
+                        // Clipboard ListView
+                        ListView {
+                            id: clipListView
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+                            model: commandCenterWindow.clipboardItems
+                            spacing: Theme.px(2)
+
+                            ScrollBar.vertical: ScrollBar {
+                                policy: ScrollBar.AsNeeded
+                                contentItem: Rectangle {
+                                    implicitWidth: Theme.px(3)
+                                    radius: Theme.px(2)
+                                    color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.3)
+                                }
+                            }
+
+                            delegate: Item {
+                                width: clipListView.width
+                                height: Theme.px(28)
+
+                                HoverHandler { id: clipHover }
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: Theme.px(6)
+                                    color: clipHover.hovered ? (Theme.isDark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(0, 0, 0, 0.06)) : "transparent"
+
+                                    Behavior on color { ColorAnimation { duration: 120 } }
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: Theme.px(6)
+                                        anchors.rightMargin: Theme.px(6)
+                                        spacing: Theme.px(8)
+
+                                        Text {
+                                            text: "content_copy"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: Theme.fontPx(13)
+                                            color: clipHover.hovered ? Theme.accent : Theme.fgDim
+                                        }
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: modelData.preview
+                                            elide: Text.ElideRight
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(11)
+                                            color: clipHover.hovered ? Theme.fg : Theme.fgDim
+                                        }
+
+                                        Text {
+                                            visible: clipHover.hovered
+                                            text: "Copy"
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(9)
+                                            font.weight: Font.Bold
+                                            color: Theme.accentLit
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: commandCenterWindow.copyClipboard(modelData.id)
+                                    }
                                 }
                             }
                         }
