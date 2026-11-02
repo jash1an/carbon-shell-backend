@@ -48,6 +48,7 @@ PanelWindow {
         } else {
             animatingOut = false
             closeAnimTimer.stop()
+            commandCenterWindow.refreshWeather()
         }
     }
 
@@ -57,6 +58,85 @@ PanelWindow {
         onTriggered: {
             commandCenterWindow.animatingOut = false
         }
+    }
+
+    // System Clock for aesthetic time display
+    SystemClock {
+        id: sysClock
+        precision: SystemClock.Seconds
+    }
+    property bool use24h: false
+
+    // Weather state
+    property string weatherTemp: "22°C"
+    property string weatherDesc: "Clear Sky"
+    property string weatherCity: "Patna"
+
+    FileView {
+        id: weatherCacheWatcher
+        path: "/tmp/carbon-weather-cache.json"
+        watchChanges: true
+        printErrors: false
+        onFileChanged: weatherCacheWatcher.reload()
+        onLoaded: {
+            try {
+                const raw = weatherCacheWatcher.text().trim()
+                if (raw) {
+                    const d = JSON.parse(raw)
+                    if (d.temp) commandCenterWindow.weatherTemp = d.temp
+                    if (d.description) commandCenterWindow.weatherDesc = d.description
+                    if (d.city) commandCenterWindow.weatherCity = d.city
+                }
+            } catch (e) {}
+        }
+    }
+
+    Process {
+        id: weatherFetcherProc
+        command: [
+            "sh", "-c",
+            "if [ -f \"$HOME/.local/share/quickshell/carbon/scripts/carbon-weather.py\" ]; then python3 \"$HOME/.local/share/quickshell/carbon/scripts/carbon-weather.py\"; elif [ -f \"/home/shogun/carbon-shell/hypr/scripts/carbon-weather.py\" ]; then python3 \"/home/shogun/carbon-shell/hypr/scripts/carbon-weather.py\"; fi"
+        ]
+        running: false
+        stdout: StdioCollector {
+            waitForEnd: true
+            onTextChanged: {
+                if (text && text.trim().length > 0) {
+                    try {
+                        var d = JSON.parse(text.trim())
+                        if (d) {
+                            if (d.temp) commandCenterWindow.weatherTemp = d.temp
+                            if (d.condition) commandCenterWindow.weatherDesc = d.condition
+                            else if (d.description) commandCenterWindow.weatherDesc = d.description
+                            if (d.city) {
+                                var c = d.city.split(",")[0].trim()
+                                commandCenterWindow.weatherCity = c
+                            }
+                        }
+                    } catch (e) {}
+                }
+            }
+        }
+    }
+
+    function refreshWeather() {
+        if (!weatherFetcherProc.running) {
+            weatherFetcherProc.running = true
+        }
+        weatherCacheWatcher.reload()
+    }
+
+    function resolveWeatherIcon(desc) {
+        if (!desc) return "wb_sunny"
+        var d = desc.toLowerCase()
+        if (d.indexOf("rain") !== -1 || d.indexOf("drizzle") !== -1) return "rainy"
+        if (d.indexOf("thunder") !== -1 || d.indexOf("storm") !== -1) return "thunderstorm"
+        if (d.indexOf("snow") !== -1 || d.indexOf("ice") !== -1) return "ac_unit"
+        if (d.indexOf("fog") !== -1 || d.indexOf("haze") !== -1 || d.indexOf("mist") !== -1 || d.indexOf("smoke") !== -1) return "foggy"
+        if (d.indexOf("partly") !== -1 || d.indexOf("scattered") !== -1) return "partly_cloudy_day"
+        if (d.indexOf("cloud") !== -1 || d.indexOf("overcast") !== -1) return "cloud"
+        if (d.indexOf("clear") !== -1 || d.indexOf("sun") !== -1) return "wb_sunny"
+        return "wb_sunny"
     }
 
     // Data models populated by carbon-radar-engine
@@ -138,6 +218,7 @@ PanelWindow {
         if (radarEngineProc.running) {
             radarEngineProc.write("refresh\n")
         }
+        commandCenterWindow.refreshWeather()
     }
 
     function resolveAppIcon(cls) {
@@ -570,94 +651,273 @@ PanelWindow {
                 spacing: Theme.px(8)
 
                 // ══════════════════════════════════════════════════
-                // TILE 3: RECENT APPS (Compact Landscape Dock, Icons Only, Dynamic Length)
+                // TILE 3: RECENT APPS & AESTHETIC CLOCK + WEATHER
                 // ══════════════════════════════════════════════════
                 Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.preferredWidth: (parent.width - Theme.px(8)) / 2
 
-                    // Dynamic length landscape card fitting only the active apps (max 5)
-                    Rectangle {
-                        anchors.top: parent.top
-                        anchors.left: parent.left
-                        height: Theme.px(44)
-                        // Length (width) dynamically hugs only the active apps (up to 5 max)
-                        width: Math.max(Theme.px(44), commandCenterWindow.appsItems.length * Theme.px(36) + (commandCenterWindow.appsItems.length > 0 ? (commandCenterWindow.appsItems.length - 1) * Theme.px(4) : 0) + Theme.px(12))
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: Theme.px(6)
 
-                        color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.03)
-                        border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
-                        border.width: 1
-                        radius: Theme.px(10)
-                        clip: true
+                        // ── Top: Dynamic Recent Apps Landscape Dock ──
+                        Item {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: Theme.px(42)
+                            Layout.maximumHeight: Theme.px(42)
 
-                        Row {
-                            anchors.centerIn: parent
-                            spacing: Theme.px(4)
+                            Rectangle {
+                                anchors.top: parent.top
+                                anchors.left: parent.left
+                                height: Theme.px(42)
+                                // Length dynamically hugs only the active apps (up to 5 max)
+                                width: Math.max(Theme.px(42), commandCenterWindow.appsItems.length * Theme.px(34) + (commandCenterWindow.appsItems.length > 0 ? (commandCenterWindow.appsItems.length - 1) * Theme.px(4) : 0) + Theme.px(12))
 
-                            Repeater {
-                                model: commandCenterWindow.appsItems
+                                color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.03)
+                                border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
+                                border.width: 1
+                                radius: Theme.px(10)
+                                clip: true
 
-                                delegate: Item {
-                                    width: Theme.px(32)
-                                    height: Theme.px(32)
+                                Row {
+                                    anchors.centerIn: parent
+                                    spacing: Theme.px(4)
 
-                                    HoverHandler { id: appHover }
+                                    Repeater {
+                                        model: commandCenterWindow.appsItems
 
-                                    Rectangle {
-                                        id: iconBg
-                                        anchors.centerIn: parent
-                                        width: Theme.px(28)
-                                        height: Theme.px(28)
-                                        radius: Theme.px(6)
-                                        color: appHover.hovered ? (Theme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
-                                        scale: appHover.hovered ? 1.15 : 1.0
+                                        delegate: Item {
+                                            width: Theme.px(30)
+                                            height: Theme.px(30)
 
-                                        Behavior on scale {
-                                            NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
-                                        }
-                                        Behavior on color {
-                                            ColorAnimation { duration: 120 }
-                                        }
+                                            HoverHandler { id: appHover }
 
-                                        Image {
-                                            id: appImg
-                                            anchors.centerIn: parent
-                                            width: Theme.px(20)
-                                            height: Theme.px(20)
-                                            source: commandCenterWindow.resolveAppIcon(modelData)
-                                            sourceSize: Qt.size(40, 40)
-                                            fillMode: Image.PreserveAspectFit
-                                            visible: status === Image.Ready
-                                        }
+                                            Rectangle {
+                                                id: iconBg
+                                                anchors.centerIn: parent
+                                                width: Theme.px(26)
+                                                height: Theme.px(26)
+                                                radius: Theme.px(6)
+                                                color: appHover.hovered ? (Theme.isDark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.08)) : "transparent"
+                                                scale: appHover.hovered ? 1.15 : 1.0
 
-                                        Text {
-                                            anchors.centerIn: parent
-                                            visible: appImg.status !== Image.Ready
-                                            text: "apps"
-                                            font.family: Theme.fontIcon
-                                            font.pixelSize: Theme.fontPx(16)
-                                            color: appHover.hovered ? Theme.accent : Theme.fgDim
-                                        }
+                                                Behavior on scale {
+                                                    NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+                                                }
+                                                Behavior on color {
+                                                    ColorAnimation { duration: 120 }
+                                                }
 
-                                        MouseArea {
-                                            anchors.fill: parent
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: commandCenterWindow.focusApp(modelData)
+                                                Image {
+                                                    id: appImg
+                                                    anchors.centerIn: parent
+                                                    width: Theme.px(18)
+                                                    height: Theme.px(18)
+                                                    source: commandCenterWindow.resolveAppIcon(modelData)
+                                                    sourceSize: Qt.size(36, 36)
+                                                    fillMode: Image.PreserveAspectFit
+                                                    visible: status === Image.Ready
+                                                }
+
+                                                Text {
+                                                    anchors.centerIn: parent
+                                                    visible: appImg.status !== Image.Ready
+                                                    text: "apps"
+                                                    font.family: Theme.fontIcon
+                                                    font.pixelSize: Theme.fontPx(16)
+                                                    color: appHover.hovered ? Theme.accent : Theme.fgDim
+                                                }
+
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: commandCenterWindow.focusApp(modelData)
+                                                }
+                                            }
                                         }
                                     }
+                                }
+
+                                // Placeholder icon if no active apps detected
+                                Text {
+                                    anchors.centerIn: parent
+                                    visible: commandCenterWindow.appsItems.length === 0
+                                    text: "apps"
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: Theme.fontPx(16)
+                                    color: Theme.fgDim
                                 }
                             }
                         }
 
-                        // Placeholder icon if no active apps detected
-                        Text {
-                            anchors.centerIn: parent
-                            visible: commandCenterWindow.appsItems.length === 0
-                            text: "apps"
-                            font.family: Theme.fontIcon
-                            font.pixelSize: Theme.fontPx(16)
-                            color: Theme.fgDim
+                        // ── Bottom: Aesthetic Clock & Weather Card ──
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.03)
+                            border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
+                            border.width: 1
+                            radius: Theme.px(12)
+                            clip: true
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.margins: Theme.px(8)
+                                spacing: Theme.px(6)
+
+                                // Clock Section (Left)
+                                Item {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+
+                                    HoverHandler { id: clockHover }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            commandCenterWindow.use24h = !commandCenterWindow.use24h
+                                            commandCenterWindow.showFeedback(commandCenterWindow.use24h ? "24-Hour Clock" : "12-Hour Clock")
+                                        }
+                                    }
+
+                                    ColumnLayout {
+                                        anchors.centerIn: parent
+                                        spacing: Theme.px(2)
+
+                                        RowLayout {
+                                            Layout.alignment: Qt.AlignHCenter
+                                            spacing: Theme.px(4)
+
+                                            Text {
+                                                text: Qt.formatDateTime(sysClock.date, commandCenterWindow.use24h ? "HH:mm" : "hh:mm")
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(21)
+                                                font.weight: Font.Bold
+                                                color: clockHover.hovered ? Theme.accentLit : Theme.fg
+                                                Behavior on color { ColorAnimation { duration: 120 } }
+                                            }
+
+                                            Rectangle {
+                                                visible: !commandCenterWindow.use24h
+                                                Layout.preferredHeight: Theme.px(15)
+                                                Layout.preferredWidth: amPmText.implicitWidth + Theme.px(8)
+                                                Layout.alignment: Qt.AlignVCenter
+                                                radius: Theme.px(4)
+                                                color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.15)
+                                                border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.3)
+                                                border.width: 1
+
+                                                Text {
+                                                    id: amPmText
+                                                    anchors.centerIn: parent
+                                                    text: Qt.formatDateTime(sysClock.date, "AP")
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(9)
+                                                    font.weight: Font.Bold
+                                                    color: Theme.accentLit
+                                                }
+                                            }
+                                        }
+
+                                        Text {
+                                            Layout.alignment: Qt.AlignHCenter
+                                            text: Qt.formatDateTime(sysClock.date, "dddd, MMM d")
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(10)
+                                            font.weight: Font.Medium
+                                            color: Theme.fgDim
+                                        }
+                                    }
+                                }
+
+                                // Subtle Divider
+                                Rectangle {
+                                    Layout.preferredWidth: 1
+                                    Layout.preferredHeight: Theme.px(42)
+                                    Layout.alignment: Qt.AlignVCenter
+                                    color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.14)
+                                }
+
+                                // Weather Section (Right)
+                                Item {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+
+                                    HoverHandler { id: weatherHover }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            commandCenterWindow.refreshWeather()
+                                            commandCenterWindow.showFeedback("Refreshing Weather...")
+                                        }
+                                    }
+
+                                    ColumnLayout {
+                                        anchors.centerIn: parent
+                                        spacing: Theme.px(2)
+
+                                        RowLayout {
+                                            Layout.alignment: Qt.AlignHCenter
+                                            spacing: Theme.px(6)
+
+                                            Text {
+                                                text: commandCenterWindow.resolveWeatherIcon(commandCenterWindow.weatherDesc)
+                                                font.family: Theme.fontIcon
+                                                font.pixelSize: Theme.fontPx(20)
+                                                color: weatherHover.hovered ? Theme.accentLit : Theme.accent
+                                                Behavior on color { ColorAnimation { duration: 120 } }
+                                            }
+
+                                            Text {
+                                                text: commandCenterWindow.weatherTemp !== "" ? commandCenterWindow.weatherTemp : "--"
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(17)
+                                                font.weight: Font.Bold
+                                                color: weatherHover.hovered ? Theme.fg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.95)
+                                            }
+                                        }
+
+                                        RowLayout {
+                                            Layout.alignment: Qt.AlignHCenter
+                                            spacing: Theme.px(4)
+
+                                            Text {
+                                                text: commandCenterWindow.weatherDesc || "Clear Sky"
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(10)
+                                                font.weight: Font.Medium
+                                                color: Theme.fgDim
+                                                elide: Text.ElideRight
+                                                Layout.maximumWidth: Theme.px(70)
+                                            }
+
+                                            Text {
+                                                text: "•"
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(9)
+                                                color: Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.4)
+                                                visible: commandCenterWindow.weatherCity !== ""
+                                            }
+
+                                            Text {
+                                                text: commandCenterWindow.weatherCity
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(9)
+                                                font.weight: Font.Normal
+                                                color: Theme.fgDim
+                                                elide: Text.ElideRight
+                                                visible: commandCenterWindow.weatherCity !== ""
+                                                Layout.maximumWidth: Theme.px(45)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
