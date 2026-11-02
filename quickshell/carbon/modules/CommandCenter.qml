@@ -104,7 +104,7 @@ PanelWindow {
 
     Timer {
         id: closeAnimTimer
-        interval: 300
+        interval: 320
         onTriggered: {
             commandCenterWindow.animatingOut = false
         }
@@ -342,23 +342,11 @@ PanelWindow {
         width: commandCenterWindow.width
         height: commandCenterWindow.height
 
-        // Scrim overlay to dismiss on outside click with smooth opacity fade
-        Rectangle {
+        // Transparent dismiss surface (zero screen dimming, matching notch center panel)
+        MouseArea {
             anchors.fill: parent
-            color: Qt.rgba(0, 0, 0, 0.32)
-            opacity: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 1.0 : 0.0
-            Behavior on opacity {
-                NumberAnimation {
-                    duration: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 300 : 200
-                    easing.type: Easing.OutQuad
-                }
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                enabled: commandCenterWindow.isOpen
-                onClicked: commandCenterWindow.closeRequested()
-            }
+            enabled: commandCenterWindow.isOpen
+            onClicked: commandCenterWindow.closeRequested()
         }
 
         // ── Main Compact Floating Card ──
@@ -376,43 +364,29 @@ PanelWindow {
             // THE DYNAMIC POSITIONING ENGINE
             y: {
                 if (!commandCenterWindow.isOpen || commandCenterWindow.animatingOut) {
-                    // Off-screen positions
-                    return commandCenterWindow.isTopBarUp ? container.height : -height;
+                    // Off-screen positions: completely clear screen boundaries (extra 40px buffer)
+                    return commandCenterWindow.isTopBarUp ? (container.height + 40) : (-height - 40);
                 } else {
-                    // On-screen positions (floating 20px from edge)
+                    // On-screen resting positions (floating 20px from edge)
                     return commandCenterWindow.isTopBarUp ? (container.height - height - 20) : 20;
                 }
             }
 
-        opacity: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 1.0 : 0.0
-        scale: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 1.0 : 0.96
-        transformOrigin: commandCenterWindow.isTopBarUp ? Item.Bottom : Item.Top
+            opacity: (commandCenterWindow.isOpen || commandCenterWindow.animatingOut) ? 1.0 : 0.0
 
-        Behavior on y {
-            NumberAnimation {
-                duration: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 450 : 280
-                easing.type: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? Easing.OutExpo : Easing.InQuart
+            Behavior on y {
+                NumberAnimation {
+                    duration: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 380 : 300
+                    easing.type: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? Easing.OutCubic : Easing.InCubic
+                }
             }
-        }
-        Behavior on opacity {
-            NumberAnimation {
-                duration: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 320 : 220
-                easing.type: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? Easing.OutQuad : Easing.InQuad
-            }
-        }
-        Behavior on scale {
-            NumberAnimation {
-                duration: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 450 : 280
-                easing.type: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? Easing.OutExpo : Easing.InQuart
-            }
-        }
 
-        // Carbon Shell Modern Frosted Glass Aesthetic
-        color: Theme.isDark ? Qt.rgba(0.06, 0.07, 0.09, 0.90) : Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.90)
-        border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.16)
-        border.width: 1
-        radius: Theme.px(16)
-        clip: true
+            // Carbon Shell Modern Frosted Glass Aesthetic
+            color: Theme.isDark ? Qt.rgba(0.06, 0.07, 0.09, 0.90) : Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.90)
+            border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.16)
+            border.width: 1
+            radius: Theme.px(16)
+            clip: true
 
         // Absorb clicks inside card so they don't dismiss
         MouseArea {
