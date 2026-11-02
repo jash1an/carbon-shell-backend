@@ -25,6 +25,9 @@ PanelWindow {
     property bool animatingOut: false
     signal closeRequested()
 
+    property string barEdge: "top"
+    readonly property bool isAttachedTop: barEdge === "bottom"
+
     WlrLayershell.namespace: "carbon-command-center"
     WlrLayershell.layer: WlrLayer.Top
     aboveWindows: true
@@ -32,11 +35,34 @@ PanelWindow {
     color: "transparent"
 
     anchors {
-        bottom: true
+        top: commandCenterWindow.isAttachedTop
+        bottom: !commandCenterWindow.isAttachedTop
         left: true
         right: true
     }
     implicitHeight: Theme.px(390)
+
+    FileView {
+        id: barPosWatcher
+        path: (Quickshell.env("HOME") || "") + "/.config/carbon/carbon-bar-position.json"
+        watchChanges: true
+        blockLoading: true
+        printErrors: false
+        onLoaded: commandCenterWindow.updateBarPos(barPosWatcher.text())
+        onFileChanged: {
+            reload()
+            commandCenterWindow.updateBarPos(barPosWatcher.text())
+        }
+    }
+
+    function updateBarPos(txt) {
+        if (!txt) return
+        try {
+            var d = JSON.parse(txt)
+            if (d.mainBarEdge) commandCenterWindow.barEdge = d.mainBarEdge
+            else if (d.edge) commandCenterWindow.barEdge = d.edge
+        } catch(e) {}
+    }
 
     // Only visible when open or during slide-out animation to completely prevent blocking clicks/scrolls
     visible: isOpen || animatingOut
@@ -56,7 +82,7 @@ PanelWindow {
 
     Timer {
         id: closeAnimTimer
-        interval: 340
+        interval: 260
         onTriggered: {
             commandCenterWindow.animatingOut = false
         }
@@ -288,11 +314,23 @@ PanelWindow {
         return Quickshell.iconPath(c, "application-x-executable")
     }
 
-    // Scrim overlay to dismiss on outside click (only active when open)
-    MouseArea {
+    // Scrim overlay to dismiss on outside click with smooth opacity fade
+    Rectangle {
         anchors.fill: parent
-        enabled: commandCenterWindow.isOpen
-        onClicked: commandCenterWindow.closeRequested()
+        color: Qt.rgba(0, 0, 0, 0.32)
+        opacity: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 1.0 : 0.0
+        Behavior on opacity {
+            NumberAnimation {
+                duration: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 300 : 200
+                easing.type: Easing.OutQuad
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            enabled: commandCenterWindow.isOpen
+            onClicked: commandCenterWindow.closeRequested()
+        }
     }
 
     // ── Main Compact Floating Card ──
@@ -307,13 +345,33 @@ PanelWindow {
         height: Theme.px(360)
         anchors.horizontalCenter: parent.horizontalCenter
 
-        // Slide-up animation
-        y: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? Theme.px(16) : commandCenterWindow.implicitHeight
+        // Slide-in / slide-out animation attached to bottom center (when bar up) or top center (when bar down)
+        y: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut)
+           ? (commandCenterWindow.isAttachedTop ? Theme.px(10) : (commandCenterWindow.implicitHeight - mainPanel.height - Theme.px(10)))
+           : (commandCenterWindow.isAttachedTop
+              ? (-mainPanel.height - Theme.px(30))
+              : (commandCenterWindow.implicitHeight + Theme.px(30)))
+
+        opacity: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 1.0 : 0.0
+        scale: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 1.0 : 0.95
+        transformOrigin: commandCenterWindow.isAttachedTop ? Item.Top : Item.Bottom
 
         Behavior on y {
             NumberAnimation {
-                duration: 320
-                easing.type: Easing.OutExpo
+                duration: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 380 : 250
+                easing.type: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? Easing.OutQuart : Easing.InQuart
+            }
+        }
+        Behavior on opacity {
+            NumberAnimation {
+                duration: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 300 : 200
+                easing.type: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? Easing.OutQuad : Easing.InQuad
+            }
+        }
+        Behavior on scale {
+            NumberAnimation {
+                duration: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 380 : 250
+                easing.type: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? Easing.OutQuart : Easing.InQuart
             }
         }
 

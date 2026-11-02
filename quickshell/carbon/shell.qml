@@ -4089,6 +4089,7 @@ ShellRoot {
             required property var modelData
             modelData: modelData
             screen: modelData
+            barEdge: root.mainBarEdge
             visible: root.commandCenterOpen || commandCenterInst.animatingOut
             isOpen: root.commandCenterOpen
             onCloseRequested: root.closeCommandCenter()
@@ -4961,7 +4962,7 @@ ShellRoot {
     /* Quick-settings panel: now-playing strip over the quick toggles, positioned
      * dynamically according to root.controlsCorner ("bottom_right", "top_left", or "bottom_left"). */
     Variants {
-        model: (root.barMode === "minimal" || root.barMode === "minimal_notch") ? [] : [Quickshell.screens[0]]
+        model: Quickshell.screens.length > 0 ? [Quickshell.screens[0]] : []
 
         PanelWindow {
             id: controlsWindow
@@ -5012,10 +5013,9 @@ ShellRoot {
                 ControlHub {
                     id: controlsItem
                     anchors.right: parent.right
-                    anchors.bottom: parent.bottom
                     anchors.rightMargin: 14
-                    anchors.bottomMargin: 14
-                    corner: "bottom_right"
+                    y: root.mainBarEdge === "bottom" ? 14 : (parent.height - height - 14)
+                    corner: root.mainBarEdge === "bottom" ? "top_right" : "bottom_right"
                     width: controlsItem.implicitWidth
                     height: controlsItem.implicitHeight
                     open: root.controlsVisible
@@ -5037,7 +5037,7 @@ ShellRoot {
         }
     }
 
-    /* Bottom-Right Hot Corner Trigger for ControlHub */
+    /* Hot Corner Trigger for ControlHub (Top-Right when bar on bottom, Bottom-Right when bar on top) */
     Variants {
         model: Quickshell.screens
 
@@ -5052,7 +5052,8 @@ ShellRoot {
             aboveWindows: true
 
             anchors {
-                bottom: true
+                top: root.mainBarEdge === "bottom"
+                bottom: root.mainBarEdge !== "bottom"
                 right: true
             }
 

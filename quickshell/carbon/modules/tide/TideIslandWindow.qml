@@ -221,13 +221,19 @@ PanelWindow {
     }
 
     color: StyleTokens.transparent
-    anchors { top: true; left: true; right: true }
+    readonly property bool isAttachedBottom: shellRootController ? (shellRootController.mainBarEdge === "bottom") : false
+    anchors {
+        top: !root.isAttachedBottom
+        bottom: root.isAttachedBottom
+        left: true
+        right: true
+    }
     mask: Region {
         // Input is the union of the island's visible surfaces plus a compact top
         // gesture strip. The gesture strip must not grow with expanded content.
         Region {
             x: Math.floor(root.topGestureInputX)
-            y: 0
+            y: root.isAttachedBottom ? Math.floor(root.height - root.topGestureInputHeight) : 0
             width: Math.ceil(root.topGestureInputWidth)
             height: Math.ceil(root.topGestureInputHeight)
         }
@@ -2140,8 +2146,10 @@ PanelWindow {
                 ? root.overviewCapsuleColor
                 : root.baseCapsuleColor
             color: root.isNotchMode ? "transparent" : mainCapsule.baseCapsuleColor
-            y: Math.round(root.effectiveTopMargin
-                - (1 - root.autoHideProgress) * (targetHeight + root.effectiveTopMargin + 8))
+            y: root.isAttachedBottom
+                ? Math.round(root.height - targetHeight - root.effectiveTopMargin + (1 - root.autoHideProgress) * (targetHeight + root.effectiveTopMargin + 8))
+                : Math.round(root.effectiveTopMargin
+                    - (1 - root.autoHideProgress) * (targetHeight + root.effectiveTopMargin + 8))
             x: Math.round(((parent && parent.width > 0) ? parent.width : root.width) * userConfig.islandPositionX / 100 - width / 2)
             clip: true
             width: Math.round(displayedWidth)
@@ -2149,7 +2157,7 @@ PanelWindow {
             radius: targetRadius
             opacity: root.autoHideProgress
             scale: 0.96 + root.autoHideProgress * 0.04
-            transformOrigin: Item.Top
+            transformOrigin: root.isAttachedBottom ? Item.Bottom : Item.Top
             layer.enabled: false
 
             onBaseTargetWidthChanged: {
@@ -2186,7 +2194,8 @@ PanelWindow {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 anchors.top: parent.top
-                anchors.topMargin: -mainCapsule.radius
+                anchors.topMargin: root.isAttachedBottom ? 0 : -mainCapsule.radius
+                anchors.bottomMargin: root.isAttachedBottom ? -mainCapsule.radius : 0
                 radius: mainCapsule.radius
                 color: mainCapsule.baseCapsuleColor
                 z: -0.5
@@ -2938,7 +2947,11 @@ PanelWindow {
             z: mainCapsule.z
             opacity: mainCapsule.opacity
             scale: mainCapsule.scale
-            transformOrigin: Item.Top
+            transformOrigin: root.isAttachedBottom ? Item.Bottom : Item.Top
+            transform: Scale {
+                origin.y: root.isAttachedBottom ? leftNotchEar.height : 0
+                yScale: root.isAttachedBottom ? -1 : 1
+            }
             preferredRendererType: Shape.CurveRenderer
             antialiasing: true
 
@@ -2987,7 +3000,11 @@ PanelWindow {
             z: mainCapsule.z
             opacity: mainCapsule.opacity
             scale: mainCapsule.scale
-            transformOrigin: Item.Top
+            transformOrigin: root.isAttachedBottom ? Item.Bottom : Item.Top
+            transform: Scale {
+                origin.y: root.isAttachedBottom ? rightNotchEar.height : 0
+                yScale: root.isAttachedBottom ? -1 : 1
+            }
             preferredRendererType: Shape.CurveRenderer
             antialiasing: true
 
