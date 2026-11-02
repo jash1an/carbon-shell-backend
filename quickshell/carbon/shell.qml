@@ -53,7 +53,11 @@ ShellRoot {
     function closeCommandCenter() {
         root.commandCenterOpen = false
     }
+    property real lastCommandCenterToggleTime: 0
     function toggleCommandCenter() {
+        var now = Date.now()
+        if (now - root.lastCommandCenterToggleTime < 250) return
+        root.lastCommandCenterToggleTime = now
         if (root.commandCenterOpen) root.closeCommandCenter()
         else root.openCommandCenter()
     }

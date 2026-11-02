@@ -66,6 +66,7 @@ home = os.environ.get("HOME", os.path.expanduser("~"))
 
 lua_bindings = {
     "minimal": f"""-- Active Mode: Minimal Notch / Tide Island
+hl.bind("SUPER + G", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh command-center"))
 hl.bind("SUPER + SHIFT + E", hl.dsp.exec_cmd("/usr/bin/quickshell ipc --any-display -p {home}/.local/share/quickshell/carbon call tide toggleControlCenter"))
 hl.bind("SUPER + R", hl.dsp.exec_cmd("/usr/bin/quickshell ipc --any-display -p {home}/.local/share/quickshell/carbon call tide toggleApplicationLauncher"))
 hl.bind("SUPER + M", hl.dsp.exec_cmd("/usr/bin/quickshell ipc --any-display -p {home}/.local/share/quickshell/carbon call tide togglePlayer"))
@@ -84,6 +85,7 @@ hl.bind("SUPER + ALT + Up", hl.dsp.focus({{ direction = "up" }}))
 hl.bind("SUPER + ALT + Down", hl.dsp.focus({{ direction = "down" }}))
 """,
     "notch": f"""-- Active Mode: Carbon Notch
+hl.bind("SUPER + G", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh command-center"))
 hl.bind("SUPER + B", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh center-dashboard"))
 hl.bind("SUPER + K", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh spotlight"))
 hl.bind("SUPER + R", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh spotlight"))
@@ -96,6 +98,7 @@ hl.bind("SUPER + Up", hl.dsp.window.move({{ direction = "u" }}))
 hl.bind("SUPER + Down", hl.dsp.window.move({{ direction = "d" }}))
 """,
     "pill": f"""-- Active Mode: Pill / Waybar
+hl.bind("SUPER + G", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh command-center"))
 hl.bind("SUPER + C", hl.dsp.exec_cmd("hyprpicker -a"))
 hl.bind("SUPER + B", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh controls"))
 hl.bind("SUPER + K", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh spotlight"))
@@ -107,6 +110,7 @@ hl.bind("SUPER + Down", hl.dsp.window.move({{ direction = "d" }}))
 """
 ,
     "vanish": f"""-- Active Mode: Vanish / Nucleus
+hl.bind("SUPER + G", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh command-center"))
 hl.bind("SUPER + Super_L", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/carbon-vanish-dispatch.sh toggle-hub"), {{ release = true }})
 hl.bind("SUPER + Super_R", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/carbon-vanish-dispatch.sh toggle-hub"), {{ release = true }})
 hl.bind("SUPER + S", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/carbon-vanish-dispatch.sh launcher"))

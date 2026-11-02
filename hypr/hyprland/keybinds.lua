@@ -17,6 +17,10 @@ hl.bind(vars.kbSession, hl.dsp.global("caelestia:session"))
 hl.bind(vars.kbShowSidebar, hl.dsp.global("caelestia:sidebar"))
 -- Spotlight Command Palette (Super + K)
 hl.bind(vars.kbShowPanels or "SUPER + K", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh spotlight"), { release = true })
+
+-- Command Center / View Point (Super + G)
+hl.bind("SUPER + G", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh command-center"))
+
 hl.bind(vars.kbLock, hl.dsp.exec_cmd("~/.config/hypr/scripts/hyprlock.sh"))
 
 -- Restore lock
