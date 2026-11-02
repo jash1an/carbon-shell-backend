@@ -223,7 +223,7 @@ PanelWindow {
                 }
 
                 Text {
-                    text: "Command Center"
+                    text: "View Point"
                     font.family: Theme.font
                     font.pixelSize: Theme.fontPx(12)
                     font.weight: Font.DemiBold
@@ -562,27 +562,28 @@ PanelWindow {
                 }
             }
 
-            // ── ROW 2: Recent Apps Tile (Left, Compact Dock) + Clipboard Tile (Right) ──
+            // ── ROW 2: Recent Apps Tile (Left, Compact Landscape Dock) + Clipboard Tile (Right) ──
             RowLayout {
                 Layout.fillWidth: true
-                Layout.fillHeight: true
-                Layout.preferredHeight: Theme.px(154)
+                Layout.preferredHeight: Theme.px(144)
+                Layout.maximumHeight: Theme.px(144)
                 spacing: Theme.px(8)
 
                 // ══════════════════════════════════════════════════
-                // TILE 3: RECENT APPS (Compact Dock, Icons Only, Dynamic Length)
+                // TILE 3: RECENT APPS (Compact Landscape Dock, Icons Only, Dynamic Length)
                 // ══════════════════════════════════════════════════
                 Item {
-                    Layout.preferredWidth: Theme.px(48)
+                    Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.preferredWidth: (parent.width - Theme.px(8)) / 2
 
-                    // Dynamic length card fitting only the active apps (max 5)
+                    // Dynamic length landscape card fitting only the active apps (max 5)
                     Rectangle {
                         anchors.top: parent.top
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: Theme.px(44)
-                        // Height dynamically hugs only the active apps (up to 5 max)
-                        height: Math.max(Theme.px(36), commandCenterWindow.appsItems.length * Theme.px(36) + Theme.px(8))
+                        anchors.left: parent.left
+                        height: Theme.px(44)
+                        // Length (width) dynamically hugs only the active apps (up to 5 max)
+                        width: Math.max(Theme.px(44), commandCenterWindow.appsItems.length * Theme.px(36) + (commandCenterWindow.appsItems.length > 0 ? (commandCenterWindow.appsItems.length - 1) * Theme.px(4) : 0) + Theme.px(12))
 
                         color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.03)
                         border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
@@ -590,16 +591,15 @@ PanelWindow {
                         radius: Theme.px(10)
                         clip: true
 
-                        Column {
-                            anchors.fill: parent
-                            anchors.margins: Theme.px(4)
+                        Row {
+                            anchors.centerIn: parent
                             spacing: Theme.px(4)
 
                             Repeater {
                                 model: commandCenterWindow.appsItems
 
                                 delegate: Item {
-                                    width: parent.width
+                                    width: Theme.px(32)
                                     height: Theme.px(32)
 
                                     HoverHandler { id: appHover }
@@ -649,6 +649,16 @@ PanelWindow {
                                 }
                             }
                         }
+
+                        // Placeholder icon if no active apps detected
+                        Text {
+                            anchors.centerIn: parent
+                            visible: commandCenterWindow.appsItems.length === 0
+                            text: "apps"
+                            font.family: Theme.fontIcon
+                            font.pixelSize: Theme.fontPx(16)
+                            color: Theme.fgDim
+                        }
                     }
                 }
 
@@ -658,6 +668,7 @@ PanelWindow {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.preferredWidth: (parent.width - Theme.px(8)) / 2
                     color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.03)
                     border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
                     border.width: 1
