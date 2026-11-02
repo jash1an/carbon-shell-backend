@@ -4,6 +4,8 @@ import Quickshell.Io
 
 Item {
     id: root
+    width: parent ? parent.width : (Screen.width || 1366)
+    height: parent ? parent.height : (Screen.height || 768)
 
     readonly property string home: Quickshell.env("HOME") || ""
     readonly property string configDir: Quickshell.env("CARBON_CONFIG_DIR") || (root.home + "/.config/carbon")
@@ -172,7 +174,23 @@ Item {
 
     /* ── Apply New Wallpaper with Smooth Animation ────────────────── */
     function applyNewWallpaper(newPath) {
-        if (!newPath || newPath === root.currentWpPath) return
+        if (!newPath) return
+        if (newPath === root.currentWpPath) {
+            console.log("[WallpaperMod] applyNewWallpaper called with same path; ensuring visibility")
+            const curType = getWallpaperType(newPath)
+            if (curType === "image") {
+                imageContainer.opacity = 1.0
+                imageContainer.visible = true
+                if (root.activeBuffer === "B") {
+                    bufB.visible = true
+                    bufB.opacity = 1.0
+                } else {
+                    bufA.visible = true
+                    bufA.opacity = 1.0
+                }
+            }
+            return
+        }
         if (newPath === root.pendingNewPath) return
         console.log("[WallpaperMod] applyNewWallpaper:", newPath, "from current:", root.currentWpPath)
 

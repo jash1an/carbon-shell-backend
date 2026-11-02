@@ -2515,7 +2515,7 @@ ShellRoot {
             required property var modelData
 
             screen: modelData
-            color: "#000000"
+            color: "transparent"
             WlrLayershell.namespace: "carbon-wallpaper"
             WlrLayershell.layer: WlrLayer.Background
             exclusionMode: ExclusionMode.Ignore
@@ -2523,6 +2523,8 @@ ShellRoot {
 
             WallpaperMod {
                 id: wpInstance
+                width: wallpaperWindow.width
+                height: wallpaperWindow.height
                 anchors.fill: parent
 
                 Component.onCompleted: {
