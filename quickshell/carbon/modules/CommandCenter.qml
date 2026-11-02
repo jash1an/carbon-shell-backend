@@ -456,12 +456,25 @@ PanelWindow {
                             model: commandCenterWindow.vaultItems
                             spacing: Theme.px(2)
 
+                            property bool scrollInitialized: false
+                            Component.onCompleted: scrollInitialized = true
+                            onContentYChanged: if (scrollInitialized) vaultScrollTimer.restart()
+
+                            Timer {
+                                id: vaultScrollTimer
+                                interval: 700
+                                running: false
+                            }
+
                             ScrollBar.vertical: ScrollBar {
+                                id: vaultScroll
                                 policy: ScrollBar.AsNeeded
                                 contentItem: Rectangle {
                                     implicitWidth: Theme.px(3)
                                     radius: Theme.px(2)
-                                    color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.3)
+                                    color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.4)
+                                    opacity: (vaultScroll.active || vaultScrollTimer.running) ? 1.0 : 0.0
+                                    Behavior on opacity { NumberAnimation { duration: 200 } }
                                 }
                             }
 
@@ -579,12 +592,25 @@ PanelWindow {
                             model: commandCenterWindow.agendaItems
                             spacing: Theme.px(2)
 
+                            property bool scrollInitialized: false
+                            Component.onCompleted: scrollInitialized = true
+                            onContentYChanged: if (scrollInitialized) agendaScrollTimer.restart()
+
+                            Timer {
+                                id: agendaScrollTimer
+                                interval: 700
+                                running: false
+                            }
+
                             ScrollBar.vertical: ScrollBar {
+                                id: agendaScroll
                                 policy: ScrollBar.AsNeeded
                                 contentItem: Rectangle {
                                     implicitWidth: Theme.px(3)
                                     radius: Theme.px(2)
-                                    color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.3)
+                                    color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.4)
+                                    opacity: (agendaScroll.active || agendaScrollTimer.running) ? 1.0 : 0.0
+                                    Behavior on opacity { NumberAnimation { duration: 200 } }
                                 }
                             }
 
@@ -984,12 +1010,25 @@ PanelWindow {
                             model: commandCenterWindow.clipboardItems
                             spacing: Theme.px(2)
 
+                            property bool scrollInitialized: false
+                            Component.onCompleted: scrollInitialized = true
+                            onContentYChanged: if (scrollInitialized) clipScrollTimer.restart()
+
+                            Timer {
+                                id: clipScrollTimer
+                                interval: 700
+                                running: false
+                            }
+
                             ScrollBar.vertical: ScrollBar {
+                                id: clipScroll
                                 policy: ScrollBar.AsNeeded
                                 contentItem: Rectangle {
                                     implicitWidth: Theme.px(3)
                                     radius: Theme.px(2)
-                                    color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.3)
+                                    color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.4)
+                                    opacity: (clipScroll.active || clipScrollTimer.running) ? 1.0 : 0.0
+                                    Behavior on opacity { NumberAnimation { duration: 200 } }
                                 }
                             }
 
