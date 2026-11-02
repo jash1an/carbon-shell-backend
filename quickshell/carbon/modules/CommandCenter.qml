@@ -26,7 +26,8 @@ PanelWindow {
     signal closeRequested()
 
     property string barEdge: "top"
-    readonly property bool isAttachedTop: barEdge === "bottom"
+    property string barMode: "notch"
+    readonly property bool isTopBarUp: barEdge !== "bottom"
 
     WlrLayershell.namespace: "carbon-command-center"
     WlrLayershell.layer: WlrLayer.Top
@@ -35,12 +36,11 @@ PanelWindow {
     color: "transparent"
 
     anchors {
-        top: commandCenterWindow.isAttachedTop
-        bottom: !commandCenterWindow.isAttachedTop
+        top: true
+        bottom: true
         left: true
         right: true
     }
-    implicitHeight: Theme.px(390)
 
     FileView {
         id: barPosWatcher
@@ -64,6 +64,28 @@ PanelWindow {
         } catch(e) {}
     }
 
+    FileView {
+        id: barModeWatcher
+        path: (Quickshell.env("HOME") || "") + "/.config/carbon/carbon-bar-mode.json"
+        watchChanges: true
+        blockLoading: true
+        printErrors: false
+        onLoaded: commandCenterWindow.updateBarMode(barModeWatcher.text())
+        onFileChanged: {
+            reload()
+            commandCenterWindow.updateBarMode(barModeWatcher.text())
+        }
+    }
+
+    function updateBarMode(txt) {
+        if (!txt) return
+        try {
+            var d = JSON.parse(txt)
+            if (d.mode) commandCenterWindow.barMode = d.mode
+            if (d.mainBarEdge) commandCenterWindow.barEdge = d.mainBarEdge
+        } catch(e) {}
+    }
+
     // Only visible when open or during slide-out animation to completely prevent blocking clicks/scrolls
     visible: isOpen || animatingOut
     WlrLayershell.keyboardFocus: (isOpen && !animatingOut) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
@@ -82,7 +104,7 @@ PanelWindow {
 
     Timer {
         id: closeAnimTimer
-        interval: 260
+        interval: 300
         onTriggered: {
             commandCenterWindow.animatingOut = false
         }
@@ -314,64 +336,74 @@ PanelWindow {
         return Quickshell.iconPath(c, "application-x-executable")
     }
 
-    // Scrim overlay to dismiss on outside click with smooth opacity fade
-    Rectangle {
+    Item {
+        id: container
         anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, 0.32)
-        opacity: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 1.0 : 0.0
-        Behavior on opacity {
-            NumberAnimation {
-                duration: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 300 : 200
-                easing.type: Easing.OutQuad
+        width: commandCenterWindow.width
+        height: commandCenterWindow.height
+
+        // Scrim overlay to dismiss on outside click with smooth opacity fade
+        Rectangle {
+            anchors.fill: parent
+            color: Qt.rgba(0, 0, 0, 0.32)
+            opacity: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 1.0 : 0.0
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 300 : 200
+                    easing.type: Easing.OutQuad
+                }
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                enabled: commandCenterWindow.isOpen
+                onClicked: commandCenterWindow.closeRequested()
             }
         }
 
-        MouseArea {
-            anchors.fill: parent
-            enabled: commandCenterWindow.isOpen
-            onClicked: commandCenterWindow.closeRequested()
-        }
-    }
+        // ── Main Compact Floating Card ──
+        Rectangle {
+            id: mainPanel
+            focus: true
+            Keys.onEscapePressed: function(event) {
+                commandCenterWindow.closeRequested()
+                if (event) event.accepted = true
+            }
+            width: Math.min(Theme.px(640), container.width - Theme.px(32))
+            height: Theme.px(360)
+            x: Math.round((container.width - width) / 2)
 
-    // ── Main Compact Floating Card ──
-    Rectangle {
-        id: mainPanel
-        focus: true
-        Keys.onEscapePressed: function(event) {
-            commandCenterWindow.closeRequested()
-            if (event) event.accepted = true
-        }
-        width: Math.min(Theme.px(640), parent.width - Theme.px(32))
-        height: Theme.px(360)
-        anchors.horizontalCenter: parent.horizontalCenter
-
-        // Slide-in / slide-out animation attached to bottom center (when bar up) or top center (when bar down)
-        y: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut)
-           ? (commandCenterWindow.isAttachedTop ? Theme.px(10) : (commandCenterWindow.implicitHeight - mainPanel.height - Theme.px(10)))
-           : (commandCenterWindow.isAttachedTop
-              ? (-mainPanel.height - Theme.px(30))
-              : (commandCenterWindow.implicitHeight + Theme.px(30)))
+            // THE DYNAMIC POSITIONING ENGINE
+            y: {
+                if (!commandCenterWindow.isOpen || commandCenterWindow.animatingOut) {
+                    // Off-screen positions
+                    return commandCenterWindow.isTopBarUp ? container.height : -height;
+                } else {
+                    // On-screen positions (floating 20px from edge)
+                    return commandCenterWindow.isTopBarUp ? (container.height - height - 20) : 20;
+                }
+            }
 
         opacity: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 1.0 : 0.0
-        scale: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 1.0 : 0.95
-        transformOrigin: commandCenterWindow.isAttachedTop ? Item.Top : Item.Bottom
+        scale: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 1.0 : 0.96
+        transformOrigin: commandCenterWindow.isTopBarUp ? Item.Bottom : Item.Top
 
         Behavior on y {
             NumberAnimation {
-                duration: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 380 : 250
-                easing.type: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? Easing.OutQuart : Easing.InQuart
+                duration: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 450 : 280
+                easing.type: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? Easing.OutExpo : Easing.InQuart
             }
         }
         Behavior on opacity {
             NumberAnimation {
-                duration: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 300 : 200
+                duration: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 320 : 220
                 easing.type: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? Easing.OutQuad : Easing.InQuad
             }
         }
         Behavior on scale {
             NumberAnimation {
-                duration: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 380 : 250
-                easing.type: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? Easing.OutQuart : Easing.InQuart
+                duration: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 450 : 280
+                easing.type: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? Easing.OutExpo : Easing.InQuart
             }
         }
 
@@ -1201,13 +1233,14 @@ PanelWindow {
         }
     }
 
-    // Keyboard listener for Escape key to dismiss
-    Item {
-        id: escHandler
-        focus: true
-        Keys.onEscapePressed: function(event) {
-            commandCenterWindow.closeRequested()
-            if (event) event.accepted = true
+        // Keyboard listener for Escape key to dismiss
+        Item {
+            id: escHandler
+            focus: true
+            Keys.onEscapePressed: function(event) {
+                commandCenterWindow.closeRequested()
+                if (event) event.accepted = true
+            }
         }
     }
 }

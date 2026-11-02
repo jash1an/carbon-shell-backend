@@ -4090,6 +4090,7 @@ ShellRoot {
             modelData: modelData
             screen: modelData
             barEdge: root.mainBarEdge
+            barMode: root.barMode
             visible: root.commandCenterOpen || commandCenterInst.animatingOut
             isOpen: root.commandCenterOpen
             onCloseRequested: root.closeCommandCenter()
