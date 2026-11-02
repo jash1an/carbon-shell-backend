@@ -17,3 +17,4 @@ MiniCairo MiniCairo.qml
 Cairo Cairo.qml
 TerminalStatusBadge TerminalStatusBadge.qml
 RazorWireSlider RazorWireSlider.qml
+CarbonLogoIcon CarbonLogoIcon.qml

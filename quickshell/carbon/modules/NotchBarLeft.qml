@@ -120,13 +120,11 @@ NotchContainer {
                 Behavior on color { ColorAnimation { duration: 120 } }
             }
 
-            Text {
+            CarbonLogoIcon {
                 anchors.centerIn: parent
-                text: (typeof Theme !== "undefined" && Theme.distroIcon) ? Theme.distroIcon : "󰣇"
-                font.family: "JetBrainsMono Nerd Font"
-                font.pixelSize: Theme.fontPx(16)
+                width: Theme.px(20)
+                height: Theme.px(20)
                 color: launcherBtn.isHovered ? Theme.accent : Theme.fg
-                Behavior on color { ColorAnimation { duration: 120 } }
             }
 
             MouseArea {

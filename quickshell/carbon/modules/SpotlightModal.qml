@@ -620,13 +620,11 @@ Item {
                 Layout.preferredHeight: 38
                 spacing: 10
 
-                Text {
-                    font.family: "Noto Sans CJK JP, Valley Sans, sans-serif"
-                    font.pixelSize: 18
-                    font.bold: true
-                    color: Theme.accent
-                    text: "力"
+                CarbonLogoIcon {
+                    Layout.preferredWidth: Theme.px(26)
+                    Layout.preferredHeight: Theme.px(26)
                     Layout.alignment: Qt.AlignVCenter
+                    color: Theme.accent
                 }
 
                 TextInput {

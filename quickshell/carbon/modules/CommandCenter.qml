@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import "../Singletons"
+import "../components"
 
 /**
  * CommandCenter:
@@ -211,7 +212,11 @@ PanelWindow {
 
     function focusApp(appClass) {
         if (!appClass) return
-        execCommand("hyprctl dispatch focuswindow " + JSON.stringify("class:" + appClass) + " 2>/dev/null || true")
+        var c = appClass.replace(/"/g, '\\"')
+        var cmd = 'if hyprctl dispatch focuswindow "class:' + c + '" 2>/dev/null; then exit 0; fi; ' +
+                  'res=$(hyprctl repl \'for _, w in ipairs(hl.get_windows()) do if string.find(string.lower(w.class), string.lower("' + c + '"), 1, true) then hl.dispatch(hl.dsp.focus{ window = w }) return "ok" end end; return "not_found"\' 2>/dev/null); ' +
+                  'if [ "$res" != "ok" ]; then gtk-launch ' + c + ' 2>/dev/null || hyprctl dispatch exec ' + c + ' 2>/dev/null || true; fi'
+        execCommand(cmd)
         showFeedback("Focused: " + appClass)
     }
 
@@ -224,23 +229,63 @@ PanelWindow {
 
     function resolveAppIcon(cls) {
         if (!cls) return ""
-        var c = cls.toLowerCase().trim()
+        var raw = cls.trim()
+        var c = raw.toLowerCase()
+
+        // 1. Obsidian special handling
         if (c.indexOf("obsidian") !== -1) {
             var o = Quickshell.iconPath("obsidian", "") || Quickshell.iconPath("md.obsidian.Obsidian", "")
             if (o) return o
             return "file:///home/shogun/.local/share/icons/hicolor/scalable/apps/obsidian.svg"
         }
-        var p = Quickshell.iconPath(cls, "")
-        if (p) return p
-        p = Quickshell.iconPath(c, "")
-        if (p) return p
-        var parts = cls.split(".")
+
+        // 2. Direct well-known application mappings
+        if (c === "antigravity") {
+            return Quickshell.iconPath("antigravity", "")
+        }
+        if (c === "cz.viceverse.serein" || c === "serein") {
+            return Quickshell.iconPath("serein", "")
+        }
+
+        // 3. Resolve using DesktopEntries if available
+        if (typeof DesktopEntries !== "undefined" && DesktopEntries && DesktopEntries.applications) {
+            var apps = DesktopEntries.applications.values || []
+            var parts = c.split(".")
+            var lastSegment = parts[parts.length - 1]
+
+            // By startupWmClass
+            for (var i = 0; i < apps.length; i++) {
+                var a = apps[i]
+                if (a && a.startupWmClass && a.startupWmClass.toLowerCase() === c) {
+                    if (a.icon) {
+                        if (a.icon.startsWith("/")) return "file://" + a.icon
+                        return Quickshell.iconPath(a.icon.toLowerCase(), "")
+                    }
+                }
+            }
+
+            // By app ID
+            for (var i = 0; i < apps.length; i++) {
+                var a = apps[i]
+                var aid = (a && a.id ? a.id : "").toLowerCase()
+                if (aid === c || aid === c + ".desktop" || aid === lastSegment || aid === lastSegment + ".desktop") {
+                    if (a.icon) {
+                        if (a.icon.startsWith("/")) return "file://" + a.icon
+                        return Quickshell.iconPath(a.icon.toLowerCase(), "")
+                    }
+                }
+            }
+        }
+
+        // 4. Reverse DNS stripping (e.g. org.mozilla.firefox -> firefox)
+        var parts = c.split(".")
         var last = parts[parts.length - 1]
-        p = Quickshell.iconPath(last, "")
-        if (p) return p
-        p = Quickshell.iconPath(last.toLowerCase(), "")
-        if (p) return p
-        return Quickshell.iconPath("application-x-executable", "")
+        if (last && last.length > 0 && last !== c) {
+            return Quickshell.iconPath(last, "")
+        }
+
+        // 5. Default lowercase
+        return Quickshell.iconPath(c, "application-x-executable")
     }
 
     // Scrim overlay to dismiss on outside click (only active when open)
@@ -299,23 +344,16 @@ PanelWindow {
                 Layout.maximumHeight: Theme.px(24)
                 spacing: Theme.px(8)
 
-                // Drag pill / status indicator
-                Rectangle {
-                    width: Theme.px(8)
-                    height: Theme.px(8)
-                    radius: Theme.px(4)
-                    color: commandCenterWindow.engineConnected ? Theme.accent : Theme.outline
-
-                    SequentialAnimation on opacity {
-                        loops: Animation.Infinite
-                        running: true
-                        NumberAnimation { from: 0.5; to: 1.0; duration: 900; easing.type: Easing.InOutQuad }
-                        NumberAnimation { from: 1.0; to: 0.5; duration: 900; easing.type: Easing.InOutQuad }
-                    }
+                CarbonLogoIcon {
+                    width: Theme.px(18)
+                    height: Theme.px(18)
+                    Layout.alignment: Qt.AlignVCenter
+                    color: commandCenterWindow.engineConnected ? Theme.accent : Theme.fgDim
                 }
 
                 Text {
                     text: "View Point"
+                    Layout.alignment: Qt.AlignVCenter
                     font.family: Theme.font
                     font.pixelSize: Theme.fontPx(12)
                     font.weight: Font.DemiBold
