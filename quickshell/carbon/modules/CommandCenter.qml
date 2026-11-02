@@ -24,6 +24,7 @@ PanelWindow {
     property bool isOpen: false
     property bool animatingOut: false
     signal closeRequested()
+    signal animationFinished()
 
     property string barEdge: "top"
     property string barMode: "notch"
@@ -88,7 +89,7 @@ PanelWindow {
 
     // Only visible when open or during slide-out animation to completely prevent blocking clicks/scrolls
     visible: isOpen || animatingOut
-    WlrLayershell.keyboardFocus: (isOpen && !animatingOut) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: (isOpen && !animatingOut) ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
     onIsOpenChanged: {
         if (!isOpen) {
@@ -107,6 +108,7 @@ PanelWindow {
         interval: 320
         onTriggered: {
             commandCenterWindow.animatingOut = false
+            commandCenterWindow.animationFinished()
         }
     }
 
@@ -372,7 +374,7 @@ PanelWindow {
                 }
             }
 
-            opacity: (commandCenterWindow.isOpen || commandCenterWindow.animatingOut) ? 1.0 : 0.0
+            opacity: 1.0
 
             Behavior on y {
                 NumberAnimation {

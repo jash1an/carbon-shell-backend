@@ -46,11 +46,15 @@ ShellRoot {
     property var commandCenterItem: null
 
     property bool commandCenterOpen: false
+    property bool commandCenterAnimatingOut: false
     function openCommandCenter() {
         root.closeAllPopupsExcept("commandCenter")
+        root.commandCenterAnimatingOut = false
         root.commandCenterOpen = true
     }
     function closeCommandCenter() {
+        if (!root.commandCenterOpen && !root.commandCenterAnimatingOut) return
+        root.commandCenterAnimatingOut = true
         root.commandCenterOpen = false
     }
     property real lastCommandCenterToggleTime: 0
@@ -149,7 +153,7 @@ ShellRoot {
         if (keep !== "notif") { root.notifOpen = false; root.notifPinned = false }
         if (keep !== "centerDashboard") { root.centerDashboardOpen = false; root.centerDashboardPinned = false }
         if (keep !== "controls") { root.controlsVisible = false; root.controlsPinned = false }
-        if (keep !== "commandCenter") { root.commandCenterOpen = false }
+        if (keep !== "commandCenter") { root.commandCenterOpen = false; root.commandCenterAnimatingOut = false }
         if (keep !== "focus") { root.focusHudOpen = false }
     }
 
@@ -4095,9 +4099,12 @@ ShellRoot {
             screen: modelData
             barEdge: root.mainBarEdge
             barMode: root.barMode
-            visible: root.commandCenterOpen || commandCenterInst.animatingOut
+            visible: root.commandCenterOpen || root.commandCenterAnimatingOut || commandCenterInst.animatingOut
             isOpen: root.commandCenterOpen
             onCloseRequested: root.closeCommandCenter()
+            onAnimationFinished: {
+                root.commandCenterAnimatingOut = false
+            }
             Component.onCompleted: root.commandCenterItem = this
         }
     }
