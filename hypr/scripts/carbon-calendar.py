@@ -256,11 +256,53 @@ def delete_user_event(ev_id):
     return found
 
 
+def get_upcoming_agenda():
+    now = datetime.now()
+    all_evs = {}
+    y = now.year
+    m = now.month
+    for _ in range(4):
+        all_evs.update(get_events_for_month(y, m))
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+
+    agenda = []
+    today_str = now.strftime("%Y-%m-%d")
+    for d_str in sorted(all_evs.keys()):
+        if d_str >= today_str:
+            dt = datetime.strptime(d_str, "%Y-%m-%d")
+            month_name = dt.strftime("%b")
+            day_num = dt.strftime("%d")
+            for ev in all_evs[d_str]:
+                agenda.append({
+                    "date": f"{month_name} {day_num}",
+                    "title": ev["title"],
+                    "raw_date": d_str,
+                    "time": ev.get("time", "All day"),
+                    "icon": ev.get("icon", "📌"),
+                    "type": ev.get("type", "festival"),
+                    "is_user": ev.get("is_user", False)
+                })
+
+    agenda_file = os.path.join(CARBON_CONFIG_DIR, "agenda.json")
+    try:
+        os.makedirs(CARBON_CONFIG_DIR, exist_ok=True)
+        with open(agenda_file, "w", encoding="utf-8") as f:
+            json.dump(agenda, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+
+    return agenda
+
+
 def main():
     parser = argparse.ArgumentParser(description="Carbon Calendar Backend")
     parser.add_argument("--get-month", nargs=2, type=int, metavar=("YEAR", "MONTH"), help="Get all events for year and month (1-12)")
     parser.add_argument("--get-day", type=str, metavar="YYYY-MM-DD", help="Get events for a specific day")
     parser.add_argument("--get-all", action="store_true", help="Dump user events JSON")
+    parser.add_argument("--agenda", action="store_true", help="Get upcoming calendar events formatted as agenda items")
     parser.add_argument("--add", nargs=2, metavar=("YYYY-MM-DD", "TITLE"), help="Add custom event")
     parser.add_argument("--time", type=str, default="All day", help="Event time")
     parser.add_argument("--desc", type=str, default="", help="Event description")
@@ -270,7 +312,10 @@ def main():
 
     args = parser.parse_args()
 
-    if args.get_month:
+    if args.agenda:
+        data = get_upcoming_agenda()
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    elif args.get_month:
         year, month = args.get_month
         data = get_events_for_month(year, month)
         print(json.dumps(data, indent=2, ensure_ascii=False))
@@ -280,12 +325,17 @@ def main():
     elif args.add:
         d, title = args.add
         ev = add_user_event(d, title, args.time, args.desc)
+        get_upcoming_agenda()
         print(json.dumps({"status": "ok", "event": ev}))
     elif args.edit:
         ok = edit_user_event(args.edit, args.title, args.time, args.desc)
+        if ok:
+            get_upcoming_agenda()
         print(json.dumps({"status": "ok" if ok else "not_found"}))
     elif args.delete:
         ok = delete_user_event(args.delete)
+        if ok:
+            get_upcoming_agenda()
         print(json.dumps({"status": "ok" if ok else "not_found"}))
     elif args.get_all:
         events = load_user_events()

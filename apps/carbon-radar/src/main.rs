@@ -33,6 +33,8 @@ pub struct ClipboardItem {
 pub struct AgendaItem {
     pub date: String,
     pub title: String,
+    #[serde(default)]
+    pub icon: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -276,20 +278,27 @@ fn fetch_agenda() -> Vec<AgendaItem> {
         }
     }
 
-    vec![
-        AgendaItem {
-            date: "Nov 12".to_string(),
-            title: "SAT Prep & Review".to_string(),
-        },
-        AgendaItem {
-            date: "Nov 14".to_string(),
-            title: "Carbon Shell Sprint".to_string(),
-        },
-        AgendaItem {
-            date: "Nov 18".to_string(),
-            title: "Kernel Timings Check".to_string(),
-        },
-    ]
+    let cal_script = format!("{}/carbon-shell/hypr/scripts/carbon-calendar.py", home);
+    let cal_script_alt = format!("{}/.config/hypr/scripts/carbon-calendar.py", home);
+    let script = if Path::new(&cal_script).exists() {
+        Some(cal_script)
+    } else if Path::new(&cal_script_alt).exists() {
+        Some(cal_script_alt)
+    } else {
+        None
+    };
+
+    if let Some(s) = script {
+        if let Ok(output) = Command::new("python3").arg(&s).arg("--agenda").output() {
+            if let Ok(items) = serde_json::from_slice::<Vec<AgendaItem>>(&output.stdout) {
+                if !items.is_empty() {
+                    return items;
+                }
+            }
+        }
+    }
+
+    vec![]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -447,9 +456,22 @@ async fn start_ipc_listener(
 }
 
 fn get_top_apps(tally: &HashMap<String, u32>) -> Vec<String> {
-    let mut entries: Vec<(&String, &u32)> = tally.iter().collect();
-    entries.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
-    entries.into_iter().take(5).map(|(k, _)| k.clone()).collect()
+    let mut normalized: HashMap<String, u32> = HashMap::new();
+    let mut original_names: HashMap<String, String> = HashMap::new();
+
+    for (k, v) in tally {
+        let lower = k.trim().to_lowercase();
+        *normalized.entry(lower.clone()).or_insert(0) += *v;
+        original_names.entry(lower).or_insert_with(|| k.clone());
+    }
+
+    let mut entries: Vec<(String, u32)> = normalized
+        .into_iter()
+        .map(|(lower, count)| (original_names.remove(&lower).unwrap_or(lower), count))
+        .collect();
+
+    entries.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    entries.into_iter().take(8).map(|(k, _)| k).collect()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

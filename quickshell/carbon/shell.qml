@@ -1649,6 +1649,20 @@ ShellRoot {
                         root.openCommandCenter()
                         if (root.commandCenterItem) root.commandCenterItem.currentChannel = "github"
                     }
+                    else if (cmd === "github-down" || cmd === "github-bottom") {
+                        root.openCommandCenter()
+                        if (root.commandCenterItem) {
+                            root.commandCenterItem.currentChannel = "github"
+                            root.commandCenterItem.scrollGithubBottom()
+                        }
+                    }
+                    else if (cmd === "github-up" || cmd === "github-top") {
+                        root.openCommandCenter()
+                        if (root.commandCenterItem) {
+                            root.commandCenterItem.currentChannel = "github"
+                            root.commandCenterItem.scrollGithubTop()
+                        }
+                    }
                     else if (cmd === "command-center-overview" || cmd === "overview") {
                         root.openCommandCenter()
                         if (root.commandCenterItem) root.commandCenterItem.currentChannel = "overview"
