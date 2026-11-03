@@ -255,6 +255,7 @@ PanelWindow {
     }
 
     function showFeedback(msg) {
+        if (!msg || msg.indexOf("Opening URL") !== -1) return
         commandCenterWindow.feedbackMessage = msg
         feedbackClearTimer.restart()
     }
@@ -341,6 +342,7 @@ PanelWindow {
 
     function openUrl(url) {
         if (!url) return
+        commandCenterWindow.feedbackMessage = ""
         if (radarEngineProc.running) {
             radarEngineProc.write("OPEN_URL " + url + "\n")
         } else {
