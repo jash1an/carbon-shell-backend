@@ -346,7 +346,6 @@ PanelWindow {
         } else {
             execCommand("xdg-open " + JSON.stringify(url) + " 2>/dev/null || true")
         }
-        showFeedback("Opening URL")
     }
 
     function pushLocalWorkspace() {
@@ -1596,6 +1595,15 @@ PanelWindow {
                                             color: Theme.fgDim
                                         }
 
+                                        Timer {
+                                            id: searchDebounceTimer
+                                            interval: 350
+                                            repeat: false
+                                            onTriggered: {
+                                                commandCenterWindow.searchRepositories(repoInput.text)
+                                            }
+                                        }
+
                                         TextField {
                                             id: repoInput
                                             Layout.fillWidth: true
@@ -1611,6 +1619,18 @@ PanelWindow {
                                             topPadding: 0
                                             bottomPadding: 0
                                             verticalAlignment: TextInput.AlignVCenter
+                                            onTextChanged: {
+                                                if (text.trim().length === 0) {
+                                                    searchDebounceTimer.stop()
+                                                    commandCenterWindow.searchRepositories("")
+                                                } else {
+                                                    searchDebounceTimer.restart()
+                                                }
+                                            }
+                                            onAccepted: {
+                                                searchDebounceTimer.stop()
+                                                commandCenterWindow.searchRepositories(text)
+                                            }
                                             Keys.onDownPressed: function(event) {
                                                 commandCenterWindow.scrollGithubBottom()
                                                 if (event) event.accepted = true
@@ -1664,23 +1684,7 @@ PanelWindow {
                                         clip: true
                                         spacing: Theme.px(4)
                                         interactive: true
-                                        model: {
-                                            var repos = (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.repositories) ? commandCenterWindow.githubPayload.repositories : []
-                                            var q = repoInput.text.trim().toLowerCase()
-                                            if (!q) return repos
-                                            var filtered = []
-                                            for (var i = 0; i < repos.length; i++) {
-                                                var r = repos[i]
-                                                var name = (r.name || "").toLowerCase()
-                                                var owner = (r.owner || "").toLowerCase()
-                                                var lang = (r.language || "").toLowerCase()
-                                                var desc = (r.description || "").toLowerCase()
-                                                if (name.indexOf(q) !== -1 || owner.indexOf(q) !== -1 || lang.indexOf(q) !== -1 || desc.indexOf(q) !== -1) {
-                                                    filtered.push(r)
-                                                }
-                                            }
-                                            return filtered
-                                        }
+                                        model: (commandCenterWindow.githubPayload && commandCenterWindow.githubPayload.repositories) ? commandCenterWindow.githubPayload.repositories : []
 
                                         delegate: Rectangle {
                                         width: reposList.width

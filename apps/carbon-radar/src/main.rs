@@ -1245,6 +1245,93 @@ async fn fetch_repositories(
     repos
 }
 
+pub async fn search_github_repositories(
+    client: &reqwest::Client,
+    token: Option<&str>,
+    query: &str,
+) -> Vec<RepositoryItem> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Vec::new();
+    }
+
+    let url = "https://api.github.com/search/repositories";
+    let mut req = client
+        .get(url)
+        .query(&[("q", q), ("per_page", "15")])
+        .header(USER_AGENT, "carbon-shell")
+        .header(ACCEPT, "application/vnd.github.v3+json");
+
+    if let Some(tok) = token {
+        let trimmed_tok = tok.trim();
+        if !trimmed_tok.is_empty() {
+            req = req.header(AUTHORIZATION, format!("Bearer {}", trimmed_tok));
+        }
+    }
+
+    let mut repos = Vec::new();
+    if let Ok(resp) = req.send().await {
+        if resp.status().is_success() {
+            if let Ok(val) = resp.json::<serde_json::Value>().await {
+                if let Some(items) = val.get("items").and_then(|i| i.as_array()) {
+                    for item in items {
+                        let name = item
+                            .get("name")
+                            .and_then(|n| n.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        if name.is_empty() {
+                            continue;
+                        }
+                        let full_name = item
+                            .get("full_name")
+                            .and_then(|n| n.as_str())
+                            .unwrap_or(&name)
+                            .to_string();
+                        let owner = item
+                            .get("owner")
+                            .and_then(|o| o.get("login"))
+                            .and_then(|l| l.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let url = item
+                            .get("html_url")
+                            .and_then(|u| u.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let description = item
+                            .get("description")
+                            .and_then(|d| d.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let stars = item
+                            .get("stargazers_count")
+                            .and_then(|s| s.as_u64())
+                            .unwrap_or(0) as u32;
+                        let language = item
+                            .get("language")
+                            .and_then(|l| l.as_str())
+                            .unwrap_or("Code")
+                            .to_string();
+
+                        repos.push(RepositoryItem {
+                            name,
+                            full_name,
+                            owner,
+                            url,
+                            description,
+                            stars,
+                            language,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    repos
+}
+
 async fn refresh_github_data(
     client: &reqwest::Client,
     gh_state: &Arc<Mutex<GitHubState>>,
@@ -1279,6 +1366,7 @@ pub struct GitHubState {
     pub pull_requests: Vec<PullRequestItem>,
     pub all_repositories: Vec<RepositoryItem>,
     pub search_query: String,
+    pub search_results: Option<Vec<RepositoryItem>>,
     pub feedback: String,
 }
 
@@ -1301,6 +1389,7 @@ impl GitHubState {
             pull_requests: Vec::new(),
             all_repositories: initial_repos,
             search_query: String::new(),
+            search_results: None,
             feedback: String::new(),
         }
     }
@@ -1336,7 +1425,7 @@ async fn build_payload(
         get_top_apps(&map)
     };
 
-    let gh = gh_state.lock().await;
+    let mut gh = gh_state.lock().await;
     let home = get_home_dir();
     let ws_dir = gh
         .settings
@@ -1357,6 +1446,14 @@ async fn build_payload(
         .clone()
         .unwrap_or_else(|| detect_github_username(&ws_dir));
 
+    let repositories = if !gh.search_query.trim().is_empty() {
+        gh.search_results.clone().unwrap_or_default()
+    } else {
+        gh.all_repositories.clone()
+    };
+
+    let feedback = std::mem::take(&mut gh.feedback);
+
     let github = GitHubPayload {
         authenticated,
         username,
@@ -1364,9 +1461,9 @@ async fn build_payload(
         contributions,
         weeks,
         pull_requests: gh.pull_requests.clone(),
-        repositories: gh.all_repositories.clone(),
+        repositories,
         workspace,
-        feedback: gh.feedback.clone(),
+        feedback,
     };
 
     RadarPayload {
@@ -1405,7 +1502,7 @@ async fn handle_action_command(
         if !target.is_empty() {
             let _ = Command::new("xdg-open").arg(target).spawn();
             let mut state = gh_state.lock().await;
-            state.feedback = format!("Opening URL: {}", target);
+            state.feedback.clear();
         }
     } else if trimmed == "PUSH_LOCAL" {
         let (ws_dir, home, username, token) = {
@@ -1478,12 +1575,23 @@ async fn handle_action_command(
                 state.feedback = format!("PR #{} merged into {}", num, repo);
             }
         }
-    } else if let Some(query) = trimmed.strip_prefix("SEARCH_REPOS") {
-        let mut state = gh_state.lock().await;
-        state.search_query = query.trim().to_string();
-    } else if let Some(query) = trimmed.strip_prefix("SEARCH") {
-        let mut state = gh_state.lock().await;
-        state.search_query = query.trim().to_string();
+    } else if let Some(query) = trimmed.strip_prefix("SEARCH_REPOS").or_else(|| trimmed.strip_prefix("SEARCH")) {
+        let q = query.trim().to_string();
+        let (token, old_q) = {
+            let mut state = gh_state.lock().await;
+            state.search_query = q.clone();
+            if q.is_empty() {
+                state.search_results = None;
+            }
+            (state.settings.github_token.clone(), q)
+        };
+        if !old_q.is_empty() {
+            let results = search_github_repositories(client, token.as_deref(), &old_q).await;
+            let mut state = gh_state.lock().await;
+            if state.search_query == old_q {
+                state.search_results = Some(results);
+            }
+        }
     } else if trimmed == "REFRESH" || trimmed == "REFRESH_GITHUB" {
         let (home, ws_dir, username, token) = {
             let state = gh_state.lock().await;
@@ -1630,5 +1738,20 @@ mod tests {
             repos.iter().map(|r| &r.name).collect::<Vec<_>>()
         );
         assert!(!repos.is_empty(), "Should discover local git repos");
+    }
+
+    #[tokio::test]
+    async fn test_search_github_repositories() {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(8))
+            .build()
+            .unwrap();
+        let repos = search_github_repositories(&client, None, "carbon-shell").await;
+        println!("Search repos found: {}", repos.len());
+        for r in &repos {
+            println!("Repo: {} / {} ({})", r.owner, r.name, r.url);
+        }
+        assert!(!repos.is_empty(), "Should find repos matching 'carbon-shell'");
+        assert!(repos.iter().any(|r| r.name.to_lowercase().contains("carbon")));
     }
 }
