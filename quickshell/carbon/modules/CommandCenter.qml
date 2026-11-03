@@ -219,11 +219,19 @@ PanelWindow {
     })
     readonly property var filteredAgenda: {
         if (!agendaItems || !Array.isArray(agendaItems)) return []
-        var today = Qt.formatDate(new Date(), "yyyy-MM-dd")
+        var now = new Date()
+        var today = Qt.formatDate(now, "yyyy-MM-dd")
+        var curYearMonth = Qt.formatDate(now, "yyyy-MM")
+        var curMonthName = Qt.formatDate(now, "MMM")
         return agendaItems.filter(function(item) {
             if (!item) return false
-            if (item.raw_date) return item.raw_date >= today
-            return true
+            if (item.raw_date) {
+                return item.raw_date >= today && item.raw_date.indexOf(curYearMonth) === 0
+            }
+            if (item.date) {
+                return item.date.indexOf(curMonthName) === 0
+            }
+            return false
         })
     }
     function getFilteredAgenda() {

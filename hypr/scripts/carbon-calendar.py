@@ -258,15 +258,7 @@ def delete_user_event(ev_id):
 
 def get_upcoming_agenda():
     now = datetime.now()
-    all_evs = {}
-    y = now.year
-    m = now.month
-    for _ in range(4):
-        all_evs.update(get_events_for_month(y, m))
-        m += 1
-        if m > 12:
-            m = 1
-            y += 1
+    all_evs = get_events_for_month(now.year, now.month)
 
     agenda = []
     today_str = now.strftime("%Y-%m-%d")

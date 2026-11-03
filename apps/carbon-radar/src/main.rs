@@ -35,6 +35,14 @@ pub struct AgendaItem {
     pub title: String,
     #[serde(default)]
     pub icon: Option<String>,
+    #[serde(default)]
+    pub raw_date: Option<String>,
+    #[serde(default)]
+    pub time: Option<String>,
+    #[serde(default)]
+    pub r#type: Option<String>,
+    #[serde(default)]
+    pub is_user: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -392,35 +400,47 @@ fn fetch_agenda() -> Vec<AgendaItem> {
     let home = get_home_dir();
     let agenda_path = format!("{}/.config/carbon/agenda.json", home);
 
+    let mut items = Vec::new();
     if let Ok(content) = fs::read_to_string(&agenda_path) {
-        if let Ok(items) = serde_json::from_str::<Vec<AgendaItem>>(&content) {
-            if !items.is_empty() {
-                return items;
-            }
+        if let Ok(parsed) = serde_json::from_str::<Vec<AgendaItem>>(&content) {
+            items = parsed;
         }
     }
 
-    let cal_script = format!("{}/carbon-shell/hypr/scripts/carbon-calendar.py", home);
-    let cal_script_alt = format!("{}/.config/hypr/scripts/carbon-calendar.py", home);
-    let script = if Path::new(&cal_script).exists() {
-        Some(cal_script)
-    } else if Path::new(&cal_script_alt).exists() {
-        Some(cal_script_alt)
-    } else {
-        None
-    };
+    if items.is_empty() {
+        let cal_script = format!("{}/carbon-shell/hypr/scripts/carbon-calendar.py", home);
+        let cal_script_alt = format!("{}/.config/hypr/scripts/carbon-calendar.py", home);
+        let script = if Path::new(&cal_script).exists() {
+            Some(cal_script)
+        } else if Path::new(&cal_script_alt).exists() {
+            Some(cal_script_alt)
+        } else {
+            None
+        };
 
-    if let Some(s) = script {
-        if let Ok(output) = Command::new("python3").arg(&s).arg("--agenda").output() {
-            if let Ok(items) = serde_json::from_slice::<Vec<AgendaItem>>(&output.stdout) {
-                if !items.is_empty() {
-                    return items;
+        if let Some(s) = script {
+            if let Ok(output) = Command::new("python3").arg(&s).arg("--agenda").output() {
+                if let Ok(parsed) = serde_json::from_slice::<Vec<AgendaItem>>(&output.stdout) {
+                    items = parsed;
                 }
             }
         }
     }
 
-    vec![]
+    let now = chrono::Local::now();
+    let cur_ym = now.format("%Y-%m").to_string();
+    let cur_month_abbr = now.format("%b").to_string();
+
+    items
+        .into_iter()
+        .filter(|item| {
+            if let Some(ref rd) = item.raw_date {
+                rd.starts_with(&cur_ym)
+            } else {
+                item.date.starts_with(&cur_month_abbr)
+            }
+        })
+        .collect()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
