@@ -117,6 +117,7 @@ hl.bind("SUPER + W", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/carbon-ip
 hl.bind("SUPER + A", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/carbon-vanish-dispatch.sh focus-alerts"))
 hl.bind("SUPER + B", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/carbon-vanish-dispatch.sh quick-toggles"))
 hl.bind("SUPER + C", hl.dsp.exec_cmd("hyprpicker -a"))
+hl.bind("SUPER + D", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh vanish-overlay"))
 hl.bind("SUPER + Left", hl.dsp.window.move({{ direction = "l" }}))
 hl.bind("SUPER + Right", hl.dsp.window.move({{ direction = "r" }}))
 hl.bind("SUPER + Up", hl.dsp.window.move({{ direction = "u" }}))

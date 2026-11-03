@@ -63,3 +63,4 @@ ModesTab ModesTab.qml
 FocusHUD FocusHUD.qml
 FocusHUDBackground FocusHUDBackground.qml
 CommandCenter CommandCenter.qml
+VanishOverlay VanishOverlay.qml
