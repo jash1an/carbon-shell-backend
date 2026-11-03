@@ -18,16 +18,87 @@ PanelWindow {
     implicitHeight: 120
     color: "transparent"
 
-    // Place above standard windows, but respect compositor rules
+    // Wayland layer configuration: overlay above windows, never shrink screen
     WlrLayershell.namespace: "carbon-vanish-overlay"
     WlrLayershell.layer: WlrLayer.Top
+    aboveWindows: true
+    exclusionMode: ExclusionMode.Ignore
 
-    // Visibility logic: Only show if we are in Vanish Mode AND the user toggled it open
-    visible: GlobalState.isVanishMode && GlobalState.isVanishOverlayOpen
+    mask: Region {
+        item: (vanishOverlayWindow.isOpen || vanishOverlayWindow.animatingOut) ? overlayCard : null
+    }
+
+    // Dynamic Sliding & Fade Animation Engine
+    property real panelY: 120
+    property real panelOpacity: 0.0
+    property bool animatingOut: false
+    readonly property bool isOpen: GlobalState.isVanishMode && GlobalState.isVanishOverlayOpen
+
+    visible: GlobalState.isVanishMode && (isOpen || animatingOut)
     onVisibleChanged: console.log("[VanishOverlay] visible:", visible, "isVanishMode:", GlobalState.isVanishMode, "isVanishOverlayOpen:", GlobalState.isVanishOverlayOpen)
 
+    onIsOpenChanged: {
+        if (isOpen) {
+            animatingOut = false
+            slideAnim.stop()
+            slideAnim.from = panelY
+            slideAnim.to = 0
+            slideAnim.easing.type = Easing.OutCubic
+            slideAnim.duration = 280
+            slideAnim.restart()
+
+            fadeAnim.stop()
+            fadeAnim.from = panelOpacity
+            fadeAnim.to = 1.0
+            fadeAnim.duration = 220
+            fadeAnim.restart()
+        } else {
+            if (visible) {
+                animatingOut = true
+                slideAnim.stop()
+                slideAnim.from = panelY
+                slideAnim.to = 120
+                slideAnim.easing.type = Easing.InCubic
+                slideAnim.duration = 240
+                slideAnim.restart()
+
+                fadeAnim.stop()
+                fadeAnim.from = panelOpacity
+                fadeAnim.to = 0.0
+                fadeAnim.duration = 200
+                fadeAnim.restart()
+            } else {
+                panelY = 120
+                panelOpacity = 0.0
+            }
+        }
+    }
+
+    NumberAnimation {
+        id: slideAnim
+        target: vanishOverlayWindow
+        property: "panelY"
+        onFinished: {
+            if (!vanishOverlayWindow.isOpen) {
+                vanishOverlayWindow.animatingOut = false
+            }
+        }
+    }
+
+    NumberAnimation {
+        id: fadeAnim
+        target: vanishOverlayWindow
+        property: "panelOpacity"
+    }
+
     Rectangle {
-        anchors.fill: parent
+        id: overlayCard
+        x: 0
+        y: vanishOverlayWindow.panelY
+        width: parent.width
+        height: 120
+        opacity: vanishOverlayWindow.panelOpacity
+        clip: true
         color: Qt.rgba(5/255, 6/255, 8/255, 0.85) // Obsidian glass
         border.color: Qt.rgba(1, 1, 1, 0.15)
         border.width: 1

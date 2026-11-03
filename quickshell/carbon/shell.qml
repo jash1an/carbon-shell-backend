@@ -1646,7 +1646,12 @@ ShellRoot {
                         root.closeFocusHud()
                     }
                     else if (cmd === "vanish-overlay" || cmd === "toggle-vanish-overlay") {
-                        GlobalState.isVanishOverlayOpen = !GlobalState.isVanishOverlayOpen
+                        if (!GlobalState.isVanishMode) {
+                            root.switchBarMode("vanish")
+                            GlobalState.isVanishOverlayOpen = true
+                        } else {
+                            GlobalState.isVanishOverlayOpen = !GlobalState.isVanishOverlayOpen
+                        }
                         console.log("[IPC] vanish-overlay -> isVanishOverlayOpen is now:", GlobalState.isVanishOverlayOpen, "isVanishMode:", GlobalState.isVanishMode)
                     }
                     else if (cmd === "open-vanish-overlay") {
