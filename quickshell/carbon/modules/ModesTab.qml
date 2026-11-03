@@ -161,6 +161,11 @@ Item {
     property string vanishRestingSpin: "hover"
     property string vanishMusicVisualizer: "liquidHalo"
 
+    signal resetVanishOrbsRequested()
+    function resetOrbPositions() {
+        root.resetVanishOrbsRequested()
+    }
+
     FileView {
         id: vanishConfigView
         path: (Quickshell.env("CARBON_CONFIG_DIR") || ((Quickshell.env("HOME") || "") + "/.config/carbon")) + "/carbon-bar-mode.json"
@@ -2253,120 +2258,6 @@ Item {
                                 }
 
                                 Item { Layout.fillWidth: true }
-
-                                // Interactive Sub-View Switcher: Music vs Time
-                                Rectangle {
-                                    Layout.preferredHeight: Theme.px(20)
-                                    Layout.preferredWidth: minViewToggleRow.implicitWidth + Theme.px(14)
-                                    radius: Theme.px(10)
-                                    color: root.minimalActiveView === "music" ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.22) : Qt.rgba(1, 1, 1, 0.08)
-                                    border.color: root.minimalActiveView === "music" ? Theme.primary : Qt.rgba(1, 1, 1, 0.15)
-                                    border.width: 1
-
-                                    RowLayout {
-                                        id: minViewToggleRow
-                                        anchors.centerIn: parent
-                                        spacing: Theme.px(5)
-
-                                        Text {
-                                            text: root.minimalActiveView === "music" ? "󰝚" : "󰥔"
-                                            font.family: Theme.fontMono
-                                            font.pixelSize: Theme.fontPx(9.5)
-                                            color: root.minimalActiveView === "music" ? Theme.primary : Qt.rgba(1, 1, 1, 0.65)
-                                        }
-
-                                        Text {
-                                            text: root.minimalActiveView === "music" ? "VIEW: MUSIC" : "VIEW: TIME"
-                                            font.family: Theme.fontMono
-                                            font.pixelSize: Theme.fontPx(8)
-                                            font.weight: Font.Bold
-                                            color: root.minimalActiveView === "music" ? Theme.primary : Qt.rgba(1, 1, 1, 0.75)
-                                        }
-                                    }
-
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.minimalActiveView = (root.minimalActiveView === "music") ? "time" : "music"
-                                    }
-                                }
-
-                                // Interactive Style Switcher: Pill vs Notch
-                                Rectangle {
-                                    Layout.preferredHeight: Theme.px(20)
-                                    Layout.preferredWidth: minStyleToggleRow.implicitWidth + Theme.px(14)
-                                    radius: Theme.px(10)
-                                    color: root.minimalCapsuleStyle === "notch" ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.22) : Qt.rgba(1, 1, 1, 0.08)
-                                    border.color: root.minimalCapsuleStyle === "notch" ? Theme.primary : Qt.rgba(1, 1, 1, 0.15)
-                                    border.width: 1
-
-                                    RowLayout {
-                                        id: minStyleToggleRow
-                                        anchors.centerIn: parent
-                                        spacing: Theme.px(5)
-
-                                        Text {
-                                            text: root.minimalCapsuleStyle === "notch" ? "󰹑" : "󰝥"
-                                            font.family: Theme.fontMono
-                                            font.pixelSize: Theme.fontPx(9.5)
-                                            color: root.minimalCapsuleStyle === "notch" ? Theme.primary : Qt.rgba(1, 1, 1, 0.65)
-                                        }
-
-                                        Text {
-                                            text: root.minimalCapsuleStyle === "notch" ? "STYLE: NOTCH" : "STYLE: PILL"
-                                            font.family: Theme.fontMono
-                                            font.pixelSize: Theme.fontPx(8)
-                                            font.weight: Font.Bold
-                                            color: root.minimalCapsuleStyle === "notch" ? Theme.primary : Qt.rgba(1, 1, 1, 0.75)
-                                        }
-                                    }
-
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            root.minimalCapsuleStyle = (root.minimalCapsuleStyle === "notch") ? "pill" : "notch"
-                                            root.saveTideConfig("notchMode", root.minimalCapsuleStyle === "notch")
-                                        }
-                                    }
-                                }
-
-                                // Interactive Card Expansion Toggle Pill
-                                Rectangle {
-                                    Layout.preferredHeight: Theme.px(20)
-                                    Layout.preferredWidth: minExpandToggleRow.implicitWidth + Theme.px(14)
-                                    radius: Theme.px(10)
-                                    color: root.minimalCardExpanded ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : Qt.rgba(1, 1, 1, 0.06)
-                                    border.color: root.minimalCardExpanded ? Theme.primary : Qt.rgba(1, 1, 1, 0.12)
-                                    border.width: 1
-
-                                    RowLayout {
-                                        id: minExpandToggleRow
-                                        anchors.centerIn: parent
-                                        spacing: Theme.px(5)
-
-                                        Text {
-                                            text: root.minimalCardExpanded ? "󰅃" : "󰏤"
-                                            font.family: Theme.fontMono
-                                            font.pixelSize: Theme.fontPx(9.5)
-                                            color: root.minimalCardExpanded ? Theme.primary : Qt.rgba(1, 1, 1, 0.55)
-                                        }
-
-                                        Text {
-                                            text: root.minimalCardExpanded ? "COLLAPSE CARD" : "EXPAND CARD"
-                                            font.family: Theme.fontMono
-                                            font.pixelSize: Theme.fontPx(8)
-                                            font.weight: Font.Bold
-                                            color: root.minimalCardExpanded ? Theme.primary : Qt.rgba(1, 1, 1, 0.65)
-                                        }
-                                    }
-
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.minimalCardExpanded = !root.minimalCardExpanded
-                                    }
-                                }
                             }
                         }
 
@@ -3092,6 +2983,123 @@ Item {
                         }
 
                         Item { Layout.fillWidth: true }
+
+                        // Sub-View Switcher (Music vs Time)
+                        Rectangle {
+                            height: Theme.px(28)
+                            width: minViewToggleRow.implicitWidth + Theme.px(18)
+                            radius: Theme.px(6)
+                            color: minViewMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : (root.minimalActiveView === "music" ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20) : Qt.rgba(0, 0, 0, 0.25))
+                            border.color: root.minimalActiveView === "music" ? Theme.primary : (minViewMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.25) : Qt.rgba(1, 1, 1, 0.12))
+                            border.width: 1
+
+                            RowLayout {
+                                id: minViewToggleRow
+                                anchors.centerIn: parent
+                                spacing: Theme.px(6)
+
+                                Text {
+                                    text: root.minimalActiveView === "music" ? "󰝚" : "󰥔"
+                                    font.family: Theme.fontMono
+                                    font.pixelSize: Theme.fontPx(11)
+                                    color: root.minimalActiveView === "music" ? Theme.primary : Qt.rgba(1, 1, 1, 0.65)
+                                }
+
+                                Text {
+                                    text: root.minimalActiveView === "music" ? "View: Music" : "View: Time"
+                                    font.family: Theme.font
+                                    font.pixelSize: Theme.fontPx(10.5)
+                                    font.weight: Font.DemiBold
+                                    color: root.minimalActiveView === "music" ? Theme.primary : Qt.rgba(1, 1, 1, 0.85)
+                                }
+                            }
+
+                            MouseArea {
+                                id: minViewMouse
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.minimalActiveView = (root.minimalActiveView === "music") ? "time" : "music"
+                            }
+                        }
+
+                        // Style Switcher (Pill vs Notch)
+                        Rectangle {
+                            height: Theme.px(28)
+                            width: minStyleToggleRow.implicitWidth + Theme.px(18)
+                            radius: Theme.px(6)
+                            color: minStyleMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : (root.minimalCapsuleStyle === "notch" ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20) : Qt.rgba(0, 0, 0, 0.25))
+                            border.color: root.minimalCapsuleStyle === "notch" ? Theme.primary : (minStyleMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.25) : Qt.rgba(1, 1, 1, 0.12))
+                            border.width: 1
+
+                            RowLayout {
+                                id: minStyleToggleRow
+                                anchors.centerIn: parent
+                                spacing: Theme.px(6)
+
+                                Text {
+                                    text: root.minimalCapsuleStyle === "notch" ? "󰹑" : "󰝥"
+                                    font.family: Theme.fontMono
+                                    font.pixelSize: Theme.fontPx(11)
+                                    color: root.minimalCapsuleStyle === "notch" ? Theme.primary : Qt.rgba(1, 1, 1, 0.65)
+                                }
+
+                                Text {
+                                    text: root.minimalCapsuleStyle === "notch" ? "Style: Notch" : "Style: Pill"
+                                    font.family: Theme.font
+                                    font.pixelSize: Theme.fontPx(10.5)
+                                    font.weight: Font.DemiBold
+                                    color: root.minimalCapsuleStyle === "notch" ? Theme.primary : Qt.rgba(1, 1, 1, 0.85)
+                                }
+                            }
+
+                            MouseArea {
+                                id: minStyleMouse
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    root.minimalCapsuleStyle = (root.minimalCapsuleStyle === "notch") ? "pill" : "notch"
+                                    root.saveTideConfig("notchMode", root.minimalCapsuleStyle === "notch")
+                                }
+                            }
+                        }
+
+                        // Expand Card Toggle
+                        Rectangle {
+                            height: Theme.px(28)
+                            width: minExpandToggleRow.implicitWidth + Theme.px(18)
+                            radius: Theme.px(6)
+                            color: minExpandMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : (root.minimalCardExpanded ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20) : Qt.rgba(0, 0, 0, 0.25))
+                            border.color: root.minimalCardExpanded ? Theme.primary : (minExpandMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.25) : Qt.rgba(1, 1, 1, 0.12))
+                            border.width: 1
+
+                            RowLayout {
+                                id: minExpandToggleRow
+                                anchors.centerIn: parent
+                                spacing: Theme.px(6)
+
+                                Text {
+                                    text: root.minimalCardExpanded ? "󰅃" : "󰅀"
+                                    font.family: Theme.fontMono
+                                    font.pixelSize: Theme.fontPx(11)
+                                    color: root.minimalCardExpanded ? Theme.primary : Qt.rgba(1, 1, 1, 0.65)
+                                }
+
+                                Text {
+                                    text: root.minimalCardExpanded ? "Collapse Card" : "Expand Card"
+                                    font.family: Theme.font
+                                    font.pixelSize: Theme.fontPx(10.5)
+                                    font.weight: Font.DemiBold
+                                    color: root.minimalCardExpanded ? Theme.primary : Qt.rgba(1, 1, 1, 0.85)
+                                }
+                            }
+
+                            MouseArea {
+                                id: minExpandMouse
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.minimalCardExpanded = !root.minimalCardExpanded
+                            }
+                        }
 
                         // Mode Enable / Disable Toggle Button
                         Rectangle {
@@ -3874,43 +3882,6 @@ Item {
                                 }
 
                                 Item { Layout.fillWidth: true }
-
-                                // Interactive Music Preview Toggle Switch / Pill
-                                Rectangle {
-                                    Layout.preferredHeight: Theme.px(20)
-                                    Layout.preferredWidth: mediaToggleRow.implicitWidth + Theme.px(16)
-                                    radius: Theme.px(10)
-                                    color: root.vanishMediaPlaying ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.22) : Qt.rgba(1, 1, 1, 0.06)
-                                    border.color: root.vanishMediaPlaying ? Theme.primary : Qt.rgba(1, 1, 1, 0.14)
-                                    border.width: 1
-
-                                    RowLayout {
-                                        id: mediaToggleRow
-                                        anchors.centerIn: parent
-                                        spacing: Theme.px(6)
-
-                                        Text {
-                                            text: root.vanishMediaPlaying ? "󰝚" : "󰝛"
-                                            font.family: Theme.fontMono
-                                            font.pixelSize: Theme.fontPx(9.5)
-                                            color: root.vanishMediaPlaying ? Theme.primary : Qt.rgba(1, 1, 1, 0.45)
-                                        }
-
-                                        Text {
-                                            text: root.vanishMediaPlaying ? "MUSIC PLAYING: ON" : "MUSIC: OFF (RESTING ATOM)"
-                                            font.family: Theme.fontMono
-                                            font.pixelSize: Theme.fontPx(8)
-                                            font.weight: Font.Bold
-                                            color: root.vanishMediaPlaying ? Theme.primary : Qt.rgba(1, 1, 1, 0.60)
-                                        }
-                                    }
-
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.vanishMediaPlaying = !root.vanishMediaPlaying
-                                    }
-                                }
                             }
                         }
 
@@ -3922,6 +3893,7 @@ Item {
 
                             property string focusedLobe: ""
                             property real continuousPhase: 0.0
+                            property string draggingOrbId: ""
 
                             readonly property var lobeColors: ({
                                 "coral": Qt.rgba(255/255, 107/255, 107/255, 1.0),
@@ -4022,19 +3994,34 @@ Item {
                                         required property var modelData
 
                                         readonly property real rad: modelData.deg * (Math.PI / 180.0)
-                                        readonly property bool isFocused: vanishWorkspace.focusedLobe === modelData.id
-                                        readonly property bool isDimmed: vanishWorkspace.focusedLobe !== "" && !isFocused
+                                        readonly property real defaultX: vanishWorkspace.cx + vanishWorkspace.orbitalDist * Math.cos(rad) - (width / 2)
+                                        readonly property real defaultY: vanishWorkspace.cy + vanishWorkspace.orbitalDist * Math.sin(rad) - (height / 2)
 
-                                        x: vanishWorkspace.cx + vanishWorkspace.orbitalDist * Math.cos(rad) - (width / 2)
-                                        y: vanishWorkspace.cy + vanishWorkspace.orbitalDist * Math.sin(rad) - (height / 2)
+                                        property real customX: -9999
+                                        property real customY: -9999
+
+                                        x: (customX !== -9999) ? customX : defaultX
+                                        y: (customY !== -9999) ? customY : defaultY
                                         width: Theme.px(42)
                                         height: Theme.px(42)
-                                        z: isFocused ? 10 : 5
+                                        z: isDragging ? 50 : (isFocused ? 20 : 5)
 
-                                        scale: isFocused ? 1.12 : (lobeMouse.containsMouse ? 1.08 : 1.0)
+                                        readonly property bool isDragging: vanishWorkspace.draggingOrbId === modelData.id
+                                        readonly property bool isFocused: vanishWorkspace.focusedLobe === modelData.id
+                                        readonly property bool isDimmed: vanishWorkspace.focusedLobe !== "" && !isFocused && !isDragging
+
+                                        scale: isDragging ? 1.18 : (isFocused ? 1.12 : (lobeMouse.containsMouse ? 1.08 : 1.0))
                                         opacity: isDimmed ? 0.35 : 1.0
                                         Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
                                         Behavior on opacity { NumberAnimation { duration: 180 } }
+
+                                        Connections {
+                                            target: root
+                                            function onResetVanishOrbsRequested() {
+                                                lobeDelegate.customX = -9999
+                                                lobeDelegate.customY = -9999
+                                            }
+                                        }
 
                                         // Blooming Satellites Container
                                         Item {
@@ -4091,6 +4078,42 @@ Item {
                                             }
                                         }
 
+                                        // Dragging Elevation Accent Ring
+                                        Rectangle {
+                                            anchors.centerIn: parent
+                                            width: parent.width + Theme.px(8)
+                                            height: parent.height + Theme.px(8)
+                                            radius: width / 2
+                                            color: "transparent"
+                                            border.color: Qt.rgba(modelData.col.r, modelData.col.g, modelData.col.b, lobeDelegate.isDragging ? 0.75 : (lobeMouse.containsMouse ? 0.35 : 0.0))
+                                            border.width: 1.5
+                                            Behavior on border.color { ColorAnimation { duration: 140 } }
+                                        }
+
+                                        // Tactile Dragging Position HUD Badge
+                                        Rectangle {
+                                            visible: lobeDelegate.isDragging
+                                            anchors.bottom: parent.top
+                                            anchors.bottomMargin: Theme.px(8)
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            height: Theme.px(18)
+                                            width: dragCoordText.implicitWidth + Theme.px(12)
+                                            radius: Theme.px(4)
+                                            color: Qt.rgba(0.06, 0.08, 0.12, 0.95)
+                                            border.color: modelData.col
+                                            border.width: 1
+
+                                            Text {
+                                                id: dragCoordText
+                                                anchors.centerIn: parent
+                                                text: modelData.title + " • X: " + Math.round(lobeDelegate.x) + " Y: " + Math.round(lobeDelegate.y)
+                                                font.family: Theme.fontMono
+                                                font.pixelSize: Theme.fontPx(8.5)
+                                                font.weight: Font.Bold
+                                                color: modelData.col
+                                            }
+                                        }
+
                                         // Main Lobe Tip Disc
                                         Rectangle {
                                             anchors.fill: parent
@@ -4140,12 +4163,50 @@ Item {
                                                 id: lobeMouse
                                                 anchors.fill: parent
                                                 hoverEnabled: true
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: {
-                                                    if (vanishWorkspace.focusedLobe === modelData.id) {
-                                                        vanishWorkspace.focusedLobe = ""
-                                                    } else {
-                                                        vanishWorkspace.focusedLobe = modelData.id
+                                                cursorShape: lobeDelegate.isDragging ? Qt.ClosedHandCursor : (containsMouse ? Qt.OpenHandCursor : Qt.ArrowCursor)
+
+                                                drag.target: lobeDelegate
+                                                drag.axis: Drag.XAndYAxis
+                                                drag.minimumX: Theme.px(10)
+                                                drag.maximumX: Math.max(Theme.px(20), vanishWorkspace.width - lobeDelegate.width - Theme.px(10))
+                                                drag.minimumY: Theme.px(10)
+                                                drag.maximumY: Math.max(Theme.px(20), vanishWorkspace.height - lobeDelegate.height - Theme.px(10))
+
+                                                property int startX: 0
+                                                property int startY: 0
+                                                property bool moved: false
+
+                                                onPressed: (mouse) => {
+                                                    startX = mouse.x
+                                                    startY = mouse.y
+                                                    moved = false
+                                                    vanishWorkspace.draggingOrbId = modelData.id
+                                                }
+
+                                                onPositionChanged: (mouse) => {
+                                                    if (drag.active) {
+                                                        var dx = mouse.x - startX
+                                                        var dy = mouse.y - startY
+                                                        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+                                                            moved = true
+                                                        }
+                                                        lobeDelegate.customX = lobeDelegate.x
+                                                        lobeDelegate.customY = lobeDelegate.y
+                                                    }
+                                                }
+
+                                                onReleased: (mouse) => {
+                                                    if (drag.active) {
+                                                        lobeDelegate.customX = lobeDelegate.x
+                                                        lobeDelegate.customY = lobeDelegate.y
+                                                    }
+                                                    vanishWorkspace.draggingOrbId = ""
+                                                    if (!moved) {
+                                                        if (vanishWorkspace.focusedLobe === modelData.id) {
+                                                            vanishWorkspace.focusedLobe = ""
+                                                        } else {
+                                                            vanishWorkspace.focusedLobe = modelData.id
+                                                        }
                                                     }
                                                 }
                                             }
@@ -4187,34 +4248,41 @@ Item {
                                         var cx = width / 2
                                         var cy = height / 2
                                         var phase = vanishWorkspace.continuousPhase
-                                        var primaryCol = Theme.primary
+                                        var primaryCol = (Theme.primary || Qt.rgba(201/255, 190/255, 146/255, 1.0))
+                                        var m = root.vanishMediaPlaying ? 1.0 : 0.0
 
                                         ctx.lineCap = "round"
 
-                                        // Track 1 (Inner Arc, r = 37px): 3 pieces 120° apart
-                                        var r1 = 37.0
-                                        var a1 = -phase * 0.28
-                                        var arcSpan1 = (26.0 / r1) / 2.0
-                                        var step1 = (2.0 * Math.PI) / 3.0
-                                        ctx.save()
-                                        ctx.lineWidth = 3.2
-                                        ctx.strokeStyle = Qt.rgba(240/255, 242/255, 240/255, 0.38)
-                                        for (var k = 0; k < 3; k++) {
-                                            var ang1 = a1 + (k * step1)
-                                            ctx.beginPath()
-                                            ctx.arc(cx, cy, r1, ang1 - arcSpan1, ang1 + arcSpan1)
-                                            ctx.stroke()
+                                        // ── Track 1 (Inner Arc, r = 37px): 3 pieces 120° apart ──
+                                        // Visible in resting state; fades out when media is playing to make room for liquid halo
+                                        if (m < 0.99) {
+                                            var r1 = 37.0
+                                            var a1 = -phase * 0.28
+                                            var alpha1 = 0.38 * (1.0 - m)
+                                            var arcSpan1 = (26.0 / r1) / 2.0
+                                            var step1 = (2.0 * Math.PI) / 3.0
+                                            ctx.save()
+                                            ctx.lineWidth = 3.2
+                                            ctx.strokeStyle = Qt.rgba(240/255, 242/255, 240/255, alpha1)
+                                            for (var k = 0; k < 3; k++) {
+                                                var ang1 = a1 + (k * step1)
+                                                ctx.beginPath()
+                                                ctx.arc(cx, cy, r1, ang1 - arcSpan1, ang1 + arcSpan1)
+                                                ctx.stroke()
+                                            }
+                                            ctx.restore()
                                         }
-                                        ctx.restore()
 
-                                        // Track 2 (Mid Arc, r = 50px): 3 pieces 120° apart
-                                        var r2 = 50.0
+                                        // ── Track 2 (Mid Arc / Ring after Visualizer): 3 pieces 120° apart ──
+                                        // Resting: r = 48.0px. Playing: expands to r = 54.0px to encircle the Liquid Halo!
+                                        var r2 = 48.0 + (6.0 * m)
                                         var a2 = phase * 0.24
-                                        var arcSpan2 = (36.0 / r2) / 2.0
+                                        var arcSpan2 = (38.0 / r2) / 2.0
                                         var step2 = (2.0 * Math.PI) / 3.0
+                                        var alpha2 = 0.36 + (0.09 * m)
                                         ctx.save()
-                                        ctx.lineWidth = 3.2
-                                        ctx.strokeStyle = Qt.rgba(240/255, 242/255, 240/255, 0.40)
+                                        ctx.lineWidth = 3.6
+                                        ctx.strokeStyle = Qt.rgba(240/255, 242/255, 240/255, alpha2)
                                         for (var j = 0; j < 3; j++) {
                                             var ang2 = a2 + (j * step2)
                                             ctx.beginPath()
@@ -4223,155 +4291,159 @@ Item {
                                         }
                                         ctx.restore()
 
-                                        // Track 3 (Satellite Orbit & 2 Bullseye Comets, r = 62px)
-                                        var r3 = 62.0
-                                        var satAngle = -phase * 0.24
-                                        var tailAngle = 36.0 * (Math.PI / 180.0)
+                                        // ── Track 3 (Satellite Orbit & 2 Bullseye Comets, r = 62px) ──
+                                        // Visible in resting state; fades out when media plays to create breathing room
+                                        if (m < 0.99) {
+                                            var r3 = 62.0
+                                            var satAngle = -phase * 0.24
+                                            var tailAngle = 36.0 * (Math.PI / 180.0)
+                                            var satAlphaFactor = (1.0 - m)
+                                            var alpha3 = 0.26 * satAlphaFactor
 
-                                        // Synchronized orbit arcs in gaps between the 2 satellites
-                                        var arcHalfSpan3 = (34.0 * Math.PI) / 180.0
-                                        var gapMidOffset = (Math.PI + tailAngle) / 2.0
-                                        ctx.save()
-                                        ctx.lineWidth = 2.4
-                                        ctx.strokeStyle = Qt.rgba(240/255, 242/255, 240/255, 0.26)
-                                        for (var s = 0; s < 2; s++) {
-                                            var midAngle = satAngle + gapMidOffset + (s * Math.PI)
-                                            ctx.beginPath()
-                                            ctx.arc(cx, cy, r3, midAngle - arcHalfSpan3, midAngle + arcHalfSpan3)
-                                            ctx.stroke()
-                                        }
-                                        ctx.restore()
-
-                                        // Fading comet tails + Bullseye nodes
-                                        function drawCometNode(ang) {
-                                            var steps = 20
-                                            var sAngle = tailAngle / steps
-                                            for (var t = 0; t < steps; t++) {
-                                                var st = ang + t * sAngle
-                                                var en = ang + (t + 1) * sAngle
-                                                var frac = 1.0 - (t / steps)
+                                            // Synchronized orbit arcs in gaps between the 2 satellites
+                                            var arcHalfSpan3 = (34.0 * Math.PI) / 180.0
+                                            var gapMidOffset = (Math.PI + tailAngle) / 2.0
+                                            ctx.save()
+                                            ctx.lineWidth = 2.4
+                                            ctx.strokeStyle = Qt.rgba(240/255, 242/255, 240/255, alpha3)
+                                            for (var s = 0; s < 2; s++) {
+                                                var midAngle = satAngle + gapMidOffset + (s * Math.PI)
                                                 ctx.beginPath()
-                                                ctx.arc(cx, cy, r3, st, en)
-                                                ctx.lineWidth = 2.2 * (0.5 + 0.5 * frac)
-                                                ctx.strokeStyle = Qt.rgba(primaryCol.r, primaryCol.g, primaryCol.b, frac * 0.60)
+                                                ctx.arc(cx, cy, r3, midAngle - arcHalfSpan3, midAngle + arcHalfSpan3)
                                                 ctx.stroke()
                                             }
+                                            ctx.restore()
 
-                                            var sx = cx + r3 * Math.cos(ang)
-                                            var sy = cy + r3 * Math.sin(ang)
+                                            // Fading comet tails + Bullseye nodes
+                                            function drawCometNode(ang) {
+                                                var steps = 20
+                                                var sAngle = tailAngle / steps
+                                                for (var t = 0; t < steps; t++) {
+                                                    var st = ang + t * sAngle
+                                                    var en = ang + (t + 1) * sAngle
+                                                    var frac = 1.0 - (t / steps)
+                                                    ctx.beginPath()
+                                                    ctx.arc(cx, cy, r3, st, en)
+                                                    ctx.lineWidth = 2.2 * (0.5 + 0.5 * frac)
+                                                    ctx.strokeStyle = Qt.rgba(primaryCol.r, primaryCol.g, primaryCol.b, frac * 0.60 * satAlphaFactor)
+                                                    ctx.stroke()
+                                                }
 
-                                            // Outer ring
-                                            ctx.beginPath()
-                                            ctx.arc(sx, sy, 5.2, 0, Math.PI * 2)
-                                            ctx.lineWidth = 1.2
-                                            ctx.strokeStyle = Qt.rgba(primaryCol.r, primaryCol.g, primaryCol.b, 0.75)
-                                            ctx.fillStyle = Qt.rgba(primaryCol.r, primaryCol.g, primaryCol.b, 0.15)
-                                            ctx.fill()
-                                            ctx.stroke()
+                                                var sx = cx + r3 * Math.cos(ang)
+                                                var sy = cy + r3 * Math.sin(ang)
 
-                                            // Inner core
-                                            ctx.beginPath()
-                                            ctx.arc(sx, sy, 2.6, 0, Math.PI * 2)
-                                            ctx.fillStyle = Qt.rgba(primaryCol.r, primaryCol.g, primaryCol.b, 0.95)
-                                            ctx.fill()
-                                        }
+                                                // Outer ring
+                                                ctx.beginPath()
+                                                ctx.arc(sx, sy, 5.2, 0, Math.PI * 2)
+                                                ctx.lineWidth = 1.2
+                                                ctx.strokeStyle = Qt.rgba(primaryCol.r, primaryCol.g, primaryCol.b, 0.75 * satAlphaFactor)
+                                                ctx.fillStyle = Qt.rgba(primaryCol.r, primaryCol.g, primaryCol.b, 0.15 * satAlphaFactor)
+                                                ctx.fill()
+                                                ctx.stroke()
 
-                                        drawCometNode(satAngle)
-                                        drawCometNode(satAngle + Math.PI)
-                                    }
-                                }
-
-                                // 2B. Siri-Style / Liquid Halo Audio Visualizer (Visible when media playing is ON)
-                                Item {
-                                    id: visualizerHalo
-                                    anchors.centerIn: parent
-                                    width: Theme.px(150)
-                                    height: Theme.px(150)
-                                    visible: opacity > 0.01
-                                    opacity: root.vanishMediaPlaying ? 1.0 : 0.0
-                                    Behavior on opacity { NumberAnimation { duration: 250 } }
-
-                                    Repeater {
-                                        model: 32
-                                        delegate: Item {
-                                            anchors.centerIn: parent
-                                            width: parent.width
-                                            height: parent.height
-                                            rotation: index * (360.0 / 32)
-
-                                            readonly property real wave: Math.abs(Math.sin(vanishWorkspace.continuousPhase * 2.2 + index * 0.45) * Math.cos(vanishWorkspace.continuousPhase * 1.4 + index * 0.25))
-                                            readonly property real barLen: Theme.px(3) + Theme.px(9) * wave
-
-                                            Rectangle {
-                                                anchors.horizontalCenter: parent.horizontalCenter
-                                                y: Theme.px(3) - barLen
-                                                width: Theme.px(2)
-                                                height: barLen
-                                                radius: Theme.px(1)
-                                                color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.35 + (0.55 * parent.wave))
+                                                // Inner core
+                                                ctx.beginPath()
+                                                ctx.arc(sx, sy, 2.6, 0, Math.PI * 2)
+                                                ctx.fillStyle = Qt.rgba(primaryCol.r, primaryCol.g, primaryCol.b, 0.95 * satAlphaFactor)
+                                                ctx.fill()
                                             }
+
+                                            drawCometNode(satAngle)
+                                            drawCometNode(satAngle + Math.PI)
                                         }
                                     }
                                 }
 
-                                // 2C. Circular Neon Music Progress Arc (Visible when media playing is ON)
+                                // 2B. Siri-Style Liquid Halo Audio Visualizer (Active when media is playing)
                                 Canvas {
-                                    id: circularProgressCanvas
+                                    id: liquidHaloCanvas
                                     anchors.centerIn: parent
-                                    width: Theme.px(150)
-                                    height: Theme.px(150)
+                                    width: Theme.px(140)
+                                    height: Theme.px(140)
+                                    z: 4
                                     visible: opacity > 0.01
                                     opacity: root.vanishMediaPlaying ? 1.0 : 0.0
-                                    Behavior on opacity { NumberAnimation { duration: 250 } }
+                                    Behavior on opacity { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
 
                                     Connections {
                                         target: vanishWorkspace
                                         function onContinuousPhaseChanged() {
-                                            if (circularProgressCanvas.visible) circularProgressCanvas.requestPaint()
+                                            if (liquidHaloCanvas.visible) liquidHaloCanvas.requestPaint()
                                         }
                                     }
 
                                     onPaint: {
                                         var ctx = getContext("2d")
                                         ctx.clearRect(0, 0, width, height)
-                                        var cx = width / 2
-                                        var cy = height / 2
-                                        var trackR = Theme.px(65)
-                                        var col = Theme.primary
 
-                                        var frac = 0.42
-                                        var startAngle = -Math.PI / 2
-                                        var sweepAngle = frac * 2 * Math.PI
-                                        var endAngle = startAngle + sweepAngle
+                                        var cx = width / 2.0
+                                        var cy = height / 2.0
+                                        var p = vanishWorkspace.continuousPhase
 
-                                        ctx.save()
-                                        ctx.beginPath()
-                                        ctx.arc(cx, cy, trackR, 0, Math.PI * 2)
-                                        ctx.lineWidth = 1.0
-                                        ctx.strokeStyle = Qt.rgba(1, 1, 1, 0.08)
-                                        ctx.stroke()
+                                        // Dynamic audio energy harmonics
+                                        var bass = 0.50 + 0.40 * Math.sin(p * 2.8)
+                                        var mids = 0.45 + 0.35 * Math.sin(p * 2.1 + 1.2)
+                                        var treble = 0.40 + 0.35 * Math.cos(p * 3.6 - 0.8)
+                                        var bassOffset = bass * 3.2
 
-                                        ctx.beginPath()
-                                        ctx.arc(cx, cy, trackR, startAngle, endAngle)
-                                        ctx.lineWidth = 2.4
-                                        ctx.strokeStyle = col
-                                        ctx.lineCap = "round"
-                                        ctx.stroke()
+                                        function drawClosedRing(baseRadius, amp, m1, m2, p1, p2, col) {
+                                            var samples = 120
+                                            var step = (2.0 * Math.PI) / samples
 
-                                        var headX = cx + trackR * Math.cos(endAngle)
-                                        var headY = cy + trackR * Math.sin(endAngle)
+                                            ctx.beginPath()
+                                            for (var i = 0; i <= samples; i++) {
+                                                var theta = i * step
+                                                var deformation = (amp > 0.0001)
+                                                    ? amp * (0.6 * Math.sin(m1 * theta + p1) + 0.4 * Math.sin(m2 * theta + p2))
+                                                    : 0.0
+                                                var r = Math.min(50.5, Math.max(28.0, baseRadius + deformation))
+                                                var px = cx + r * Math.cos(theta)
+                                                var py = cy + r * Math.sin(theta)
 
-                                        ctx.beginPath()
-                                        ctx.arc(headX, headY, 5.0, 0, Math.PI * 2)
-                                        ctx.fillStyle = Qt.rgba(col.r, col.g, col.b, 0.50)
-                                        ctx.fill()
+                                                if (i === 0) {
+                                                    ctx.moveTo(px, py)
+                                                } else {
+                                                    ctx.lineTo(px, py)
+                                                }
+                                            }
+                                            ctx.closePath()
 
-                                        ctx.beginPath()
-                                        ctx.arc(headX, headY, 2.5, 0, Math.PI * 2)
-                                        ctx.fillStyle = "#FFFFFF"
-                                        ctx.fill()
+                                            // Translucent fluid liquid fill
+                                            ctx.fillStyle = Qt.rgba(col.r, col.g, col.b, 0.22)
+                                            ctx.fill()
 
-                                        ctx.restore()
+                                            // Crisp contour boundary stroke
+                                            ctx.strokeStyle = Qt.rgba(col.r, col.g, col.b, 0.78)
+                                            ctx.lineWidth = 1.3
+                                            ctx.stroke()
+                                        }
+
+                                        // Layer 3 (treble): Purple
+                                        drawClosedRing(
+                                            34.0 + bassOffset + 2.0,
+                                            1.8 + treble * 8.5,
+                                            4, 2,
+                                            p * 2.5, -p * 1.8,
+                                            Qt.rgba(168/255, 85/255, 247/255, 1.0)
+                                        )
+
+                                        // Layer 2 (mids): Electric Blue
+                                        drawClosedRing(
+                                            34.0 + bassOffset + 1.0,
+                                            2.0 + mids * 9.5,
+                                            3, 5,
+                                            -p * 1.9, p * 1.4,
+                                            Qt.rgba(59/255, 130/255, 246/255, 1.0)
+                                        )
+
+                                        // Layer 1 (bass): Cyan / Neon Teal
+                                        drawClosedRing(
+                                            34.0 + bassOffset,
+                                            2.5 + bass * 11.5,
+                                            2, 3,
+                                            p * 2.1, -p * 1.4,
+                                            Qt.rgba(0/255, 240/255, 255/255, 1.0)
+                                        )
                                     }
                                 }
 
@@ -4725,6 +4797,32 @@ Item {
                         }
 
                         Item { Layout.fillWidth: true }
+
+                        // Reset Draggable Orbs Button
+                        Rectangle {
+                            height: Theme.px(28)
+                            width: vanishResetBtnText.implicitWidth + Theme.px(20)
+                            radius: Theme.px(6)
+                            color: vanishResetBtnMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.20)
+                            border.color: vanishResetBtnMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.25) : Qt.rgba(1, 1, 1, 0.10)
+                            border.width: 1
+
+                            Text {
+                                id: vanishResetBtnText
+                                anchors.centerIn: parent
+                                text: "󰑐  Reset Orbs"
+                                font.family: Theme.fontMono
+                                font.pixelSize: Theme.fontPx(10)
+                                color: Qt.rgba(1, 1, 1, 0.75)
+                            }
+
+                            MouseArea {
+                                id: vanishResetBtnMouse
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.resetOrbPositions()
+                            }
+                        }
 
                         // Quick Toggle Media Preview Button in sub-header
                         Rectangle {
