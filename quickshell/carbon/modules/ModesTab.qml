@@ -220,6 +220,105 @@ Item {
         Quickshell.execDetached(["python3", "-c", script])
     }
 
+    // ── Minimal Island Mode State & Configuration ───────────────────────────
+    property string minimalDockPosition: "top" // "top" | "bottom"
+    property real minimalBarsY: 0
+    property bool isDraggingMinimal: false
+    property bool minimalCardExpanded: false
+    property string minimalActiveView: "music" // "music" | "time"
+    property string minimalSubSection: "Designs" // "Designs" | "Settings"
+    property string selectedMinimalDesign: "minimal_digital" // "minimal_digital" | "valley_typo" | "tactical_capsule"
+    property string minimalCapsuleStyle: "pill" // "pill" | "notch"
+
+    property int previewIslandHeight: 28
+    property int previewIslandWidth: 120
+    property int previewIslandTopMargin: 8
+    property int previewNotchEarRadius: 0
+    property real previewIslandOpacity: 0.90
+    property bool previewIslandBlur: false
+    property int previewIslandBlurSize: 3
+    property int previewIslandBlurPasses: 1
+    property bool previewShowWorkspaceCapsule: true
+    property bool previewIslandAutoHide: false
+    property bool previewIslandSyncedLyrics: true
+
+    readonly property real currentMinimalBarHeight: root.minimalCardExpanded ? (root.previewIslandHeight + 160) : root.previewIslandHeight
+    readonly property real minimalMaxY: Math.max(0, 260 - currentMinimalBarHeight)
+
+    Behavior on minimalBarsY {
+        enabled: !root.isDraggingMinimal
+        NumberAnimation {
+            duration: 320
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    function dockMinimalToTop() {
+        root.isDraggingMinimal = false
+        root.minimalDockPosition = "top"
+        root.minimalBarsY = 0
+        root.saveBarEdgeConfig("top")
+    }
+
+    function dockMinimalToBottom() {
+        root.isDraggingMinimal = false
+        root.minimalDockPosition = "bottom"
+        root.minimalBarsY = root.minimalMaxY
+        root.saveBarEdgeConfig("bottom")
+    }
+
+    FileView {
+        id: tideUserConfigView
+        path: (Quickshell.env("HOME") || "") + "/.config/tide-island/userconfig.json"
+        watchChanges: true
+        printErrors: false
+        onLoaded: root.loadTideConfig()
+        onFileChanged: tideUserConfigView.reload()
+    }
+
+    function loadTideConfig() {
+        try {
+            const raw = tideUserConfigView.text().trim()
+            if (!raw) return
+            const d = JSON.parse(raw)
+            if (d.islandHeight !== undefined) root.previewIslandHeight = Number(d.islandHeight)
+            if (d.islandWidth !== undefined) root.previewIslandWidth = Number(d.islandWidth)
+            if (d.islandTopMargin !== undefined) root.previewIslandTopMargin = Number(d.islandTopMargin)
+            if (d.notchMode !== undefined) root.minimalCapsuleStyle = d.notchMode ? "notch" : "pill"
+            if (d.notchEarRadius !== undefined) root.previewNotchEarRadius = Number(d.notchEarRadius)
+            if (d.islandBackgroundOpacity !== undefined) root.previewIslandOpacity = Number(d.islandBackgroundOpacity) / 100.0
+            if (d.shellBlurEnabled !== undefined) root.previewIslandBlur = Boolean(d.shellBlurEnabled)
+            if (d.shellBlurSize !== undefined) root.previewIslandBlurSize = Number(d.shellBlurSize)
+            if (d.shellBlurPasses !== undefined) root.previewIslandBlurPasses = Number(d.shellBlurPasses)
+            if (d.showWorkspaceCapsule !== undefined) root.previewShowWorkspaceCapsule = Boolean(d.showWorkspaceCapsule)
+            if (d.islandAutoHideEnabled !== undefined) root.previewIslandAutoHide = Boolean(d.islandAutoHideEnabled)
+        } catch (e) {
+            console.warn("[ModesTab] Error loading tide-island/userconfig.json:", e)
+        }
+    }
+
+    function saveTideConfig(key, val) {
+        var script = "import json, os\n" +
+            "home = os.environ.get('HOME', '')\n" +
+            "p = os.path.join(home, '.config/tide-island/userconfig.json')\n" +
+            "os.makedirs(os.path.dirname(p), exist_ok=True)\n" +
+            "d = json.load(open(p)) if os.path.exists(p) else {}\n" +
+            "d['" + key + "'] = " + JSON.stringify(val) + "\n" +
+            "json.dump(d, open(p, 'w'), indent=2)\n" +
+            "cdir = os.environ.get('CARBON_CONFIG_DIR', os.path.join(home, '.config/carbon'))\n" +
+            "os.makedirs(cdir, exist_ok=True)\n" +
+            "p2 = os.path.join(cdir, 'carbon-bar-position.json')\n" +
+            "d2 = json.load(open(p2)) if os.path.exists(p2) else {}\n"
+        if (key === "islandHeight") script += "d2['islandHeight'] = " + JSON.stringify(val) + "\n"
+        else if (key === "islandWidth") script += "d2['islandWidth'] = " + JSON.stringify(val) + "\n"
+        else if (key === "islandTopMargin") script += "d2['islandTopMargin'] = " + JSON.stringify(val) + "\n"
+        else if (key === "notchEarRadius") script += "d2['notchEarRadius'] = " + JSON.stringify(val) + "\n"
+        else if (key === "islandBackgroundOpacity") script += "d2['minimalOpacity'] = round(" + Number(val) + " / 100.0, 2)\n"
+        else if (key === "shellBlurEnabled") script += "d2['minimalBlur'] = " + JSON.stringify(val) + "\n"
+        script += "json.dump(d2, open(p2, 'w'), indent=2)\n"
+        Quickshell.execDetached(["python3", "-c", script])
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -2085,22 +2184,911 @@ Item {
                 visible: root.currentMode === 1
                 spacing: 0
 
-                // Sub-header Row with Mode Enable/Disable Toggle
+                // ── 1. Blueprint Canvas Preview Section ────────────────────
+                Item {
+                    id: minBlueprintSection
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: root.minimalCardExpanded ? Theme.px(380) : Theme.px(270)
+                    Layout.minimumHeight: Theme.px(250)
+                    clip: true
+
+                    Behavior on Layout.preferredHeight {
+                        NumberAnimation { duration: 320; easing.type: Easing.OutCubic }
+                    }
+
+                    // Inset Rounded Card Container with 1px border
+                    Rectangle {
+                        id: minBlueprintCard
+                        anchors.fill: parent
+                        anchors.margins: Theme.px(14)
+                        radius: Theme.px(14)
+                        color: Qt.rgba(0, 0, 0, 0.40)
+                        border.color: Qt.rgba(1, 1, 1, 0.12)
+                        border.width: 1
+                        clip: true
+
+                        // Dotted Matrix Grid Canvas (Crisp 1.2px dots, 18px grid)
+                        Canvas {
+                            id: minBlueprintDots
+                            anchors.fill: parent
+                            opacity: 0.22
+                            onPaint: {
+                                var ctx = getContext("2d")
+                                ctx.clearRect(0, 0, width, height)
+                                ctx.fillStyle = "#FFFFFF"
+                                var spacing = 18
+                                for (var x = spacing / 2; x < width; x += spacing) {
+                                    for (var y = spacing / 2; y < height; y += spacing) {
+                                        ctx.beginPath()
+                                        ctx.arc(x, y, 1.2, 0, Math.PI * 2)
+                                        ctx.fill()
+                                    }
+                                }
+                            }
+                        }
+
+                        // Top Ruler & Info Header
+                        Rectangle {
+                            anchors.top: parent.top
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            height: Theme.px(26)
+                            color: Qt.rgba(0, 0, 0, 0.35)
+                            border.color: Qt.rgba(1, 1, 1, 0.06)
+                            border.width: 1
+                            z: 20
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: Theme.px(12)
+                                anchors.rightMargin: Theme.px(12)
+                                spacing: Theme.px(8)
+
+                                Text {
+                                    text: "BLUEPRINT // MINIMAL ISLAND (DYNAMIC CAPSULE)"
+                                    font.family: Theme.fontMono
+                                    font.pixelSize: Theme.fontPx(8.5)
+                                    font.weight: Font.Bold
+                                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.85)
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                // Interactive Sub-View Switcher: Music vs Time
+                                Rectangle {
+                                    Layout.preferredHeight: Theme.px(20)
+                                    Layout.preferredWidth: minViewToggleRow.implicitWidth + Theme.px(14)
+                                    radius: Theme.px(10)
+                                    color: root.minimalActiveView === "music" ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.22) : Qt.rgba(1, 1, 1, 0.08)
+                                    border.color: root.minimalActiveView === "music" ? Theme.primary : Qt.rgba(1, 1, 1, 0.15)
+                                    border.width: 1
+
+                                    RowLayout {
+                                        id: minViewToggleRow
+                                        anchors.centerIn: parent
+                                        spacing: Theme.px(5)
+
+                                        Text {
+                                            text: root.minimalActiveView === "music" ? "󰝚" : "󰥔"
+                                            font.family: Theme.fontMono
+                                            font.pixelSize: Theme.fontPx(9.5)
+                                            color: root.minimalActiveView === "music" ? Theme.primary : Qt.rgba(1, 1, 1, 0.65)
+                                        }
+
+                                        Text {
+                                            text: root.minimalActiveView === "music" ? "VIEW: MUSIC" : "VIEW: TIME"
+                                            font.family: Theme.fontMono
+                                            font.pixelSize: Theme.fontPx(8)
+                                            font.weight: Font.Bold
+                                            color: root.minimalActiveView === "music" ? Theme.primary : Qt.rgba(1, 1, 1, 0.75)
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.minimalActiveView = (root.minimalActiveView === "music") ? "time" : "music"
+                                    }
+                                }
+
+                                // Interactive Style Switcher: Pill vs Notch
+                                Rectangle {
+                                    Layout.preferredHeight: Theme.px(20)
+                                    Layout.preferredWidth: minStyleToggleRow.implicitWidth + Theme.px(14)
+                                    radius: Theme.px(10)
+                                    color: root.minimalCapsuleStyle === "notch" ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.22) : Qt.rgba(1, 1, 1, 0.08)
+                                    border.color: root.minimalCapsuleStyle === "notch" ? Theme.primary : Qt.rgba(1, 1, 1, 0.15)
+                                    border.width: 1
+
+                                    RowLayout {
+                                        id: minStyleToggleRow
+                                        anchors.centerIn: parent
+                                        spacing: Theme.px(5)
+
+                                        Text {
+                                            text: root.minimalCapsuleStyle === "notch" ? "󰹑" : "󰝥"
+                                            font.family: Theme.fontMono
+                                            font.pixelSize: Theme.fontPx(9.5)
+                                            color: root.minimalCapsuleStyle === "notch" ? Theme.primary : Qt.rgba(1, 1, 1, 0.65)
+                                        }
+
+                                        Text {
+                                            text: root.minimalCapsuleStyle === "notch" ? "STYLE: NOTCH" : "STYLE: PILL"
+                                            font.family: Theme.fontMono
+                                            font.pixelSize: Theme.fontPx(8)
+                                            font.weight: Font.Bold
+                                            color: root.minimalCapsuleStyle === "notch" ? Theme.primary : Qt.rgba(1, 1, 1, 0.75)
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            root.minimalCapsuleStyle = (root.minimalCapsuleStyle === "notch") ? "pill" : "notch"
+                                            root.saveTideConfig("notchMode", root.minimalCapsuleStyle === "notch")
+                                        }
+                                    }
+                                }
+
+                                // Interactive Card Expansion Toggle Pill
+                                Rectangle {
+                                    Layout.preferredHeight: Theme.px(20)
+                                    Layout.preferredWidth: minExpandToggleRow.implicitWidth + Theme.px(14)
+                                    radius: Theme.px(10)
+                                    color: root.minimalCardExpanded ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : Qt.rgba(1, 1, 1, 0.06)
+                                    border.color: root.minimalCardExpanded ? Theme.primary : Qt.rgba(1, 1, 1, 0.12)
+                                    border.width: 1
+
+                                    RowLayout {
+                                        id: minExpandToggleRow
+                                        anchors.centerIn: parent
+                                        spacing: Theme.px(5)
+
+                                        Text {
+                                            text: root.minimalCardExpanded ? "󰅃" : "󰏤"
+                                            font.family: Theme.fontMono
+                                            font.pixelSize: Theme.fontPx(9.5)
+                                            color: root.minimalCardExpanded ? Theme.primary : Qt.rgba(1, 1, 1, 0.55)
+                                        }
+
+                                        Text {
+                                            text: root.minimalCardExpanded ? "COLLAPSE CARD" : "EXPAND CARD"
+                                            font.family: Theme.fontMono
+                                            font.pixelSize: Theme.fontPx(8)
+                                            font.weight: Font.Bold
+                                            color: root.minimalCardExpanded ? Theme.primary : Qt.rgba(1, 1, 1, 0.65)
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.minimalCardExpanded = !root.minimalCardExpanded
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── Blueprint Screen Workspace ─────────────────────
+                        Item {
+                            id: minimalBlueprintWorkspace
+                            anchors.fill: parent
+                            anchors.topMargin: Theme.px(26)
+                            anchors.margins: 1
+                            clip: true
+
+                            // Top Border Snap Flash Effect
+                            Rectangle {
+                                id: minTopSnapFlash
+                                anchors.top: parent.top
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                height: 3
+                                color: Theme.primary
+                                opacity: 0.0
+                                z: 30
+
+                                SequentialAnimation {
+                                    id: minTopFlashAnim
+                                    NumberAnimation { target: minTopSnapFlash; property: "opacity"; to: 0.85; duration: 80; easing.type: Easing.OutQuad }
+                                    NumberAnimation { target: minTopSnapFlash; property: "opacity"; to: 0.0; duration: 320; easing.type: Easing.OutQuad }
+                                }
+                            }
+
+                            // Bottom Border Snap Flash Effect
+                            Rectangle {
+                                id: minBottomSnapFlash
+                                anchors.bottom: parent.bottom
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                height: 3
+                                color: Theme.primary
+                                opacity: 0.0
+                                z: 30
+
+                                SequentialAnimation {
+                                    id: minBottomFlashAnim
+                                    NumberAnimation { target: minBottomSnapFlash; property: "opacity"; to: 0.85; duration: 80; easing.type: Easing.OutQuad }
+                                    NumberAnimation { target: minBottomSnapFlash; property: "opacity"; to: 0.0; duration: 320; easing.type: Easing.OutQuad }
+                                }
+                            }
+
+                            // Top Dock Receiver Bay (Faint dashed bay shown while dragging)
+                            Rectangle {
+                                anchors.top: parent.top
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: Math.max(220, minCapsuleItem.width + 40)
+                                height: root.previewIslandHeight + 12
+                                color: root.minimalBarsY < (root.minimalMaxY * 0.35) ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.08) : "transparent"
+                                border.color: root.minimalBarsY < (root.minimalMaxY * 0.35) ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : Qt.rgba(1, 1, 1, 0.10)
+                                border.width: 1
+                                radius: 8
+                                opacity: (root.isDraggingMinimal && root.minimalBarsY > 15) ? 1.0 : 0.0
+                                z: 1
+                                Behavior on opacity { NumberAnimation { duration: 180 } }
+                                Behavior on color { ColorAnimation { duration: 180 } }
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "↑ RELEASE TO DOCK TO TOP BEZEL"
+                                    font.family: Theme.fontMono
+                                    font.pixelSize: Theme.fontPx(8.5)
+                                    font.weight: Font.Bold
+                                    color: Theme.primary
+                                    visible: parent.opacity > 0.5
+                                }
+                            }
+
+                            // Bottom Dock Receiver Bay (Faint dashed bay shown while dragging)
+                            Rectangle {
+                                anchors.bottom: parent.bottom
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: Math.max(220, minCapsuleItem.width + 40)
+                                height: root.previewIslandHeight + 12
+                                color: root.minimalBarsY > (root.minimalMaxY * 0.65) ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.08) : "transparent"
+                                border.color: root.minimalBarsY > (root.minimalMaxY * 0.65) ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : Qt.rgba(1, 1, 1, 0.10)
+                                border.width: 1
+                                radius: 8
+                                opacity: (root.isDraggingMinimal && root.minimalBarsY < (root.minimalMaxY - 15)) ? 1.0 : 0.0
+                                z: 1
+                                Behavior on opacity { NumberAnimation { duration: 180 } }
+                                Behavior on color { ColorAnimation { duration: 180 } }
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "↓ RELEASE TO DOCK TO BOTTOM BEZEL"
+                                    font.family: Theme.fontMono
+                                    font.pixelSize: Theme.fontPx(8.5)
+                                    font.weight: Font.Bold
+                                    color: Theme.primary
+                                    visible: parent.opacity > 0.5
+                                }
+                            }
+
+                            // Drop / Rise Connection Traces Canvas (Vertical Guide Lines)
+                            Canvas {
+                                id: minTraceCanvas
+                                anchors.fill: parent
+                                visible: root.minimalBarsY > 4 && root.minimalBarsY < (root.minimalMaxY - 4)
+                                z: 2
+
+                                Connections {
+                                    target: root
+                                    function onMinimalBarsYChanged() { minTraceCanvas.requestPaint() }
+                                }
+
+                                onPaint: {
+                                    var ctx = getContext("2d")
+                                    ctx.clearRect(0, 0, width, height)
+
+                                    var inUpperHalf = root.minimalBarsY <= (root.minimalMaxY * 0.5)
+                                    var yTarget = inUpperHalf ? 0 : height
+                                    var yBar = inUpperHalf ? root.minimalBarsY : (root.minimalBarsY + root.previewIslandHeight)
+
+                                    ctx.strokeStyle = Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.45)
+                                    ctx.lineWidth = 1.0
+                                    ctx.setLineDash([3, 3])
+
+                                    var leftX = Math.round(minCapsuleItem.x)
+                                    var rightX = Math.round(minCapsuleItem.x + minCapsuleItem.width)
+                                    var midX = Math.round(minCapsuleItem.x + minCapsuleItem.width / 2)
+
+                                    ctx.beginPath()
+                                    ctx.moveTo(leftX, yTarget)
+                                    ctx.lineTo(leftX, yBar)
+                                    ctx.moveTo(rightX, yTarget)
+                                    ctx.lineTo(rightX, yBar)
+                                    ctx.moveTo(midX, yTarget)
+                                    ctx.lineTo(midX, yBar)
+                                    ctx.stroke()
+                                }
+                            }
+
+                            // ── Interactive Minimal Island Capsule ─────────────────
+                            Item {
+                                id: minCapsuleItem
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                y: {
+                                    if (root.isDraggingMinimal) return root.minimalBarsY
+                                    if (root.minimalDockPosition === "top") {
+                                        return (root.minimalCapsuleStyle === "notch") ? 0 : root.previewIslandTopMargin
+                                    } else {
+                                        return minimalBlueprintWorkspace.height - height - ((root.minimalCapsuleStyle === "notch") ? 0 : root.previewIslandTopMargin)
+                                    }
+                                }
+                                z: 10
+
+                                Behavior on y {
+                                    enabled: !root.isDraggingMinimal
+                                    NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
+                                }
+
+                                readonly property int targetWidth: {
+                                    if (root.minimalActiveView === "music") {
+                                        return Math.max(Theme.px(240), root.previewIslandWidth + Theme.px(120))
+                                    } else {
+                                        return Math.max(Theme.px(134), root.previewIslandWidth)
+                                    }
+                                }
+
+                                width: targetWidth
+                                height: root.previewIslandHeight
+
+                                Behavior on width {
+                                    NumberAnimation { duration: 320; easing.type: Easing.OutCubic }
+                                }
+                                Behavior on height {
+                                    NumberAnimation { duration: 320; easing.type: Easing.OutCubic }
+                                }
+
+                                scale: minCapsuleMouse.containsMouse ? 1.02 : 1.0
+                                Behavior on scale { NumberAnimation { duration: 160 } }
+
+                                // Capsule Surface (Floating Pill vs Flush Notch)
+                                Rectangle {
+                                    id: minCapsuleSurface
+                                    anchors.fill: parent
+                                    radius: (root.minimalCapsuleStyle === "notch")
+                                        ? (root.minimalDockPosition === "top" ? Theme.px(14) : Theme.px(14))
+                                        : height / 2
+                                    color: Qt.rgba(0.06, 0.08, 0.12, root.previewIslandOpacity)
+                                    border.color: minCapsuleMouse.containsMouse ? Theme.primary : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40)
+                                    border.width: 1
+
+                                    // Notch Flat Bezel Top Edge Alignment
+                                    Rectangle {
+                                        visible: root.minimalCapsuleStyle === "notch" && root.minimalDockPosition === "top"
+                                        anchors.top: parent.top
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        height: 1
+                                        color: Qt.rgba(1, 1, 1, 0.15)
+                                    }
+
+                                    // Notch Flat Bezel Bottom Edge Alignment
+                                    Rectangle {
+                                        visible: root.minimalCapsuleStyle === "notch" && root.minimalDockPosition === "bottom"
+                                        anchors.bottom: parent.bottom
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        height: 1
+                                        color: Qt.rgba(1, 1, 1, 0.15)
+                                    }
+                                }
+
+                                // ── Content View 1: TIME & TELEMETRY RESTING MODE ──
+                                RowLayout {
+                                    id: timeViewRow
+                                    anchors.fill: parent
+                                    anchors.leftMargin: Theme.px(10)
+                                    anchors.rightMargin: Theme.px(10)
+                                    spacing: Theme.px(8)
+                                    visible: root.minimalActiveView === "time"
+                                    opacity: root.minimalActiveView === "time" ? 1.0 : 0.0
+                                    Behavior on opacity { NumberAnimation { duration: 200 } }
+
+                                    // Workspace Badge
+                                    Rectangle {
+                                        Layout.preferredWidth: Theme.px(18)
+                                        Layout.preferredHeight: Theme.px(18)
+                                        radius: width / 2
+                                        color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25)
+                                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.60)
+                                        border.width: 1
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "1"
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(9.5)
+                                            font.weight: Font.Bold
+                                            color: Theme.primary
+                                        }
+                                    }
+
+                                    // Crisp Digital Clock
+                                    Text {
+                                        text: Qt.formatTime(new Date(), "hh:mm")
+                                        font.family: Theme.font
+                                        font.pixelSize: Theme.fontPx(11.5)
+                                        font.weight: Font.Bold
+                                        color: "#FFFFFF"
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    // Battery Indicator
+                                    RowLayout {
+                                        spacing: Theme.px(3)
+                                        Text {
+                                            text: "󰂄"
+                                            font.family: Theme.fontMono
+                                            font.pixelSize: Theme.fontPx(11)
+                                            color: Theme.primary
+                                        }
+                                        Text {
+                                            text: "96%"
+                                            font.family: Theme.fontMono
+                                            font.pixelSize: Theme.fontPx(9)
+                                            color: Qt.rgba(1, 1, 1, 0.65)
+                                        }
+                                    }
+
+                                    // Pulsing Music Indicator Dot (Click switches to music view)
+                                    Rectangle {
+                                        Layout.preferredWidth: Theme.px(8)
+                                        Layout.preferredHeight: Theme.px(8)
+                                        radius: width / 2
+                                        color: Theme.primary
+
+                                        SequentialAnimation on opacity {
+                                            loops: Animation.Infinite
+                                            NumberAnimation { to: 0.35; duration: 900; easing.type: Easing.InOutQuad }
+                                            NumberAnimation { to: 1.0; duration: 900; easing.type: Easing.InOutQuad }
+                                        }
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            anchors.margins: -4
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.minimalActiveView = "music"
+                                        }
+                                    }
+                                }
+
+                                // ── Content View 2: LIVE MUSIC & CAVA EQUALIZER MODE ──
+                                RowLayout {
+                                    id: musicViewRow
+                                    anchors.fill: parent
+                                    anchors.leftMargin: Theme.px(8)
+                                    anchors.rightMargin: Theme.px(8)
+                                    spacing: Theme.px(8)
+                                    visible: root.minimalActiveView === "music"
+                                    opacity: root.minimalActiveView === "music" ? 1.0 : 0.0
+                                    Behavior on opacity { NumberAnimation { duration: 200 } }
+
+                                    // Rotating Album Art / Vinyl Micro-Orb
+                                    Rectangle {
+                                        Layout.preferredWidth: Theme.px(20)
+                                        Layout.preferredHeight: Theme.px(20)
+                                        radius: width / 2
+                                        color: Qt.rgba(0, 0, 0, 0.50)
+                                        border.color: Theme.primary
+                                        border.width: 1
+                                        clip: true
+
+                                        Image {
+                                            anchors.fill: parent
+                                            source: (typeof LyricsService !== "undefined" && LyricsService.artUrl) ? LyricsService.artUrl : ""
+                                            fillMode: Image.PreserveAspectCrop
+                                            visible: status === Image.Ready
+                                        }
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "󰝚"
+                                            font.family: Theme.fontMono
+                                            font.pixelSize: Theme.fontPx(11)
+                                            color: Theme.primary
+                                            visible: parent.children[0].status !== Image.Ready
+                                        }
+
+                                        RotationAnimation on rotation {
+                                            running: root.minimalActiveView === "music"
+                                            loops: Animation.Infinite
+                                            from: 0
+                                            to: 360
+                                            duration: 4000
+                                        }
+                                    }
+
+                                    // Track Title & Artist Marquee
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 0
+
+                                        Text {
+                                            text: (typeof LyricsService !== "undefined" && LyricsService.trackTitle && LyricsService.trackTitle.length > 0)
+                                                ? LyricsService.trackTitle
+                                                : "ELECTROCHEMISTRY in One Shot: All Con..."
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(10)
+                                            font.weight: Font.Bold
+                                            color: "#FFFFFF"
+                                            elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                        }
+
+                                        Text {
+                                            text: (typeof LyricsService !== "undefined" && LyricsService.trackArtist && LyricsService.trackArtist.length > 0)
+                                                ? LyricsService.trackArtist
+                                                : "JEE Wallah"
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(8.5)
+                                            color: Qt.rgba(1, 1, 1, 0.55)
+                                            elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                        }
+                                    }
+
+                                    // Live 5-Bar Mini CAVA Equalizer
+                                    RowLayout {
+                                        Layout.preferredHeight: Theme.px(12)
+                                        spacing: Theme.px(2.5)
+
+                                        Repeater {
+                                            model: 5
+                                            delegate: Rectangle {
+                                                required property int index
+                                                Layout.preferredWidth: Theme.px(2.5)
+                                                readonly property real wave: Math.abs(Math.sin(vanishWorkspace ? (vanishWorkspace.continuousPhase * 2.5 + index * 0.9) : (index * 0.5)))
+                                                Layout.preferredHeight: Theme.px(3) + Theme.px(9) * wave
+                                                radius: Theme.px(1)
+                                                color: Theme.primary
+                                                Layout.alignment: Qt.AlignBottom
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Interactive Dragging & Click MouseArea on Capsule
+                                MouseArea {
+                                    id: minCapsuleMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: pressed ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+                                    drag.target: minDragProxy
+                                    drag.axis: Drag.YAxis
+                                    drag.minimumY: 0
+                                    drag.maximumY: root.minimalMaxY
+
+                                    onPressed: {
+                                        root.isDraggingMinimal = true
+                                        minDragProxy.y = minCapsuleItem.y
+                                    }
+
+                                    onReleased: {
+                                        root.isDraggingMinimal = false
+                                        if (root.minimalBarsY > (root.minimalMaxY * 0.5)) {
+                                            root.dockMinimalToBottom()
+                                        } else {
+                                            root.dockMinimalToTop()
+                                        }
+                                    }
+
+                                    onClicked: {
+                                        root.minimalCardExpanded = !root.minimalCardExpanded
+                                    }
+                                    onDoubleClicked: {
+                                        root.minimalActiveView = (root.minimalActiveView === "music") ? "time" : "music"
+                                    }
+                                }
+                            }
+
+                            // Hidden proxy for Y-drag tracking
+                            Item {
+                                id: minDragProxy
+                                x: minCapsuleItem.x
+                                y: minCapsuleItem.y
+                                width: minCapsuleItem.width
+                                height: minCapsuleItem.height
+                                onYChanged: {
+                                    if (root.isDraggingMinimal) {
+                                        root.minimalBarsY = Math.max(0, Math.min(root.minimalMaxY, minDragProxy.y))
+                                    }
+                                }
+                            }
+
+                            // ── Expanded Floating Card (Dynamic Island Morph Preview) ──
+                            Item {
+                                id: minExpandedCard
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                y: {
+                                    if (root.minimalDockPosition === "top") {
+                                        return minCapsuleItem.y + minCapsuleItem.height + Theme.px(10)
+                                    } else {
+                                        return minCapsuleItem.y - height - Theme.px(10)
+                                    }
+                                }
+                                width: root.minimalActiveView === "music" ? Theme.px(280) : Theme.px(240)
+                                height: Theme.px(106)
+                                z: 15
+                                visible: opacity > 0.01
+                                opacity: root.minimalCardExpanded ? 1.0 : 0.0
+                                scale: root.minimalCardExpanded ? 1.0 : 0.92
+
+                                Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+                                Behavior on scale { NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 1.10 } }
+                                Behavior on y { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: Theme.px(12)
+                                    color: Qt.rgba(0.06, 0.08, 0.12, 0.94)
+                                    border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40)
+                                    border.width: 1
+                                    clip: true
+
+                                    // Sub-Card A: Expanded Music Player Card
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: Theme.px(10)
+                                        spacing: Theme.px(6)
+                                        visible: root.minimalActiveView === "music"
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: Theme.px(8)
+
+                                            Rectangle {
+                                                Layout.preferredWidth: Theme.px(34)
+                                                Layout.preferredHeight: Theme.px(34)
+                                                radius: Theme.px(6)
+                                                color: Qt.rgba(0, 0, 0, 0.40)
+                                                border.color: Theme.primary
+                                                border.width: 1
+                                                clip: true
+
+                                                Image {
+                                                    anchors.fill: parent
+                                                    source: (typeof LyricsService !== "undefined" && LyricsService.artUrl) ? LyricsService.artUrl : ""
+                                                    fillMode: Image.PreserveAspectCrop
+                                                    visible: status === Image.Ready
+                                                }
+                                                Text {
+                                                    anchors.centerIn: parent
+                                                    text: "󰝚"
+                                                    font.family: Theme.fontMono
+                                                    font.pixelSize: Theme.fontPx(14)
+                                                    color: Theme.primary
+                                                    visible: parent.children[0].status !== Image.Ready
+                                                }
+                                            }
+
+                                            ColumnLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 1
+
+                                                Text {
+                                                    text: (typeof LyricsService !== "undefined" && LyricsService.trackTitle && LyricsService.trackTitle.length > 0)
+                                                        ? LyricsService.trackTitle
+                                                        : "ELECTROCHEMISTRY in One Shot..."
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(10.5)
+                                                    font.weight: Font.Bold
+                                                    color: "#FFFFFF"
+                                                    elide: Text.ElideRight
+                                                    Layout.fillWidth: true
+                                                }
+
+                                                Text {
+                                                    text: (typeof LyricsService !== "undefined" && LyricsService.trackArtist && LyricsService.trackArtist.length > 0)
+                                                        ? LyricsService.trackArtist
+                                                        : "JEE Wallah"
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(9)
+                                                    color: Qt.rgba(1, 1, 1, 0.55)
+                                                    elide: Text.ElideRight
+                                                    Layout.fillWidth: true
+                                                }
+                                            }
+                                        }
+
+                                        // Scrubber & Progress
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: Theme.px(6)
+
+                                            Text {
+                                                text: "110:20"
+                                                font.family: Theme.fontMono
+                                                font.pixelSize: Theme.fontPx(8)
+                                                color: Qt.rgba(1, 1, 1, 0.50)
+                                            }
+
+                                            Rectangle {
+                                                Layout.fillWidth: true
+                                                height: Theme.px(3)
+                                                radius: Theme.px(1.5)
+                                                color: Qt.rgba(1, 1, 1, 0.12)
+
+                                                Rectangle {
+                                                    width: parent.width * 0.38
+                                                    height: parent.height
+                                                    radius: parent.radius
+                                                    color: Theme.primary
+                                                }
+                                            }
+
+                                            Text {
+                                                text: "472:05"
+                                                font.family: Theme.fontMono
+                                                font.pixelSize: Theme.fontPx(8)
+                                                color: Qt.rgba(1, 1, 1, 0.50)
+                                            }
+                                        }
+
+                                        // Transport Controls Row
+                                        RowLayout {
+                                            Layout.alignment: Qt.AlignHCenter
+                                            spacing: Theme.px(14)
+
+                                            Text { text: "󰒮"; font.family: Theme.fontMono; font.pixelSize: Theme.fontPx(12); color: Qt.rgba(1, 1, 1, 0.75) }
+                                            Rectangle {
+                                                width: Theme.px(24); height: Theme.px(24); radius: width / 2
+                                                color: Theme.primary
+                                                Text { anchors.centerIn: parent; text: "󰏤"; font.family: Theme.fontMono; font.pixelSize: Theme.fontPx(11); color: Theme.m3onPrimary || "#000000" }
+                                            }
+                                            Text { text: "󰒭"; font.family: Theme.fontMono; font.pixelSize: Theme.fontPx(12); color: Qt.rgba(1, 1, 1, 0.75) }
+                                        }
+                                    }
+
+                                    // Sub-Card B: Expanded Calendar & Date Card
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: Theme.px(10)
+                                        spacing: Theme.px(4)
+                                        visible: root.minimalActiveView === "time"
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Text {
+                                                text: "CALENDAR & DATE"
+                                                font.family: Theme.fontMono
+                                                font.pixelSize: Theme.fontPx(8.5)
+                                                font.weight: Font.Bold
+                                                color: Theme.primary
+                                            }
+                                            Item { Layout.fillWidth: true }
+                                            Text {
+                                                text: Qt.formatDate(new Date(), "MMMM yyyy").toUpperCase()
+                                                font.family: Theme.fontMono
+                                                font.pixelSize: Theme.fontPx(8)
+                                                color: Qt.rgba(1, 1, 1, 0.50)
+                                            }
+                                        }
+
+                                        Text {
+                                            text: Qt.formatDate(new Date(), "dddd, MMMM d")
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(12)
+                                            font.weight: Font.Bold
+                                            color: "#FFFFFF"
+                                        }
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: Theme.px(6)
+
+                                            Repeater {
+                                                model: ["M", "T", "W", "T", "F", "S", "S"]
+                                                delegate: Rectangle {
+                                                    required property int index
+                                                    required property var modelData
+                                                    Layout.fillWidth: true
+                                                    Layout.preferredHeight: Theme.px(20)
+                                                    radius: Theme.px(4)
+                                                    color: index === 1 ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : Qt.rgba(1, 1, 1, 0.04)
+                                                    border.color: index === 1 ? Theme.primary : "transparent"
+                                                    border.width: 1
+
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: modelData
+                                                        font.family: Theme.fontMono
+                                                        font.pixelSize: Theme.fontPx(8.5)
+                                                        font.weight: index === 1 ? Font.Bold : Font.Normal
+                                                        color: index === 1 ? Theme.primary : Qt.rgba(1, 1, 1, 0.60)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── 2. Separator Hairline ──────────────────────────────────
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 1
+                    color: Qt.rgba(1, 1, 1, 0.08)
+                }
+
+                // ── 3. Sub-Section Switcher: "Designs" vs "Settings" ───────
                 Item {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 44
-                    Layout.leftMargin: 16
-                    Layout.rightMargin: 16
+                    Layout.preferredHeight: Theme.px(44)
+                    Layout.leftMargin: Theme.px(16)
+                    Layout.rightMargin: Theme.px(16)
 
                     RowLayout {
                         anchors.fill: parent
 
-                        Text {
-                            text: "MINIMAL ISLAND // COMPACT DYNAMIC PILL"
-                            font.family: Theme.fontMono
-                            font.pixelSize: Theme.fontPx(9.5)
-                            font.weight: Font.Bold
-                            color: Qt.rgba(1, 1, 1, 0.45)
+                        // Segmented Tab Switcher
+                        Rectangle {
+                            height: Theme.px(30)
+                            width: Theme.px(180)
+                            radius: Theme.px(8)
+                            color: Qt.rgba(0, 0, 0, 0.25)
+                            border.color: Qt.rgba(1, 1, 1, 0.08)
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.fill: parent
+                                spacing: 0
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    radius: Theme.px(7)
+                                    color: root.minimalSubSection === "Designs" ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20) : "transparent"
+                                    border.color: root.minimalSubSection === "Designs" ? Theme.primary : "transparent"
+                                    border.width: 1
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "󰙵  Designs"
+                                        font.family: Theme.font
+                                        font.pixelSize: Theme.fontPx(11)
+                                        font.weight: root.minimalSubSection === "Designs" ? Font.Bold : Font.Normal
+                                        color: root.minimalSubSection === "Designs" ? Theme.primary : Qt.rgba(1, 1, 1, 0.65)
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.minimalSubSection = "Designs"
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    radius: Theme.px(7)
+                                    color: root.minimalSubSection === "Settings" ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20) : "transparent"
+                                    border.color: root.minimalSubSection === "Settings" ? Theme.primary : "transparent"
+                                    border.width: 1
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "󰒓  Settings"
+                                        font.family: Theme.font
+                                        font.pixelSize: Theme.fontPx(11)
+                                        font.weight: root.minimalSubSection === "Settings" ? Font.Bold : Font.Normal
+                                        color: root.minimalSubSection === "Settings" ? Theme.primary : Qt.rgba(1, 1, 1, 0.65)
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.minimalSubSection = "Settings"
+                                    }
+                                }
+                            }
                         }
 
                         Item { Layout.fillWidth: true }
@@ -2108,19 +3096,19 @@ Item {
                         // Mode Enable / Disable Toggle Button
                         Rectangle {
                             readonly property bool isEnabled: root.activeSystemMode === "minimal" || root.activeSystemMode === "minimal_notch"
-                            height: 28
-                            width: minToggleRow.implicitWidth + 24
-                            radius: 6
+                            height: Theme.px(28)
+                            width: minToggleRow2.implicitWidth + 24
+                            radius: Theme.px(6)
                             color: isEnabled 
-                                ? (minToggleMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.28) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.18))
-                                : (minToggleMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.25))
-                            border.color: isEnabled ? Theme.primary : (minToggleMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.25) : Qt.rgba(1, 1, 1, 0.12))
+                                ? (minToggleMouse2.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.28) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.18))
+                                : (minToggleMouse2.containsMouse ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.25))
+                            border.color: isEnabled ? Theme.primary : (minToggleMouse2.containsMouse ? Qt.rgba(1, 1, 1, 0.25) : Qt.rgba(1, 1, 1, 0.12))
                             border.width: 1
 
                             RowLayout {
-                                id: minToggleRow
+                                id: minToggleRow2
                                 anchors.centerIn: parent
-                                spacing: 6
+                                spacing: Theme.px(6)
 
                                 Text {
                                     text: parent.parent.isEnabled ? "󰄬" : "󰄱"
@@ -2139,7 +3127,7 @@ Item {
                             }
 
                             MouseArea {
-                                id: minToggleMouse
+                                id: minToggleMouse2
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
@@ -2147,7 +3135,7 @@ Item {
                                     if (parent.isEnabled) {
                                         root.activateMode("notch")
                                     } else {
-                                        root.activateMode("minimal")
+                                        root.activateMode(root.minimalCapsuleStyle === "notch" ? "minimal_notch" : "minimal")
                                     }
                                 }
                             }
@@ -2155,44 +3143,656 @@ Item {
                     }
                 }
 
-                Rectangle {
-                    Layout.fillWidth: true
-                    height: 1
-                    color: Qt.rgba(1, 1, 1, 0.08)
-                }
-
+                // ── 4. Scrollable Controls Body ────────────────────────────
                 Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
 
-                    ColumnLayout {
-                        anchors.centerIn: parent
-                        spacing: 12
+                    Flickable {
+                        id: minControlsFlickable
+                        anchors.fill: parent
+                        contentWidth: width
+                        contentHeight: minControlsColumn.implicitHeight + 30
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
 
-                        Text {
-                            Layout.alignment: Qt.AlignHCenter
-                            text: "󰝥"
-                            font.family: Theme.fontMono
-                            font.pixelSize: Theme.fontPx(36)
-                            color: Theme.primary
-                        }
+                        ColumnLayout {
+                            id: minControlsColumn
+                            width: minControlsFlickable.width - 32
+                            x: 16
+                            y: 8
+                            spacing: Theme.px(14)
 
-                        Text {
-                            Layout.alignment: Qt.AlignHCenter
-                            text: "MINIMAL ISLAND MODE"
-                            font.family: Theme.font
-                            font.pixelSize: Theme.fontPx(16)
-                            font.weight: Font.Bold
-                            color: Qt.rgba(1, 1, 1, 0.95)
-                        }
+                            // ===============================================
+                            // SUB-SECTION 1: DESIGNS
+                            // ===============================================
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                visible: root.minimalSubSection === "Designs"
+                                spacing: Theme.px(14)
 
-                        Text {
-                            Layout.alignment: Qt.AlignHCenter
-                            text: "Ultra-compact single pill bar with floating dynamic island expansions.\nClick the button above to enable this mode on your desktop."
-                            font.family: Theme.font
-                            font.pixelSize: Theme.fontPx(11.5)
-                            color: Qt.rgba(1, 1, 1, 0.50)
-                            horizontalAlignment: Text.AlignHCenter
+                                // Section Heading
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        text: "MINIMAL ISLAND // THEMES & CAPSULE STYLES"
+                                        font.family: Theme.fontMono
+                                        font.pixelSize: Theme.fontPx(11)
+                                        font.weight: Font.Bold
+                                        color: Qt.rgba(1, 1, 1, 0.90)
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                    Text {
+                                        text: "DYNAMIC CAPSULE ARCHITECTURE"
+                                        font.family: Theme.fontMono
+                                        font.pixelSize: Theme.fontPx(9)
+                                        color: Theme.primary
+                                    }
+                                }
+
+                                // Grid of Designs
+                                Flow {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.px(12)
+
+                                    // Design 1: Minimal Digital Pill (Default)
+                                    Rectangle {
+                                        width: Theme.px(240)
+                                        height: Theme.px(100)
+                                        radius: Theme.px(10)
+                                        color: root.selectedMinimalDesign === "minimal_digital" ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12) : Qt.rgba(0.05, 0.06, 0.08, 0.70)
+                                        border.color: root.selectedMinimalDesign === "minimal_digital" ? Theme.primary : Qt.rgba(1, 1, 1, 0.10)
+                                        border.width: root.selectedMinimalDesign === "minimal_digital" ? 1.5 : 1
+
+                                        ColumnLayout {
+                                            anchors.fill: parent
+                                            anchors.margins: 12
+                                            spacing: Theme.px(4)
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Text {
+                                                    text: "󰝥  Minimal Digital Pill"
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(11.5)
+                                                    font.weight: Font.Bold
+                                                    color: Theme.primary
+                                                }
+                                                Item { Layout.fillWidth: true }
+                                                Text {
+                                                    text: "ACTIVE"
+                                                    font.family: Theme.fontMono
+                                                    font.pixelSize: Theme.fontPx(8)
+                                                    font.weight: Font.Bold
+                                                    color: Theme.primary
+                                                }
+                                            }
+
+                                            Text {
+                                                text: "Floating rounded pill with live digital clock, battery telemetry, and fluid media morphing."
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(9)
+                                                color: Qt.rgba(1, 1, 1, 0.60)
+                                                wrapMode: Text.WordWrap
+                                                Layout.fillWidth: true
+                                            }
+                                        }
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.selectedMinimalDesign = "minimal_digital"
+                                        }
+                                    }
+
+                                    // Design 2: Valley Typographic
+                                    Rectangle {
+                                        width: Theme.px(240)
+                                        height: Theme.px(100)
+                                        radius: Theme.px(10)
+                                        color: root.selectedMinimalDesign === "valley_typo" ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12) : Qt.rgba(0.05, 0.06, 0.08, 0.70)
+                                        border.color: root.selectedMinimalDesign === "valley_typo" ? Theme.primary : Qt.rgba(1, 1, 1, 0.10)
+                                        border.width: root.selectedMinimalDesign === "valley_typo" ? 1.5 : 1
+
+                                        ColumnLayout {
+                                            anchors.fill: parent
+                                            anchors.margins: 12
+                                            spacing: Theme.px(4)
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Text {
+                                                    text: "󰸗  Valley Typographic"
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(11.5)
+                                                    font.weight: Font.Bold
+                                                    color: root.selectedMinimalDesign === "valley_typo" ? Theme.primary : Qt.rgba(1, 1, 1, 0.85)
+                                                }
+                                                Item { Layout.fillWidth: true }
+                                            }
+
+                                            Text {
+                                                text: "Expanded calendar typography with stylized day headings and minimalist time."
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(9)
+                                                color: Qt.rgba(1, 1, 1, 0.60)
+                                                wrapMode: Text.WordWrap
+                                                Layout.fillWidth: true
+                                            }
+                                        }
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.selectedMinimalDesign = "valley_typo"
+                                        }
+                                    }
+
+                                    // Design 3: Tactical Cyber Capsule
+                                    Rectangle {
+                                        width: Theme.px(240)
+                                        height: Theme.px(100)
+                                        radius: Theme.px(10)
+                                        color: root.selectedMinimalDesign === "tactical_capsule" ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12) : Qt.rgba(0.05, 0.06, 0.08, 0.70)
+                                        border.color: root.selectedMinimalDesign === "tactical_capsule" ? Theme.primary : Qt.rgba(1, 1, 1, 0.10)
+                                        border.width: root.selectedMinimalDesign === "tactical_capsule" ? 1.5 : 1
+
+                                        ColumnLayout {
+                                            anchors.fill: parent
+                                            anchors.margins: 12
+                                            spacing: Theme.px(4)
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Text {
+                                                    text: "󰞌  Tactical Cyber Capsule"
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(11.5)
+                                                    font.weight: Font.Bold
+                                                    color: root.selectedMinimalDesign === "tactical_capsule" ? Theme.primary : Qt.rgba(1, 1, 1, 0.85)
+                                                }
+                                                Item { Layout.fillWidth: true }
+                                            }
+
+                                            Text {
+                                                text: "Cyberpunk bracket borders with monospaced telemetry counters and high-contrast audio indicators."
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(9)
+                                                color: Qt.rgba(1, 1, 1, 0.60)
+                                                wrapMode: Text.WordWrap
+                                                Layout.fillWidth: true
+                                            }
+                                        }
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.selectedMinimalDesign = "tactical_capsule"
+                                        }
+                                    }
+                                }
+
+                                // Interactive Sub-View Behavior Card
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: minBehCol.implicitHeight + 28
+                                    radius: Theme.px(12)
+                                    color: Qt.rgba(0, 0, 0, 0.22)
+                                    border.color: Qt.rgba(1, 1, 1, 0.08)
+                                    border.width: 1
+
+                                    ColumnLayout {
+                                        id: minBehCol
+                                        anchors.fill: parent
+                                        anchors.margins: 14
+                                        spacing: Theme.px(10)
+
+                                        Text {
+                                            text: "Dynamic Island Capsule Automation"
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(13)
+                                            font.weight: Font.Bold
+                                            color: Qt.rgba(1, 1, 1, 0.95)
+                                        }
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            ColumnLayout {
+                                                spacing: 2
+                                                Text {
+                                                    text: "Show Synced Lyrics in Capsule"
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(11)
+                                                    font.weight: Font.Medium
+                                                    color: Qt.rgba(1, 1, 1, 0.85)
+                                                }
+                                                Text {
+                                                    text: "Scroll kinetic karaoke lines live inside the capsule while music is playing."
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(9.5)
+                                                    color: Qt.rgba(1, 1, 1, 0.45)
+                                                }
+                                            }
+
+                                            Item { Layout.fillWidth: true }
+
+                                            Rectangle {
+                                                width: 44; height: 24; radius: 12
+                                                color: root.previewIslandSyncedLyrics ? Theme.primary : Qt.rgba(1, 1, 1, 0.15)
+                                                Behavior on color { ColorAnimation { duration: 180 } }
+
+                                                Rectangle {
+                                                    width: 18; height: 18; radius: 9
+                                                    color: root.previewIslandSyncedLyrics ? (Theme.m3onPrimary || "#000000") : "#ffffff"
+                                                    x: root.previewIslandSyncedLyrics ? 23 : 3
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                                                }
+
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: root.previewIslandSyncedLyrics = !root.previewIslandSyncedLyrics
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // ===============================================
+                            // SUB-SECTION 2: SETTINGS (Copied from old settings app)
+                            // ===============================================
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                visible: root.minimalSubSection === "Settings"
+                                spacing: Theme.px(14)
+
+                                // ── Top / Bottom Bezel Dock Status Card ──
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 48
+                                    radius: Theme.px(10)
+                                    color: Qt.rgba(0, 0, 0, 0.22)
+                                    border.color: Qt.rgba(1, 1, 1, 0.08)
+                                    border.width: 1
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 14
+                                        anchors.rightMargin: 14
+                                        spacing: 10
+
+                                        Text {
+                                            text: root.minimalDockPosition === "top" ? "󰘚" : "󰘕"
+                                            font.family: Theme.fontMono
+                                            font.pixelSize: Theme.fontPx(14)
+                                            color: Theme.primary
+                                        }
+
+                                        ColumnLayout {
+                                            spacing: 1
+                                            Text {
+                                                text: root.minimalDockPosition === "top" ? "Top Bezel Dock Active" : "Bottom Bezel Dock Active"
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(11.5)
+                                                font.weight: Font.Bold
+                                                color: Qt.rgba(1, 1, 1, 0.90)
+                                            }
+                                            Text {
+                                                text: root.minimalDockPosition === "top"
+                                                    ? "Minimal Island sits at top screen bezel. Drag down on blueprint to dock to bottom."
+                                                    : "Minimal Island sits at bottom screen bezel. Drag up on blueprint to dock to top."
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(9.5)
+                                                color: Qt.rgba(1, 1, 1, 0.45)
+                                            }
+                                        }
+
+                                        Item { Layout.fillWidth: true }
+
+                                        Rectangle {
+                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 124
+                                            radius: 5
+                                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                                            border.color: Theme.primary
+                                            border.width: 1
+
+                                            RowLayout {
+                                                anchors.centerIn: parent
+                                                spacing: 4
+                                                Text {
+                                                    text: root.minimalDockPosition === "top" ? "󰘕" : "󰘚"
+                                                    font.family: Theme.fontMono
+                                                    font.pixelSize: Theme.fontPx(10)
+                                                    color: Theme.primary
+                                                }
+                                                Text {
+                                                    text: root.minimalDockPosition === "top" ? "Dock to Bottom" : "Dock to Top"
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(9.5)
+                                                    font.weight: Font.DemiBold
+                                                    color: Theme.primary
+                                                }
+                                            }
+
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    if (root.minimalDockPosition === "top") root.dockMinimalToBottom()
+                                                    else root.dockMinimalToTop()
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // ── 1. Geometry & Dimensions Card ──
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: minGeomCol.implicitHeight + 28
+                                    radius: Theme.px(12)
+                                    color: Qt.rgba(0, 0, 0, 0.22)
+                                    border.color: Qt.rgba(1, 1, 1, 0.08)
+                                    border.width: 1
+
+                                    ColumnLayout {
+                                        id: minGeomCol
+                                        anchors.fill: parent
+                                        anchors.margins: 14
+                                        spacing: Theme.px(12)
+
+                                        Text {
+                                            text: "󰘚  Island Geometry & Screen Margins"
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(13)
+                                            font.weight: Font.Bold
+                                            color: Theme.primary
+                                        }
+
+                                        RazorWireSlider {
+                                            Layout.fillWidth: true
+                                            label: "Island Resting Height"
+                                            from: 20
+                                            to: 50
+                                            value: root.previewIslandHeight
+                                            unit: "px"
+                                            onMoved: function(v) {
+                                                root.previewIslandHeight = Math.round(v)
+                                                root.saveTideConfig("islandHeight", Math.round(v))
+                                            }
+                                        }
+
+                                        RazorWireSlider {
+                                            Layout.fillWidth: true
+                                            label: "Island Resting Width"
+                                            from: 80
+                                            to: 400
+                                            value: root.previewIslandWidth
+                                            unit: "px"
+                                            onMoved: function(v) {
+                                                root.previewIslandWidth = Math.round(v)
+                                                root.saveTideConfig("islandWidth", Math.round(v))
+                                            }
+                                        }
+
+                                        RazorWireSlider {
+                                            Layout.fillWidth: true
+                                            label: "Top Margin (Floating Distance)"
+                                            from: 0
+                                            to: 24
+                                            value: root.previewIslandTopMargin
+                                            unit: "px"
+                                            onMoved: function(v) {
+                                                root.previewIslandTopMargin = Math.round(v)
+                                                root.saveTideConfig("islandTopMargin", Math.round(v))
+                                            }
+                                        }
+
+                                        RazorWireSlider {
+                                            Layout.fillWidth: true
+                                            label: "Dock Ear Fillet Radius (Notch Style)"
+                                            from: 0
+                                            to: 16
+                                            value: root.previewNotchEarRadius
+                                            unit: "px"
+                                            onMoved: function(v) {
+                                                root.previewNotchEarRadius = Math.round(v)
+                                                root.saveTideConfig("notchEarRadius", Math.round(v))
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // ── 2. Surface & Glass Atmosphere Card ──
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: minSurfCol.implicitHeight + 28
+                                    radius: Theme.px(12)
+                                    color: Qt.rgba(0, 0, 0, 0.22)
+                                    border.color: Qt.rgba(1, 1, 1, 0.08)
+                                    border.width: 1
+
+                                    ColumnLayout {
+                                        id: minSurfCol
+                                        anchors.fill: parent
+                                        anchors.margins: 14
+                                        spacing: Theme.px(12)
+
+                                        Text {
+                                            text: "󰏤  Surface Atmosphere & Frosted Glass"
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(13)
+                                            font.weight: Font.Bold
+                                            color: Theme.primary
+                                        }
+
+                                        RazorWireSlider {
+                                            Layout.fillWidth: true
+                                            label: "Island Surface Opacity"
+                                            from: 20
+                                            to: 100
+                                            value: Math.round(root.previewIslandOpacity * 100)
+                                            unit: "%"
+                                            onMoved: function(v) {
+                                                root.previewIslandOpacity = Math.round(v) / 100.0
+                                                root.saveTideConfig("islandBackgroundOpacity", Math.round(v))
+                                            }
+                                        }
+
+                                        // Frosted Glass Blur Switch
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            ColumnLayout {
+                                                spacing: 2
+                                                Text {
+                                                    text: "Frosted Glass Blur"
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(11)
+                                                    font.weight: Font.Medium
+                                                    color: Qt.rgba(1, 1, 1, 0.85)
+                                                }
+                                                Text {
+                                                    text: "Enable real-time backdrop blur behind the minimal island capsule."
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(9.5)
+                                                    color: Qt.rgba(1, 1, 1, 0.45)
+                                                }
+                                            }
+
+                                            Item { Layout.fillWidth: true }
+
+                                            Rectangle {
+                                                width: 44; height: 24; radius: 12
+                                                color: root.previewIslandBlur ? Theme.primary : Qt.rgba(1, 1, 1, 0.15)
+                                                Behavior on color { ColorAnimation { duration: 180 } }
+
+                                                Rectangle {
+                                                    width: 18; height: 18; radius: 9
+                                                    color: root.previewIslandBlur ? (Theme.m3onPrimary || "#000000") : "#ffffff"
+                                                    x: root.previewIslandBlur ? 23 : 3
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                                                }
+
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: {
+                                                        root.previewIslandBlur = !root.previewIslandBlur
+                                                        root.saveTideConfig("shellBlurEnabled", root.previewIslandBlur)
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        RazorWireSlider {
+                                            Layout.fillWidth: true
+                                            label: "Blur Radius Size"
+                                            from: 1
+                                            to: 16
+                                            value: root.previewIslandBlurSize
+                                            unit: "px"
+                                            onMoved: function(v) {
+                                                root.previewIslandBlurSize = Math.round(v)
+                                                root.saveTideConfig("shellBlurSize", Math.round(v))
+                                            }
+                                        }
+
+                                        RazorWireSlider {
+                                            Layout.fillWidth: true
+                                            label: "Blur Sampling Passes"
+                                            from: 1
+                                            to: 4
+                                            value: root.previewIslandBlurPasses
+                                            unit: "passes"
+                                            onMoved: function(v) {
+                                                root.previewIslandBlurPasses = Math.round(v)
+                                                root.saveTideConfig("shellBlurPasses", Math.round(v))
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // ── 3. Behavior & Indicators Card ──
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: minBehCardCol.implicitHeight + 28
+                                    radius: Theme.px(12)
+                                    color: Qt.rgba(0, 0, 0, 0.22)
+                                    border.color: Qt.rgba(1, 1, 1, 0.08)
+                                    border.width: 1
+
+                                    ColumnLayout {
+                                        id: minBehCardCol
+                                        anchors.fill: parent
+                                        anchors.margins: 14
+                                        spacing: Theme.px(12)
+
+                                        Text {
+                                            text: "󰄬  Behavior & Desktop Integration"
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(13)
+                                            font.weight: Font.Bold
+                                            color: Theme.primary
+                                        }
+
+                                        // Workspace Switch Indicator Switch
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            ColumnLayout {
+                                                spacing: 2
+                                                Text {
+                                                    text: "Workspace Switch Indicator"
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(11)
+                                                    font.weight: Font.Medium
+                                                    color: Qt.rgba(1, 1, 1, 0.85)
+                                                }
+                                                Text {
+                                                    text: "Display workspace badge when switching between virtual desktops."
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(9.5)
+                                                    color: Qt.rgba(1, 1, 1, 0.45)
+                                                }
+                                            }
+
+                                            Item { Layout.fillWidth: true }
+
+                                            Rectangle {
+                                                width: 44; height: 24; radius: 12
+                                                color: root.previewShowWorkspaceCapsule ? Theme.primary : Qt.rgba(1, 1, 1, 0.15)
+                                                Behavior on color { ColorAnimation { duration: 180 } }
+
+                                                Rectangle {
+                                                    width: 18; height: 18; radius: 9
+                                                    color: root.previewShowWorkspaceCapsule ? (Theme.m3onPrimary || "#000000") : "#ffffff"
+                                                    x: root.previewShowWorkspaceCapsule ? 23 : 3
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                                                }
+
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: {
+                                                        root.previewShowWorkspaceCapsule = !root.previewShowWorkspaceCapsule
+                                                        root.saveTideConfig("showWorkspaceCapsule", root.previewShowWorkspaceCapsule)
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Auto-Hide Island Switch
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            ColumnLayout {
+                                                spacing: 2
+                                                Text {
+                                                    text: "Auto-Hide Island"
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(11)
+                                                    font.weight: Font.Medium
+                                                    color: Qt.rgba(1, 1, 1, 0.85)
+                                                }
+                                                Text {
+                                                    text: "Automatically hide minimal capsule when inactive and reveal on bezel hover."
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(9.5)
+                                                    color: Qt.rgba(1, 1, 1, 0.45)
+                                                }
+                                            }
+
+                                            Item { Layout.fillWidth: true }
+
+                                            Rectangle {
+                                                width: 44; height: 24; radius: 12
+                                                color: root.previewIslandAutoHide ? Theme.primary : Qt.rgba(1, 1, 1, 0.15)
+                                                Behavior on color { ColorAnimation { duration: 180 } }
+
+                                                Rectangle {
+                                                    width: 18; height: 18; radius: 9
+                                                    color: root.previewIslandAutoHide ? (Theme.m3onPrimary || "#000000") : "#ffffff"
+                                                    x: root.previewIslandAutoHide ? 23 : 3
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                                                }
+
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: {
+                                                        root.previewIslandAutoHide = !root.previewIslandAutoHide
+                                                        root.saveTideConfig("islandAutoHideEnabled", root.previewIslandAutoHide)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -2324,10 +3924,8 @@ Item {
                             property real continuousPhase: 0.0
 
                             readonly property var lobeColors: ({
-                                "connect": Qt.rgba(78/255, 205/255, 196/255, 1.0), // Teal
-                                "alerts": Qt.rgba(255/255, 209/255, 102/255, 1.0),  // Amber
-                                "launch": Qt.rgba(179/255, 136/255, 255/255, 1.0),  // Purple
-                                "spaces": Qt.rgba(255/255, 107/255, 107/255, 1.0)   // Coral
+                                "coral": Qt.rgba(255/255, 107/255, 107/255, 1.0),
+                                "amber": Qt.rgba(255/255, 209/255, 102/255, 1.0)
                             })
 
                             Timer {
@@ -2348,106 +3946,14 @@ Item {
 
                             // Center coordinate calculation
                             readonly property real cx: width / 2
-                            readonly property real cy: (height / 2) - (root.vanishMediaPlaying ? Theme.px(34) : 0)
-                            readonly property real orbitalDist: Theme.px(115)
+                            property real cy: (height / 2) - (root.vanishMediaPlaying ? Theme.px(38) : Theme.px(14))
+                            readonly property real orbitalDist: Theme.px(116)
 
-                            // ── 1. The Four sp³ Hybrid Orbital Teardrops & Contours Canvas ──
-                            Canvas {
-                                id: sp3LobesCanvas
-                                anchors.fill: parent
-                                z: 1
-
-                                Connections {
-                                    target: vanishWorkspace
-                                    function onContinuousPhaseChanged() { sp3LobesCanvas.requestPaint() }
-                                    function onFocusedLobeChanged() { sp3LobesCanvas.requestPaint() }
-                                }
-                                Connections {
-                                    target: root
-                                    function onVanishMediaPlayingChanged() { sp3LobesCanvas.requestPaint() }
-                                }
-
-                                onPaint: {
-                                    var ctx = getContext("2d")
-                                    ctx.clearRect(0, 0, width, height)
-                                    var cx = vanishWorkspace.cx
-                                    var cy = vanishWorkspace.cy
-                                    var dist = vanishWorkspace.orbitalDist
-                                    var focused = vanishWorkspace.focusedLobe
-                                    var phase = vanishWorkspace.continuousPhase
-
-                                    // 4 Lobes exact definitions from NucleusHub:
-                                    // Connect (235°), Alerts (305°), Utilities (345°), Apps (195°)
-                                    var lobes = [
-                                        { id: "connect", deg: 235, col: vanishWorkspace.lobeColors.connect },
-                                        { id: "alerts",  deg: 305, col: vanishWorkspace.lobeColors.alerts },
-                                        { id: "launch",  deg: 345, col: vanishWorkspace.lobeColors.launch },
-                                        { id: "spaces",  deg: 195, col: vanishWorkspace.lobeColors.spaces }
-                                    ]
-
-                                    for (var i = 0; i < lobes.length; i++) {
-                                        var l = lobes[i]
-                                        var rad = l.deg * (Math.PI / 180.0)
-                                        var isFoc = (focused === l.id)
-                                        var isDim = (focused !== "" && !isFoc)
-
-                                        var tx = cx + dist * Math.cos(rad)
-                                        var ty = cy + dist * Math.sin(rad)
-
-                                        // Subtle organic idle float offset
-                                        var floatOffset = 2.0 * Math.sin(phase * 0.75 + i * 1.57)
-                                        var curTx = tx + floatOffset * Math.cos(rad)
-                                        var curTy = ty + floatOffset * Math.sin(rad)
-
-                                        // Orthogonal vector for teardrop width
-                                        var perpX = -Math.sin(rad)
-                                        var perpY = Math.cos(rad)
-                                        var lobeWidth = isFoc ? 24 : 16
-
-                                        var midDist = dist * 0.55
-                                        var midX = cx + midDist * Math.cos(rad)
-                                        var midY = cy + midDist * Math.sin(rad)
-
-                                        var cp1X = midX + perpX * lobeWidth
-                                        var cp1Y = midY + perpY * lobeWidth
-                                        var cp2X = midX - perpX * lobeWidth
-                                        var cp2Y = midY - perpY * lobeWidth
-
-                                        ctx.save()
-
-                                        // Organic Teardrop Cubic Bezier Body
-                                        ctx.beginPath()
-                                        ctx.moveTo(cx, cy)
-                                        ctx.bezierCurveTo(cx + perpX * 8, cy + perpY * 8, cp1X, cp1Y, curTx, curTy)
-                                        ctx.bezierCurveTo(cp2X, cp2Y, cx - perpX * 8, cy - perpY * 8, cx, cy)
-                                        ctx.closePath()
-
-                                        // Translucent glass glow fill
-                                        var fillAlpha = isFoc ? 0.22 : (isDim ? 0.03 : 0.09)
-                                        ctx.fillStyle = Qt.rgba(l.col.r, l.col.g, l.col.b, fillAlpha)
-                                        ctx.fill()
-
-                                        // Contour Hairline Stroke
-                                        var strokeAlpha = isFoc ? 0.80 : (isDim ? 0.12 : 0.32)
-                                        ctx.strokeStyle = Qt.rgba(l.col.r, l.col.g, l.col.b, strokeAlpha)
-                                        ctx.lineWidth = isFoc ? 1.6 : 1.0
-                                        ctx.stroke()
-
-                                        // Dotted center guide ray
-                                        ctx.beginPath()
-                                        ctx.setLineDash([3, 4])
-                                        ctx.moveTo(cx, cy)
-                                        ctx.lineTo(curTx, curTy)
-                                        ctx.strokeStyle = Qt.rgba(1, 1, 1, isFoc ? 0.35 : 0.10)
-                                        ctx.lineWidth = 1.0
-                                        ctx.stroke()
-
-                                        ctx.restore()
-                                    }
-                                }
+                            Behavior on cy {
+                                NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
                             }
 
-                            // ── 2. The Four Lobe Tip Nodes & Blooming Satellites ──
+                            // ── 1. The Four Lobe Buttons (Clean floating circular discs, NO teardrops!) ──
                             Item {
                                 id: lobesClusterLayer
                                 anchors.fill: parent
@@ -2456,11 +3962,24 @@ Item {
                                 Repeater {
                                     model: [
                                         {
+                                            id: "spaces",
+                                            deg: 195,
+                                            icon: "layout-grid",
+                                            title: "Apps",
+                                            col: Qt.rgba(255/255, 107/255, 107/255, 1.0), // Salmon/Coral
+                                            satellites: [
+                                                { icon: "󰆍", name: "Terminal" },
+                                                { icon: "󰈹", name: "Browser" },
+                                                { icon: "󰨞", name: "Editor" },
+                                                { icon: "󰉋", name: "Files" }
+                                            ]
+                                        },
+                                        {
                                             id: "connect",
                                             deg: 235,
-                                            icon: "󰕾",
+                                            icon: "sliders",
                                             title: "Connect",
-                                            col: vanishWorkspace.lobeColors.connect,
+                                            col: Qt.rgba(255/255, 107/255, 107/255, 1.0), // Salmon/Coral
                                             satellites: [
                                                 { icon: "󰤨", name: "Wi-Fi" },
                                                 { icon: "󰂯", name: "Bluetooth" },
@@ -2471,10 +3990,11 @@ Item {
                                         {
                                             id: "alerts",
                                             deg: 305,
-                                            icon: "󰂚",
+                                            icon: "sparkles",
                                             title: "Alerts",
-                                            col: vanishWorkspace.lobeColors.alerts,
-                                            badge: "3",
+                                            col: Qt.rgba(255/255, 209/255, 102/255, 1.0), // Golden Amber
+                                            badge: "9+",
+                                            badgeBg: Qt.rgba(255/255, 107/255, 107/255, 1.0), // Salmon/Coral
                                             satellites: [
                                                 { icon: "󰂛", name: "DND" },
                                                 { icon: "󰎟", name: "Clear" },
@@ -2485,27 +4005,14 @@ Item {
                                         {
                                             id: "launch",
                                             deg: 345,
-                                            icon: "󰘳",
+                                            icon: "command",
                                             title: "Utilities",
-                                            col: vanishWorkspace.lobeColors.launch,
+                                            col: Qt.rgba(255/255, 209/255, 102/255, 1.0), // Golden Amber
                                             satellites: [
                                                 { icon: "󰍉", name: "Search" },
                                                 { icon: "󰄄", name: "Screenshot" },
                                                 { icon: "󰠮", name: "Notes" },
                                                 { icon: "󰆍", name: "Terminal" }
-                                            ]
-                                        },
-                                        {
-                                            id: "spaces",
-                                            deg: 195,
-                                            icon: "󰍹",
-                                            title: "Apps",
-                                            col: vanishWorkspace.lobeColors.spaces,
-                                            satellites: [
-                                                { icon: "󰆍", name: "Terminal" },
-                                                { icon: "󰈹", name: "Browser" },
-                                                { icon: "󰨞", name: "Editor" },
-                                                { icon: "󰉋", name: "Files" }
                                             ]
                                         }
                                     ]
@@ -2524,7 +4031,6 @@ Item {
                                         height: Theme.px(42)
                                         z: isFocused ? 10 : 5
 
-                                        // Smooth hover & focus scale
                                         scale: isFocused ? 1.12 : (lobeMouse.containsMouse ? 1.08 : 1.0)
                                         opacity: isDimmed ? 0.35 : 1.0
                                         Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
@@ -2544,11 +4050,10 @@ Item {
                                                     required property int index
                                                     required property var modelData
 
-                                                    // Symmetrical 4-node arc: [-48°, -16°, 16°, 48°] relative to lobe angle
                                                     readonly property var satAngles: [-48, -16, 16, 48]
                                                     readonly property real relDeg: (index < satAngles.length) ? satAngles[index] : 0
                                                     readonly property real relRad: (lobeDelegate.modelData.deg + relDeg) * (Math.PI / 180.0)
-                                                    readonly property real satDist: Theme.px(48)
+                                                    readonly property real satDist: Theme.px(44)
 
                                                     property real satPop: lobeDelegate.isFocused ? 1.0 : 0.0
                                                     Behavior on satPop { NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 1.15 } }
@@ -2590,39 +4095,44 @@ Item {
                                         Rectangle {
                                             anchors.fill: parent
                                             radius: width / 2
-                                            color: lobeMouse.containsMouse ? Qt.rgba(modelData.col.r, modelData.col.g, modelData.col.b, 0.35) : (isFocused ? Qt.rgba(modelData.col.r, modelData.col.g, modelData.col.b, 0.25) : Qt.rgba(0.05, 0.07, 0.10, 0.92))
+                                            color: lobeMouse.containsMouse 
+                                                ? Qt.rgba(modelData.col.r, modelData.col.g, modelData.col.b, 0.35) 
+                                                : (isFocused 
+                                                   ? Qt.rgba(modelData.col.r, modelData.col.g, modelData.col.b, 0.25) 
+                                                   : Qt.rgba(0.06, 0.08, 0.12, 0.92))
                                             border.color: modelData.col
                                             border.width: 1.8
 
-                                            Text {
+                                            MonolineIcon {
                                                 anchors.centerIn: parent
-                                                text: modelData.icon
-                                                font.family: Theme.fontMono
-                                                font.pixelSize: Theme.fontPx(15)
-                                                color: (lobeMouse.containsMouse || isFocused) ? "#FFFFFF" : modelData.col
+                                                name: modelData.icon
+                                                size: Theme.px(20)
+                                                strokeColor: (lobeMouse.containsMouse || isFocused) ? "#FFFFFF" : modelData.col
+                                                strokeWidth: 1.8
                                             }
 
-                                            // Alerts Unread Badge
+                                            // Alerts Unread Badge Pill (Matches live screen top-left 9+ pill badge)
                                             Rectangle {
                                                 visible: modelData.badge !== undefined && modelData.badge.length > 0
                                                 anchors.top: parent.top
-                                                anchors.right: parent.right
-                                                anchors.topMargin: -Theme.px(2)
-                                                anchors.rightMargin: -Theme.px(2)
-                                                width: Theme.px(16)
+                                                anchors.left: parent.left
+                                                anchors.topMargin: -Theme.px(4)
+                                                anchors.leftMargin: -Theme.px(4)
+                                                width: Math.max(Theme.px(22), badgeLabel.implicitWidth + Theme.px(8))
                                                 height: Theme.px(16)
                                                 radius: Theme.px(8)
-                                                color: Qt.rgba(255/255, 107/255, 107/255, 1.0)
+                                                color: modelData.badgeBg || Qt.rgba(255/255, 107/255, 107/255, 1.0)
                                                 border.color: Qt.rgba(0.05, 0.07, 0.10, 1.0)
                                                 border.width: 1.5
 
                                                 Text {
+                                                    id: badgeLabel
                                                     anchors.centerIn: parent
                                                     text: modelData.badge || ""
-                                                    font.family: Theme.fontMono
-                                                    font.pixelSize: Theme.fontPx(8)
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(8.5)
                                                     font.weight: Font.Bold
-                                                    color: "#FFFFFF"
+                                                    color: "#0b0e14"
                                                 }
                                             }
 
@@ -2644,7 +4154,7 @@ Item {
                                 }
                             }
 
-                            // ── 3. Central Nucleus & Multi-Track Orbit System ──
+                            // ── 2. Central Nucleus & Multi-Track Bohr Orbit System ──
                             Item {
                                 id: centerNucleusItem
                                 x: vanishWorkspace.cx
@@ -2654,95 +4164,20 @@ Item {
                                 z: 8
 
                                 Behavior on y {
-                                    NumberAnimation { duration: 320; easing.type: Easing.OutCubic }
+                                    NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
                                 }
 
-                                // 3A. Resting Bohr Atom (Visible when media playing is OFF)
-                                Item {
-                                    id: restingBohrAtom
-                                    anchors.centerIn: parent
-                                    visible: !root.vanishMediaPlaying
-                                    opacity: root.vanishMediaPlaying ? 0.0 : 1.0
-                                    Behavior on opacity { NumberAnimation { duration: 250 } }
-
-                                    // Inner Ring 1 (r = 24px, 48x48, 2 electrons)
-                                    Rectangle {
-                                        anchors.centerIn: parent
-                                        width: Theme.px(48)
-                                        height: Theme.px(48)
-                                        radius: width / 2
-                                        color: "transparent"
-                                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.28)
-                                        border.width: 1
-
-                                        Item {
-                                            anchors.centerIn: parent
-                                            width: parent.width
-                                            height: parent.height
-                                            rotation: vanishWorkspace.continuousPhase * 24
-
-                                            Rectangle {
-                                                anchors.horizontalCenter: parent.horizontalCenter
-                                                y: -Theme.px(3)
-                                                width: Theme.px(6); height: Theme.px(6); radius: Theme.px(3)
-                                                color: Theme.primary
-                                            }
-                                            Rectangle {
-                                                anchors.horizontalCenter: parent.horizontalCenter
-                                                y: parent.height - Theme.px(3)
-                                                width: Theme.px(6); height: Theme.px(6); radius: Theme.px(3)
-                                                color: Theme.primary
-                                            }
-                                        }
-                                    }
-
-                                    // Outer Ring 2 (r = 48px, 96x96, 4 electrons)
-                                    Rectangle {
-                                        anchors.centerIn: parent
-                                        width: Theme.px(96)
-                                        height: Theme.px(96)
-                                        radius: width / 2
-                                        color: "transparent"
-                                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.18)
-                                        border.width: 1
-
-                                        Item {
-                                            anchors.centerIn: parent
-                                            width: parent.width
-                                            height: parent.height
-                                            rotation: -vanishWorkspace.continuousPhase * 16
-
-                                            Repeater {
-                                                model: 4
-                                                delegate: Item {
-                                                    anchors.fill: parent
-                                                    rotation: index * 90
-                                                    Rectangle {
-                                                        anchors.horizontalCenter: parent.horizontalCenter
-                                                        y: -Theme.px(3)
-                                                        width: Theme.px(6); height: Theme.px(6); radius: Theme.px(3)
-                                                        color: Theme.primary
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // 3B. Active Roaming Carbon Orbits & Comet Satellites Canvas (Visible when media playing is ON)
+                                // 2A. Concentric Multi-Track Bohr Orbits & Two Comet Satellites Canvas
                                 Canvas {
-                                    id: activeOrbitsCanvas
+                                    id: vanishOrbitsCanvas
                                     anchors.centerIn: parent
                                     width: Theme.px(160)
                                     height: Theme.px(160)
-                                    visible: root.vanishMediaPlaying
-                                    opacity: root.vanishMediaPlaying ? 1.0 : 0.0
-                                    Behavior on opacity { NumberAnimation { duration: 250 } }
 
                                     Connections {
                                         target: vanishWorkspace
                                         function onContinuousPhaseChanged() {
-                                            if (activeOrbitsCanvas.visible) activeOrbitsCanvas.requestPaint()
+                                            vanishOrbitsCanvas.requestPaint()
                                         }
                                     }
 
@@ -2752,18 +4187,18 @@ Item {
                                         var cx = width / 2
                                         var cy = height / 2
                                         var phase = vanishWorkspace.continuousPhase
-                                        var col = Theme.primary
+                                        var primaryCol = Theme.primary
 
                                         ctx.lineCap = "round"
 
-                                        // Track 1 (Inner Arc, r = 36px): 3 pieces 120° apart
-                                        var r1 = 36.0
+                                        // Track 1 (Inner Arc, r = 37px): 3 pieces 120° apart
+                                        var r1 = 37.0
                                         var a1 = -phase * 0.28
-                                        var arcSpan1 = (24.0 / r1) / 2.0
+                                        var arcSpan1 = (26.0 / r1) / 2.0
                                         var step1 = (2.0 * Math.PI) / 3.0
                                         ctx.save()
-                                        ctx.lineWidth = 2.6
-                                        ctx.strokeStyle = Qt.rgba(240/255, 242/255, 240/255, 0.35)
+                                        ctx.lineWidth = 3.2
+                                        ctx.strokeStyle = Qt.rgba(240/255, 242/255, 240/255, 0.38)
                                         for (var k = 0; k < 3; k++) {
                                             var ang1 = a1 + (k * step1)
                                             ctx.beginPath()
@@ -2775,10 +4210,10 @@ Item {
                                         // Track 2 (Mid Arc, r = 50px): 3 pieces 120° apart
                                         var r2 = 50.0
                                         var a2 = phase * 0.24
-                                        var arcSpan2 = (32.0 / r2) / 2.0
+                                        var arcSpan2 = (36.0 / r2) / 2.0
                                         var step2 = (2.0 * Math.PI) / 3.0
                                         ctx.save()
-                                        ctx.lineWidth = 2.6
+                                        ctx.lineWidth = 3.2
                                         ctx.strokeStyle = Qt.rgba(240/255, 242/255, 240/255, 0.40)
                                         for (var j = 0; j < 3; j++) {
                                             var ang2 = a2 + (j * step2)
@@ -2793,9 +4228,23 @@ Item {
                                         var satAngle = -phase * 0.24
                                         var tailAngle = 36.0 * (Math.PI / 180.0)
 
-                                        // Fading comet tails + nodes
+                                        // Synchronized orbit arcs in gaps between the 2 satellites
+                                        var arcHalfSpan3 = (34.0 * Math.PI) / 180.0
+                                        var gapMidOffset = (Math.PI + tailAngle) / 2.0
+                                        ctx.save()
+                                        ctx.lineWidth = 2.4
+                                        ctx.strokeStyle = Qt.rgba(240/255, 242/255, 240/255, 0.26)
+                                        for (var s = 0; s < 2; s++) {
+                                            var midAngle = satAngle + gapMidOffset + (s * Math.PI)
+                                            ctx.beginPath()
+                                            ctx.arc(cx, cy, r3, midAngle - arcHalfSpan3, midAngle + arcHalfSpan3)
+                                            ctx.stroke()
+                                        }
+                                        ctx.restore()
+
+                                        // Fading comet tails + Bullseye nodes
                                         function drawCometNode(ang) {
-                                            var steps = 18
+                                            var steps = 20
                                             var sAngle = tailAngle / steps
                                             for (var t = 0; t < steps; t++) {
                                                 var st = ang + t * sAngle
@@ -2803,8 +4252,8 @@ Item {
                                                 var frac = 1.0 - (t / steps)
                                                 ctx.beginPath()
                                                 ctx.arc(cx, cy, r3, st, en)
-                                                ctx.lineWidth = 2.0 * (0.5 + 0.5 * frac)
-                                                ctx.strokeStyle = Qt.rgba(col.r, col.g, col.b, frac * 0.55)
+                                                ctx.lineWidth = 2.2 * (0.5 + 0.5 * frac)
+                                                ctx.strokeStyle = Qt.rgba(primaryCol.r, primaryCol.g, primaryCol.b, frac * 0.60)
                                                 ctx.stroke()
                                             }
 
@@ -2813,17 +4262,17 @@ Item {
 
                                             // Outer ring
                                             ctx.beginPath()
-                                            ctx.arc(sx, sy, 4.8, 0, Math.PI * 2)
+                                            ctx.arc(sx, sy, 5.2, 0, Math.PI * 2)
                                             ctx.lineWidth = 1.2
-                                            ctx.strokeStyle = Qt.rgba(col.r, col.g, col.b, 0.75)
-                                            ctx.fillStyle = Qt.rgba(col.r, col.g, col.b, 0.15)
+                                            ctx.strokeStyle = Qt.rgba(primaryCol.r, primaryCol.g, primaryCol.b, 0.75)
+                                            ctx.fillStyle = Qt.rgba(primaryCol.r, primaryCol.g, primaryCol.b, 0.15)
                                             ctx.fill()
                                             ctx.stroke()
 
                                             // Inner core
                                             ctx.beginPath()
-                                            ctx.arc(sx, sy, 2.4, 0, Math.PI * 2)
-                                            ctx.fillStyle = Qt.rgba(col.r, col.g, col.b, 0.95)
+                                            ctx.arc(sx, sy, 2.6, 0, Math.PI * 2)
+                                            ctx.fillStyle = Qt.rgba(primaryCol.r, primaryCol.g, primaryCol.b, 0.95)
                                             ctx.fill()
                                         }
 
@@ -2832,13 +4281,13 @@ Item {
                                     }
                                 }
 
-                                // 3C. Siri-Style / Liquid Halo Audio Visualizer Waveform Bars (Arranged in a ring)
+                                // 2B. Siri-Style / Liquid Halo Audio Visualizer (Visible when media playing is ON)
                                 Item {
                                     id: visualizerHalo
                                     anchors.centerIn: parent
                                     width: Theme.px(150)
                                     height: Theme.px(150)
-                                    visible: root.vanishMediaPlaying
+                                    visible: opacity > 0.01
                                     opacity: root.vanishMediaPlaying ? 1.0 : 0.0
                                     Behavior on opacity { NumberAnimation { duration: 250 } }
 
@@ -2851,7 +4300,7 @@ Item {
                                             rotation: index * (360.0 / 32)
 
                                             readonly property real wave: Math.abs(Math.sin(vanishWorkspace.continuousPhase * 2.2 + index * 0.45) * Math.cos(vanishWorkspace.continuousPhase * 1.4 + index * 0.25))
-                                            readonly property real barLen: Theme.px(3) + Theme.px(10) * wave
+                                            readonly property real barLen: Theme.px(3) + Theme.px(9) * wave
 
                                             Rectangle {
                                                 anchors.horizontalCenter: parent.horizontalCenter
@@ -2859,19 +4308,19 @@ Item {
                                                 width: Theme.px(2)
                                                 height: barLen
                                                 radius: Theme.px(1)
-                                                color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40 + (0.50 * parent.wave))
+                                                color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.35 + (0.55 * parent.wave))
                                             }
                                         }
                                     }
                                 }
 
-                                // 3D. Circular Neon Music Progress Arc & Leading Specular Glowing Dot
+                                // 2C. Circular Neon Music Progress Arc (Visible when media playing is ON)
                                 Canvas {
                                     id: circularProgressCanvas
                                     anchors.centerIn: parent
                                     width: Theme.px(150)
                                     height: Theme.px(150)
-                                    visible: root.vanishMediaPlaying
+                                    visible: opacity > 0.01
                                     opacity: root.vanishMediaPlaying ? 1.0 : 0.0
                                     Behavior on opacity { NumberAnimation { duration: 250 } }
 
@@ -2887,16 +4336,14 @@ Item {
                                         ctx.clearRect(0, 0, width, height)
                                         var cx = width / 2
                                         var cy = height / 2
-                                        var trackR = Theme.px(66)
+                                        var trackR = Theme.px(65)
                                         var col = Theme.primary
 
-                                        // Simulated track progress fraction: 42%
                                         var frac = 0.42
                                         var startAngle = -Math.PI / 2
                                         var sweepAngle = frac * 2 * Math.PI
                                         var endAngle = startAngle + sweepAngle
 
-                                        // Background track hairline
                                         ctx.save()
                                         ctx.beginPath()
                                         ctx.arc(cx, cy, trackR, 0, Math.PI * 2)
@@ -2904,7 +4351,6 @@ Item {
                                         ctx.strokeStyle = Qt.rgba(1, 1, 1, 0.08)
                                         ctx.stroke()
 
-                                        // Active progress arc
                                         ctx.beginPath()
                                         ctx.arc(cx, cy, trackR, startAngle, endAngle)
                                         ctx.lineWidth = 2.4
@@ -2912,7 +4358,6 @@ Item {
                                         ctx.lineCap = "round"
                                         ctx.stroke()
 
-                                        // Leading Specular Glowing Dot
                                         var headX = cx + trackR * Math.cos(endAngle)
                                         var headY = cy + trackR * Math.sin(endAngle)
 
@@ -2930,7 +4375,7 @@ Item {
                                     }
                                 }
 
-                                // 3E. Central Core Disc
+                                // 2D. Central Core Disc (ONLY Time inside, bold crisp white!)
                                 Rectangle {
                                     id: vanishCoreDisc
                                     anchors.centerIn: parent
@@ -2938,96 +4383,85 @@ Item {
                                     height: Theme.px(54)
                                     radius: width / 2
                                     z: 10
-                                    color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.96)
-                                    border.color: Theme.primary
-                                    border.width: 1.5
+                                    color: Qt.rgba(0.08, 0.085, 0.10, 0.94)
+                                    border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.45)
+                                    border.width: 1.2
 
                                     // Pulsing Outer Neon Halo
                                     Rectangle {
                                         anchors.centerIn: parent
-                                        width: parent.width + Theme.px(12)
+                                        width: parent.width + Theme.px(10)
                                         height: width
                                         radius: width / 2
                                         color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.22)
-                                        opacity: root.vanishMediaPlaying ? 0.65 : 0.35
+                                        opacity: root.vanishMediaPlaying ? 0.60 : 0.30
                                         z: -1
                                         Behavior on opacity { NumberAnimation { duration: 250 } }
                                     }
 
-                                    ColumnLayout {
+                                    // Crisp Bold Time Readout (NO DATE INSIDE!)
+                                    Text {
                                         anchors.centerIn: parent
-                                        spacing: 1
+                                        text: Qt.formatTime(new Date(), "hh:mm")
+                                        font.family: Theme.fontMono
+                                        font.pixelSize: Theme.fontPx(12.5)
+                                        font.weight: Font.Bold
+                                        color: "#FFFFFF"
+                                    }
 
-                                        Text {
-                                            text: Qt.formatTime(new Date(), "hh:mm")
-                                            font.family: Theme.font
-                                            font.pixelSize: Theme.fontPx(11.5)
-                                            font.weight: Font.Bold
-                                            color: Theme.primary
-                                            Layout.alignment: Qt.AlignHCenter
-                                        }
-
-                                        Text {
-                                            text: Qt.formatDate(new Date(), "MMM d").toUpperCase()
-                                            font.family: Theme.fontMono
-                                            font.pixelSize: Theme.fontPx(7.5)
-                                            color: Qt.rgba(1, 1, 1, 0.55)
-                                            Layout.alignment: Qt.AlignHCenter
-                                        }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.vanishMediaPlaying = !root.vanishMediaPlaying
                                     }
                                 }
                             }
 
-                            // ── 4. Organic Music & Synced Lyrics Overlay (Matches nucleusMusicOverlay) ──
+                            // ── 3. Floating Media Player & Morphing Date Display below Atom ──
                             Item {
-                                id: vanishMusicOverlay
+                                id: vanishFloatingMedia
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                y: vanishWorkspace.cy + Theme.px(74)
-                                width: Math.min(parent.width - Theme.px(32), Theme.px(420))
-                                height: Theme.px(74)
+                                y: vanishWorkspace.cy + (root.vanishMediaPlaying ? Theme.px(74) : Theme.px(60))
+                                width: Math.min(parent.width - Theme.px(32), Theme.px(380))
+                                height: root.vanishMediaPlaying ? Theme.px(82) : Theme.px(24)
                                 z: 15
-                                visible: opacity > 0.01
-                                opacity: root.vanishMediaPlaying ? 1.0 : 0.0
-                                scale: root.vanishMediaPlaying ? 1.0 : 0.92
 
-                                Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
-                                Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutBack; easing.overshoot: 1.08 } }
-                                Behavior on y { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+                                Behavior on y { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+                                Behavior on height { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
 
-                                Rectangle {
+                                ColumnLayout {
                                     anchors.fill: parent
-                                    radius: Theme.px(12)
-                                    color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.88)
-                                    border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.35)
-                                    border.width: 1
-                                    clip: true
+                                    spacing: Theme.px(4)
 
-                                    ColumnLayout {
-                                        anchors.fill: parent
-                                        anchors.margins: Theme.px(8)
-                                        spacing: Theme.px(4)
+                                    // 3A. Track Title & Artist with Album Art Thumbnail (Visible when media playing)
+                                    Item {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: root.vanishMediaPlaying ? Theme.px(30) : 0
+                                        visible: opacity > 0.01
+                                        opacity: root.vanishMediaPlaying ? 1.0 : 0.0
+                                        Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+                                        Behavior on Layout.preferredHeight { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
 
-                                        // Top Row: Rotating Album Art Micro-Orb + Track Info + Transport Buttons
                                         RowLayout {
-                                            Layout.fillWidth: true
-                                            spacing: Theme.px(10)
+                                            anchors.centerIn: parent
+                                            spacing: Theme.px(8)
 
-                                            // Rotating Vinyl / Album Art Micro-Orb
+                                            // Rounded Square Album Art Thumbnail
                                             Rectangle {
-                                                Layout.preferredWidth: Theme.px(28)
-                                                Layout.preferredHeight: Theme.px(28)
-                                                radius: width / 2
-                                                color: Qt.rgba(0, 0, 0, 0.50)
-                                                border.color: Theme.primary
-                                                border.width: 1.2
+                                                Layout.preferredWidth: Theme.px(26)
+                                                Layout.preferredHeight: Theme.px(26)
+                                                radius: Theme.px(5)
+                                                color: Qt.rgba(0.08, 0.10, 0.14, 0.85)
+                                                border.color: Qt.rgba(1, 1, 1, 0.18)
+                                                border.width: 1
                                                 clip: true
 
                                                 Image {
                                                     anchors.fill: parent
                                                     source: (typeof LyricsService !== "undefined" && LyricsService.artUrl) ? LyricsService.artUrl : ""
-                                                    sourceSize: Qt.size(56, 56)
+                                                    sourceSize: Qt.size(52, 52)
                                                     fillMode: Image.PreserveAspectCrop
-                                                    visible: status === Image.Ready
+                                                    visible: status === Image.Ready && source !== ""
                                                 }
 
                                                 Text {
@@ -3036,142 +4470,165 @@ Item {
                                                     font.family: Theme.fontMono
                                                     font.pixelSize: Theme.fontPx(13)
                                                     color: Theme.primary
-                                                    visible: parent.children[0].status !== Image.Ready
-                                                }
-
-                                                RotationAnimation on rotation {
-                                                    running: root.vanishMediaPlaying
-                                                    loops: Animation.Infinite
-                                                    from: 0
-                                                    to: 360
-                                                    duration: 4000
+                                                    visible: parent.children[0].status !== Image.Ready || !parent.children[0].source
                                                 }
                                             }
 
-                                            // Track Title & Artist
+                                            // Title & Artist Column
                                             ColumnLayout {
-                                                Layout.fillWidth: true
                                                 spacing: 1
-
                                                 Text {
-                                                    text: (typeof LyricsService !== "undefined" && LyricsService.songTitle) ? LyricsService.songTitle : "Do I Wanna Know?"
+                                                    text: (typeof LyricsService !== "undefined" && LyricsService.trackTitle) ? LyricsService.trackTitle : "ELECTROCHEMISTRY in One Shot: All Con..."
                                                     font.family: Theme.font
                                                     font.pixelSize: Theme.fontPx(11.5)
                                                     font.weight: Font.Bold
-                                                    color: Qt.rgba(1, 1, 0.95, 1.0)
+                                                    color: "#FFFFFF"
                                                     elide: Text.ElideRight
-                                                    Layout.fillWidth: true
+                                                    Layout.maximumWidth: Theme.px(240)
                                                 }
 
                                                 Text {
-                                                    text: (typeof LyricsService !== "undefined" && LyricsService.artist) ? LyricsService.artist : "Arctic Monkeys • AM"
+                                                    text: (typeof LyricsService !== "undefined" && LyricsService.trackArtist) ? LyricsService.trackArtist : "JEE Wallah"
                                                     font.family: Theme.font
                                                     font.pixelSize: Theme.fontPx(9.5)
                                                     color: Qt.rgba(1, 1, 1, 0.55)
                                                     elide: Text.ElideRight
-                                                    Layout.fillWidth: true
-                                                }
-                                            }
-
-                                            // Transport Controls
-                                            RowLayout {
-                                                spacing: Theme.px(6)
-
-                                                // Skip Previous
-                                                Rectangle {
-                                                    Layout.preferredWidth: Theme.px(22)
-                                                    Layout.preferredHeight: Theme.px(22)
-                                                    radius: width / 2
-                                                    color: Qt.rgba(1, 1, 1, 0.08)
-                                                    Text {
-                                                        anchors.centerIn: parent
-                                                        text: "󰒮"
-                                                        font.family: Theme.fontMono
-                                                        font.pixelSize: Theme.fontPx(11)
-                                                        color: Qt.rgba(1, 1, 1, 0.75)
-                                                    }
-                                                }
-
-                                                // Play / Pause (Accent Pill)
-                                                Rectangle {
-                                                    Layout.preferredWidth: Theme.px(24)
-                                                    Layout.preferredHeight: Theme.px(24)
-                                                    radius: width / 2
-                                                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25)
-                                                    border.color: Theme.primary
-                                                    border.width: 1
-                                                    Text {
-                                                        anchors.centerIn: parent
-                                                        text: "󰏤"
-                                                        font.family: Theme.fontMono
-                                                        font.pixelSize: Theme.fontPx(12)
-                                                        color: Theme.primary
-                                                    }
-                                                }
-
-                                                // Skip Next
-                                                Rectangle {
-                                                    Layout.preferredWidth: Theme.px(22)
-                                                    Layout.preferredHeight: Theme.px(22)
-                                                    radius: width / 2
-                                                    color: Qt.rgba(1, 1, 1, 0.08)
-                                                    Text {
-                                                        anchors.centerIn: parent
-                                                        text: "󰒭"
-                                                        font.family: Theme.fontMono
-                                                        font.pixelSize: Theme.fontPx(11)
-                                                        color: Qt.rgba(1, 1, 1, 0.75)
-                                                    }
+                                                    Layout.maximumWidth: Theme.px(240)
                                                 }
                                             }
                                         }
+                                    }
 
-                                        // Bottom Row: Scrubber Bar + Live Synced Lyric Line
+                                    // 3B. Transport Controls Row (Visible when media playing)
+                                    Item {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: root.vanishMediaPlaying ? Theme.px(28) : 0
+                                        visible: opacity > 0.01
+                                        opacity: root.vanishMediaPlaying ? 1.0 : 0.0
+                                        Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+                                        Behavior on Layout.preferredHeight { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+
                                         RowLayout {
-                                            Layout.fillWidth: true
-                                            spacing: Theme.px(8)
+                                            anchors.centerIn: parent
+                                            spacing: Theme.px(10)
 
-                                            // Scrubber Bar
-                                            Rectangle {
-                                                Layout.preferredWidth: Theme.px(100)
-                                                Layout.preferredHeight: Theme.px(3)
-                                                radius: Theme.px(1.5)
-                                                color: Qt.rgba(1, 1, 1, 0.12)
-
-                                                Rectangle {
-                                                    width: parent.width * 0.42
-                                                    height: parent.height
-                                                    radius: parent.radius
-                                                    color: Theme.primary
-                                                }
-                                            }
-
+                                            // Elapsed Time
                                             Text {
-                                                text: "01:42"
+                                                text: (typeof LyricsService !== "undefined" && LyricsService.currentPosition !== undefined) ? LyricsService.formatTime(LyricsService.currentPosition) : "110:20"
                                                 font.family: Theme.fontMono
-                                                font.pixelSize: Theme.fontPx(8)
-                                                color: Qt.rgba(1, 1, 1, 0.40)
+                                                font.pixelSize: Theme.fontPx(9)
+                                                color: Qt.rgba(1, 1, 1, 0.45)
                                             }
 
-                                            Item { Layout.fillWidth: true }
+                                            // Prev Button
+                                            Rectangle {
+                                                Layout.preferredWidth: Theme.px(22)
+                                                Layout.preferredHeight: Theme.px(22)
+                                                radius: width / 2
+                                                color: prevMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0.08, 0.10, 0.14, 0.70)
+                                                border.color: prevMouse.containsMouse ? Theme.primary : Qt.rgba(1, 1, 1, 0.14)
+                                                border.width: 1
 
-                                            // Floating Live Synced Lyric Line
-                                            RowLayout {
-                                                spacing: Theme.px(4)
                                                 Text {
-                                                    text: "󰎈"
+                                                    anchors.centerIn: parent
+                                                    text: "󰒮"
                                                     font.family: Theme.fontMono
-                                                    font.pixelSize: Theme.fontPx(9)
-                                                    color: Theme.primary
+                                                    font.pixelSize: Theme.fontPx(11)
+                                                    color: prevMouse.containsMouse ? Theme.primary : Qt.rgba(1, 1, 1, 0.75)
                                                 }
-                                                Text {
-                                                    text: (typeof LyricsService !== "undefined" && LyricsService.currentLine && LyricsService.currentLine.trim().length > 0) ? LyricsService.currentLine : "\"Crawlin' back to you...\""
-                                                    font.family: Theme.font
-                                                    font.pixelSize: Theme.fontPx(10)
-                                                    font.italic: true
-                                                    color: Theme.primary
+
+                                                MouseArea {
+                                                    id: prevMouse
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: {
+                                                        if (typeof LyricsService !== "undefined" && LyricsService.skipPrevious) LyricsService.skipPrevious()
+                                                    }
                                                 }
                                             }
+
+                                            // Play / Pause Button (Solid light salmon/coral circle with dark icon)
+                                            Rectangle {
+                                                Layout.preferredWidth: Theme.px(28)
+                                                Layout.preferredHeight: Theme.px(28)
+                                                radius: width / 2
+                                                color: playMouse.containsMouse ? Qt.rgba(255/255, 185/255, 185/255, 1.0) : Qt.rgba(255/255, 165/255, 165/255, 1.0)
+                                                scale: playMouse.containsMouse ? 1.08 : 1.0
+                                                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
+
+                                                Text {
+                                                    anchors.centerIn: parent
+                                                    text: (typeof LyricsService !== "undefined" && LyricsService.isPlaying) ? "󰏤" : "󰐊"
+                                                    font.family: Theme.fontMono
+                                                    font.pixelSize: Theme.fontPx(12)
+                                                    font.weight: Font.Bold
+                                                    color: "#0b0e14"
+                                                }
+
+                                                MouseArea {
+                                                    id: playMouse
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: {
+                                                        if (typeof LyricsService !== "undefined" && LyricsService.togglePlaying) {
+                                                            LyricsService.togglePlaying()
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // Next Button
+                                            Rectangle {
+                                                Layout.preferredWidth: Theme.px(22)
+                                                Layout.preferredHeight: Theme.px(22)
+                                                radius: width / 2
+                                                color: nextMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0.08, 0.10, 0.14, 0.70)
+                                                border.color: nextMouse.containsMouse ? Theme.primary : Qt.rgba(1, 1, 1, 0.14)
+                                                border.width: 1
+
+                                                Text {
+                                                    anchors.centerIn: parent
+                                                    text: "󰒭"
+                                                    font.family: Theme.fontMono
+                                                    font.pixelSize: Theme.fontPx(11)
+                                                    color: nextMouse.containsMouse ? Theme.primary : Qt.rgba(1, 1, 1, 0.75)
+                                                }
+
+                                                MouseArea {
+                                                    id: nextMouse
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: {
+                                                        if (typeof LyricsService !== "undefined" && LyricsService.skipNext) LyricsService.skipNext()
+                                                    }
+                                                }
+                                            }
+
+                                            // Total Duration
+                                            Text {
+                                                text: (typeof LyricsService !== "undefined" && LyricsService.duration !== undefined) ? LyricsService.formatTime(LyricsService.duration) : "472:05"
+                                                font.family: Theme.fontMono
+                                                font.pixelSize: Theme.fontPx(9)
+                                                color: Qt.rgba(1, 1, 1, 0.45)
+                                            }
+                                        }
+                                    }
+
+                                    // 3C. Centered Date Caption (Always visible; rests directly below atom when media is off)
+                                    Item {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: Theme.px(18)
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: Qt.formatDate(new Date(), "ddd d MMM")
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(11)
+                                            font.weight: Font.DemiBold
+                                            color: Qt.rgba(1, 1, 1, 0.85)
                                         }
                                     }
                                 }
