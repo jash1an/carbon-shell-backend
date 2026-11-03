@@ -107,6 +107,28 @@ pub struct GitHubPayload {
     pub feedback: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct CpuCore {
+    pub id: usize,
+    pub usage: f32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct SystemTelemetryPayload {
+    pub cpu_usage: f32,
+    pub cpu_cores: Vec<CpuCore>,
+    pub cpu_temp: f32,
+    pub ram_used_bytes: u64,
+    pub ram_total_bytes: u64,
+    pub swap_used_bytes: u64,
+    pub swap_total_bytes: u64,
+    pub net_rx_bps: u64,
+    pub net_tx_bps: u64,
+    pub kernel_version: String,
+    pub uptime_seconds: u64,
+    pub uptime_formatted: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RadarPayload {
     pub vault: Vec<NoteItem>,
@@ -114,6 +136,7 @@ pub struct RadarPayload {
     pub apps: Vec<String>,
     pub agenda: Vec<AgendaItem>,
     pub github: GitHubPayload,
+    pub telemetry: SystemTelemetryPayload,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -1433,12 +1456,159 @@ impl GitHubState {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Hardware Telemetry Monitor (sysinfo)
+// ─────────────────────────────────────────────────────────────────────────────
+
+pub struct HardwareMonitor {
+    sys: sysinfo::System,
+    networks: sysinfo::Networks,
+    components: sysinfo::Components,
+    last_refresh: std::time::Instant,
+}
+
+impl HardwareMonitor {
+    pub fn new() -> Self {
+        let mut sys = sysinfo::System::new_all().unwrap_or_else(|_| sysinfo::System::new().unwrap());
+        sys.refresh_all();
+        let networks = sysinfo::Networks::new_with_refreshed_list()
+            .unwrap_or_else(|_| sysinfo::Networks::new().unwrap());
+        let components = sysinfo::Components::new_with_refreshed_list()
+            .unwrap_or_else(|_| sysinfo::Components::new().unwrap());
+        Self {
+            sys,
+            networks,
+            components,
+            last_refresh: std::time::Instant::now(),
+        }
+    }
+
+    pub fn poll(&mut self) -> SystemTelemetryPayload {
+        let elapsed = self.last_refresh.elapsed().as_secs_f64().max(0.5);
+        self.last_refresh = std::time::Instant::now();
+
+        self.sys.refresh_cpu_all();
+        self.sys.refresh_memory();
+        self.networks.refresh(true);
+        self.components.refresh(true);
+
+        // Global and per-core CPU usage
+        let cpu_usage = self.sys.global_cpu_usage();
+        let cpu_cores = self
+            .sys
+            .cpus()
+            .iter()
+            .enumerate()
+            .map(|(id, cpu)| CpuCore {
+                id,
+                usage: cpu.usage(),
+            })
+            .collect();
+
+        // CPU Temperature
+        let mut cpu_temp: f32 = 0.0;
+        for c in self.components.iter() {
+            let label = c.label().to_lowercase();
+            if label.contains("package id")
+                || label.contains("cpu")
+                || label.contains("tdie")
+                || label.contains("tctl")
+                || label.contains("core 0")
+            {
+                if let Some(t) = c.temperature() {
+                    if t > 0.0 {
+                        cpu_temp = t;
+                        break;
+                    }
+                }
+            }
+        }
+        if cpu_temp == 0.0 {
+            for c in self.components.iter() {
+                if let Some(t) = c.temperature() {
+                    if t > 0.0 {
+                        cpu_temp = t;
+                        break;
+                    }
+                }
+            }
+        }
+        if cpu_temp == 0.0 {
+            if let Ok(entries) = fs::read_dir("/sys/class/thermal") {
+                for entry in entries.flatten() {
+                    let path = entry.path().join("temp");
+                    if let Ok(content) = fs::read_to_string(&path) {
+                        if let Ok(raw_t) = content.trim().parse::<f32>() {
+                            let t = if raw_t > 200.0 { raw_t / 1000.0 } else { raw_t };
+                            if t > 0.0 {
+                                cpu_temp = t;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // RAM & SWAP
+        let ram_total_bytes = self.sys.total_memory();
+        let ram_used_bytes = self.sys.used_memory();
+        let swap_total_bytes = self.sys.total_swap();
+        let swap_used_bytes = self.sys.used_swap();
+
+        // Network Up/Down speeds (bytes per second)
+        let mut total_rx_delta: u64 = 0;
+        let mut total_tx_delta: u64 = 0;
+        for (name, data) in self.networks.iter() {
+            let name_str = name.to_string_lossy().to_lowercase();
+            if name_str != "lo" {
+                total_rx_delta += data.received();
+                total_tx_delta += data.transmitted();
+            }
+        }
+        let net_rx_bps = ((total_rx_delta as f64) / elapsed).round() as u64;
+        let net_tx_bps = ((total_tx_delta as f64) / elapsed).round() as u64;
+
+        // Kernel & Uptime
+        let kernel_version = sysinfo::System::kernel_version()
+            .unwrap_or_else(|_| "Linux".to_string());
+        let uptime_seconds = sysinfo::System::uptime().unwrap_or_default();
+        let hours = uptime_seconds / 3600;
+        let mins = (uptime_seconds % 3600) / 60;
+        let uptime_formatted = if hours >= 24 {
+            let days = hours / 24;
+            let rem_hours = hours % 24;
+            format!("{}d {}h", days, rem_hours)
+        } else if hours > 0 {
+            format!("{}h {}m", hours, mins)
+        } else {
+            format!("{}m", mins)
+        };
+
+        SystemTelemetryPayload {
+            cpu_usage,
+            cpu_cores,
+            cpu_temp,
+            ram_used_bytes,
+            ram_total_bytes,
+            swap_used_bytes,
+            swap_total_bytes,
+            net_rx_bps,
+            net_tx_bps,
+            kernel_version,
+            uptime_seconds,
+            uptime_formatted,
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Payload & Emission
 // ─────────────────────────────────────────────────────────────────────────────
 
 async fn build_payload(
     tally: &Arc<Mutex<HashMap<String, u32>>>,
     gh_state: &Arc<Mutex<GitHubState>>,
+    hw_monitor: &Arc<Mutex<HardwareMonitor>>,
 ) -> RadarPayload {
     let apps = {
         let map = tally.lock().await;
@@ -1486,12 +1656,18 @@ async fn build_payload(
         feedback,
     };
 
+    let telemetry = {
+        let mut hw = hw_monitor.lock().await;
+        hw.poll()
+    };
+
     RadarPayload {
         vault: fetch_obsidian_notes(),
         clipboard: fetch_clipboard(),
         apps,
         agenda: fetch_agenda(),
         github,
+        telemetry,
     }
 }
 
@@ -1703,24 +1879,25 @@ async fn main() {
         }
     });
 
+    let hw_monitor = Arc::new(Mutex::new(HardwareMonitor::new()));
     let mut stdin_reader = BufReader::new(tokio::io::stdin()).lines();
     let mut ticker = tokio::time::interval(Duration::from_secs(2));
 
     // Emit initial payload immediately
-    let initial = build_payload(&tally, &gh_state).await;
+    let initial = build_payload(&tally, &gh_state, &hw_monitor).await;
     emit_payload(&initial);
 
     loop {
         tokio::select! {
             _ = ticker.tick() => {
-                let payload = build_payload(&tally, &gh_state).await;
+                let payload = build_payload(&tally, &gh_state, &hw_monitor).await;
                 emit_payload(&payload);
             }
             line = stdin_reader.next_line() => {
                 match line {
                     Ok(Some(raw_line)) => {
                         handle_action_command(&raw_line, &gh_state, &client).await;
-                        let payload = build_payload(&tally, &gh_state).await;
+                        let payload = build_payload(&tally, &gh_state, &hw_monitor).await;
                         emit_payload(&payload);
                     }
                     Ok(None) => {
@@ -1773,5 +1950,28 @@ mod tests {
         }
         assert!(!repos.is_empty(), "Should find repos matching 'carbon-shell'");
         assert!(repos.iter().any(|r| r.name.to_lowercase().contains("carbon")));
+    }
+
+    #[tokio::test]
+    async fn test_sysinfo_polling() {
+        let mut hw = HardwareMonitor::new();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let telemetry = hw.poll();
+
+        println!("Global CPU: {:.1}%", telemetry.cpu_usage);
+        println!("CPU Cores ({} cores):", telemetry.cpu_cores.len());
+        for core in &telemetry.cpu_cores {
+            println!("  Core {}: {:.1}%", core.id, core.usage);
+        }
+        println!("CPU Temp: {:.1}°C", telemetry.cpu_temp);
+        println!("RAM: {} / {} bytes", telemetry.ram_used_bytes, telemetry.ram_total_bytes);
+        println!("SWAP: {} / {} bytes", telemetry.swap_used_bytes, telemetry.swap_total_bytes);
+        println!("Net: RX {} B/s, TX {} B/s", telemetry.net_rx_bps, telemetry.net_tx_bps);
+        println!("Kernel: {}", telemetry.kernel_version);
+        println!("Uptime: {} ({})", telemetry.uptime_seconds, telemetry.uptime_formatted);
+
+        assert!(!telemetry.cpu_cores.is_empty(), "Should report CPU cores");
+        assert!(telemetry.ram_total_bytes > 0, "Should report total RAM");
+        assert!(!telemetry.kernel_version.is_empty(), "Should report kernel version");
     }
 }

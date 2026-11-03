@@ -194,7 +194,7 @@ PanelWindow {
     }
 
     // Data models populated by carbon-radar-engine
-    property string currentChannel: "overview" // "overview" | "github"
+    property string currentChannel: "overview" // "overview" | "github" | "telemetry"
     property var vaultItems: []
     property var clipboardItems: []
     property var appsItems: []
@@ -217,6 +217,28 @@ PanelWindow {
         },
         feedback: ""
     })
+    property var telemetryPayload: ({
+        cpu_usage: 0.0,
+        cpu_cores: [],
+        cpu_temp: 0.0,
+        ram_used_bytes: 0,
+        ram_total_bytes: 0,
+        swap_used_bytes: 0,
+        swap_total_bytes: 0,
+        net_rx_bps: 0,
+        net_tx_bps: 0,
+        kernel_version: "Linux",
+        uptime_seconds: 0,
+        uptime_formatted: "--"
+    })
+
+    function formatBytesSpeed(bytes) {
+        if (!bytes || bytes <= 0) return "0.0 B/s"
+        if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + " GB/s"
+        if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + " MB/s"
+        if (bytes >= 1024) return (bytes / 1024).toFixed(1) + " KB/s"
+        return bytes + " B/s"
+    }
     readonly property var filteredAgenda: {
         if (!agendaItems || !Array.isArray(agendaItems)) return []
         var now = new Date()
@@ -295,6 +317,9 @@ PanelWindow {
                         if (payload.github.feedback) {
                             commandCenterWindow.showFeedback(payload.github.feedback)
                         }
+                    }
+                    if (payload.telemetry !== undefined) {
+                        commandCenterWindow.telemetryPayload = payload.telemetry
                     }
                     commandCenterWindow.engineConnected = true
                 } catch(e) {}
@@ -541,10 +566,16 @@ PanelWindow {
                     commandCenterWindow.currentChannel = "github"
                     githubUplinkView.contentY = 0
                     if (event) event.accepted = true
+                } else if (commandCenterWindow.currentChannel === "github") {
+                    commandCenterWindow.currentChannel = "telemetry"
+                    if (event) event.accepted = true
                 }
             }
             Keys.onLeftPressed: function(event) {
-                if (commandCenterWindow.currentChannel === "github") {
+                if (commandCenterWindow.currentChannel === "telemetry") {
+                    commandCenterWindow.currentChannel = "github"
+                    if (event) event.accepted = true
+                } else if (commandCenterWindow.currentChannel === "github") {
                     commandCenterWindow.currentChannel = "overview"
                     if (event) event.accepted = true
                 }
@@ -619,36 +650,114 @@ PanelWindow {
                     color: commandCenterWindow.engineConnected ? Theme.accent : Theme.fgDim
                 }
 
-                Text {
-                    text: commandCenterWindow.currentChannel === "github" ? "GitHub Uplink" : "View Point"
-                    Layout.alignment: Qt.AlignVCenter
-                    font.family: Theme.font
-                    font.pixelSize: Theme.fontPx(12)
-                    font.weight: Font.DemiBold
-                    color: Theme.fg
-                }
-
-                // Minimal page indicator dots (smooth indicator for Normal vs GitHub)
+                // Tri-Mode Channel Switcher Buttons
                 RowLayout {
                     Layout.alignment: Qt.AlignVCenter
-                    spacing: Theme.px(4)
+                    spacing: Theme.px(3)
 
+                    // [ LOCAL RADAR ]
                     Rectangle {
-                        width: commandCenterWindow.currentChannel === "overview" ? Theme.px(12) : Theme.px(5)
-                        height: Theme.px(5)
-                        radius: Theme.px(2.5)
-                        color: commandCenterWindow.currentChannel === "overview" ? Theme.accent : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.3)
-                        Behavior on width { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-                        Behavior on color { ColorAnimation { duration: 200 } }
+                        Layout.preferredHeight: Theme.px(22)
+                        Layout.preferredWidth: localRadarText.implicitWidth + Theme.px(14)
+                        radius: Theme.px(6)
+                        color: commandCenterWindow.currentChannel === "overview" 
+                            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16) 
+                            : (lrHover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.06) : "transparent")
+                        border.color: commandCenterWindow.currentChannel === "overview" 
+                            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45) 
+                            : Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.14)
+                        border.width: 1
+
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                        Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                        Text {
+                            id: localRadarText
+                            anchors.centerIn: parent
+                            text: "LOCAL RADAR"
+                            font.family: "JetBrains Mono"
+                            font.pixelSize: Theme.fontPx(9)
+                            font.bold: commandCenterWindow.currentChannel === "overview"
+                            color: commandCenterWindow.currentChannel === "overview" ? Theme.accent : Theme.fgDim
+                        }
+
+                        HoverHandler { id: lrHover }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: commandCenterWindow.currentChannel = "overview"
+                        }
                     }
 
+                    // [ GITHUB UPLINK ]
                     Rectangle {
-                        width: commandCenterWindow.currentChannel === "github" ? Theme.px(12) : Theme.px(5)
-                        height: Theme.px(5)
-                        radius: Theme.px(2.5)
-                        color: commandCenterWindow.currentChannel === "github" ? Theme.accent : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.3)
-                        Behavior on width { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-                        Behavior on color { ColorAnimation { duration: 200 } }
+                        Layout.preferredHeight: Theme.px(22)
+                        Layout.preferredWidth: ghUplinkText.implicitWidth + Theme.px(14)
+                        radius: Theme.px(6)
+                        color: commandCenterWindow.currentChannel === "github" 
+                            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16) 
+                            : (ghHover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.06) : "transparent")
+                        border.color: commandCenterWindow.currentChannel === "github" 
+                            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45) 
+                            : Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.14)
+                        border.width: 1
+
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                        Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                        Text {
+                            id: ghUplinkText
+                            anchors.centerIn: parent
+                            text: "GITHUB UPLINK"
+                            font.family: "JetBrains Mono"
+                            font.pixelSize: Theme.fontPx(9)
+                            font.bold: commandCenterWindow.currentChannel === "github"
+                            color: commandCenterWindow.currentChannel === "github" ? Theme.accent : Theme.fgDim
+                        }
+
+                        HoverHandler { id: ghHover }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                commandCenterWindow.currentChannel = "github"
+                                githubUplinkView.contentY = 0
+                            }
+                        }
+                    }
+
+                    // [ SYSTEM TELEMETRY ]
+                    Rectangle {
+                        Layout.preferredHeight: Theme.px(22)
+                        Layout.preferredWidth: sysTelemText.implicitWidth + Theme.px(14)
+                        radius: Theme.px(6)
+                        color: commandCenterWindow.currentChannel === "telemetry" 
+                            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16) 
+                            : (stHover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.06) : "transparent")
+                        border.color: commandCenterWindow.currentChannel === "telemetry" 
+                            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45) 
+                            : Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.14)
+                        border.width: 1
+
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                        Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                        Text {
+                            id: sysTelemText
+                            anchors.centerIn: parent
+                            text: "SYSTEM TELEMETRY"
+                            font.family: "JetBrains Mono"
+                            font.pixelSize: Theme.fontPx(9)
+                            font.bold: commandCenterWindow.currentChannel === "telemetry"
+                            color: commandCenterWindow.currentChannel === "telemetry" ? Theme.accent : Theme.fgDim
+                        }
+
+                        HoverHandler { id: stHover }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: commandCenterWindow.currentChannel = "telemetry"
+                        }
                     }
                 }
 
@@ -1490,7 +1599,7 @@ PanelWindow {
                 id: githubUplinkView
                 width: parent.width
                 height: parent.height
-                x: commandCenterWindow.currentChannel === "github" ? 0 : channelViewport.width
+                x: commandCenterWindow.currentChannel === "github" ? 0 : (commandCenterWindow.currentChannel === "overview" ? channelViewport.width : -channelViewport.width)
                 opacity: commandCenterWindow.currentChannel === "github" ? 1.0 : 0.0
                 visible: opacity > 0.01
                 clip: true
@@ -2317,6 +2426,636 @@ PanelWindow {
                 }
         }
     }
+
+            // ── CHANNEL 3: SYSTEM TELEMETRY (Hardware Performance) ──
+            Item {
+                id: systemTelemetryView
+                width: parent.width
+                height: parent.height
+                x: commandCenterWindow.currentChannel === "telemetry" ? 0 : channelViewport.width
+                opacity: commandCenterWindow.currentChannel === "telemetry" ? 1.0 : 0.0
+                visible: opacity > 0.01
+
+                Behavior on x {
+                    NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
+                }
+                Behavior on opacity {
+                    NumberAnimation { duration: 200 }
+                }
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: Theme.px(8)
+                    spacing: Theme.px(10)
+
+                    // ═════════════════════════════════════════════════════════
+                    // LEFT COLUMN: CPU & THERMALS
+                    // ═════════════════════════════════════════════════════════
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        radius: Theme.px(10)
+                        color: Qt.rgba(12/255, 14/255, 18/255, 0.65)
+                        border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
+                        border.width: 1
+
+                        // Top rim highlight
+                        Rectangle {
+                            anchors.top: parent.top
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.leftMargin: Theme.px(10)
+                            anchors.rightMargin: Theme.px(10)
+                            height: 1
+                            color: Qt.rgba(255/255, 255/255, 255/255, 0.12)
+                        }
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: Theme.px(12)
+                            spacing: Theme.px(8)
+
+                            // Header Tag Row
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.px(6)
+
+                                Text {
+                                    text: "speed"
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: Theme.fontPx(14)
+                                    color: Theme.accent
+                                }
+
+                                Text {
+                                    text: "CPU & THERMALS"
+                                    font.family: "JetBrains Mono"
+                                    font.pixelSize: Theme.fontPx(10)
+                                    font.bold: true
+                                    color: Theme.fgDim
+                                    Layout.fillWidth: true
+                                }
+                            }
+
+                            // Primary Readout: Load % + Temp Badge
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.px(8)
+
+                                Text {
+                                    text: (commandCenterWindow.telemetryPayload ? commandCenterWindow.telemetryPayload.cpu_usage.toFixed(1) : "0.0") + "%"
+                                    font.family: "JetBrains Mono"
+                                    font.pixelSize: Theme.fontPx(22)
+                                    font.bold: true
+                                    color: "white"
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                // Temp Badge
+                                Rectangle {
+                                    Layout.preferredHeight: Theme.px(22)
+                                    Layout.preferredWidth: cpuTempText.implicitWidth + Theme.px(12)
+                                    radius: Theme.px(4)
+                                    property real t: commandCenterWindow.telemetryPayload ? commandCenterWindow.telemetryPayload.cpu_temp : 0.0
+                                    color: t >= 85 ? Qt.rgba(1.0, 0.25, 0.25, 0.20) : (t >= 75 ? Qt.rgba(1.0, 0.7, 0.2, 0.20) : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18))
+                                    border.color: t >= 85 ? Qt.rgba(1.0, 0.35, 0.35, 0.45) : (t >= 75 ? Qt.rgba(1.0, 0.7, 0.2, 0.45) : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.40))
+                                    border.width: 1
+
+                                    RowLayout {
+                                        anchors.centerIn: parent
+                                        spacing: Theme.px(3)
+
+                                        Text {
+                                            text: "device_thermostat"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: Theme.fontPx(11)
+                                            color: parent.parent.t >= 85 ? Theme.error : (parent.parent.t >= 75 ? Theme.warning : Theme.accent)
+                                        }
+
+                                        Text {
+                                            id: cpuTempText
+                                            text: (commandCenterWindow.telemetryPayload && commandCenterWindow.telemetryPayload.cpu_temp > 0 ? commandCenterWindow.telemetryPayload.cpu_temp.toFixed(0) : "--") + "°C"
+                                            font.family: "JetBrains Mono"
+                                            font.pixelSize: Theme.fontPx(9.5)
+                                            font.bold: true
+                                            color: parent.parent.t >= 85 ? Theme.error : (parent.parent.t >= 75 ? Theme.warning : Theme.accent)
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Global CPU Bar
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: Theme.px(5)
+                                radius: Theme.px(2.5)
+                                color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.10)
+
+                                Rectangle {
+                                    height: parent.height
+                                    radius: parent.radius
+                                    width: parent.width * Math.min(1.0, Math.max(0.0, (commandCenterWindow.telemetryPayload ? commandCenterWindow.telemetryPayload.cpu_usage : 0.0) / 100.0))
+                                    color: (commandCenterWindow.telemetryPayload && commandCenterWindow.telemetryPayload.cpu_usage >= 85) ? Theme.error : Theme.accent
+                                    Behavior on width { NumberAnimation { duration: 180 } }
+                                }
+                            }
+
+                            // Luminous Divider
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.16)
+                            }
+
+                            // Subheader: Logical Cores
+                            Text {
+                                text: "LOGICAL CORES (" + (commandCenterWindow.telemetryPayload && commandCenterWindow.telemetryPayload.cpu_cores ? commandCenterWindow.telemetryPayload.cpu_cores.length : 0) + ")"
+                                font.family: "JetBrains Mono"
+                                font.pixelSize: Theme.fontPx(9)
+                                font.weight: Font.Medium
+                                color: Theme.fgDim
+                            }
+
+                            // Dense Grid of Individual CPU Cores
+                            Flickable {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                clip: true
+                                contentWidth: width
+                                contentHeight: coreGridCol.implicitHeight
+                                boundsBehavior: Flickable.StopAtBounds
+
+                                ColumnLayout {
+                                    id: coreGridCol
+                                    width: parent.width
+                                    spacing: Theme.px(4)
+
+                                    Repeater {
+                                        model: commandCenterWindow.telemetryPayload ? commandCenterWindow.telemetryPayload.cpu_cores : []
+
+                                        delegate: RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: Theme.px(5)
+
+                                            Text {
+                                                text: "C" + modelData.id
+                                                font.family: "JetBrains Mono"
+                                                font.pixelSize: Theme.fontPx(8.5)
+                                                font.bold: true
+                                                color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.70)
+                                                Layout.preferredWidth: Theme.px(22)
+                                            }
+
+                                            // Mini Core Load Bar
+                                            Rectangle {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Theme.px(4)
+                                                radius: Theme.px(2)
+                                                color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.10)
+
+                                                Rectangle {
+                                                    height: parent.height
+                                                    radius: parent.radius
+                                                    width: parent.width * Math.min(1.0, Math.max(0.0, modelData.usage / 100.0))
+                                                    color: modelData.usage >= 85 ? Theme.error : (modelData.usage >= 60 ? Theme.warning : Theme.accent)
+                                                    Behavior on width { NumberAnimation { duration: 180 } }
+                                                }
+                                            }
+
+                                            Text {
+                                                text: modelData.usage.toFixed(0) + "%"
+                                                font.family: "JetBrains Mono"
+                                                font.pixelSize: Theme.fontPx(8)
+                                                font.weight: Font.Medium
+                                                color: Theme.fgDim
+                                                horizontalAlignment: Text.AlignRight
+                                                Layout.preferredWidth: Theme.px(26)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ═════════════════════════════════════════════════════════
+                    // CENTER COLUMN: MEMORY ALLOCATION
+                    // ═════════════════════════════════════════════════════════
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        radius: Theme.px(10)
+                        color: Qt.rgba(12/255, 14/255, 18/255, 0.65)
+                        border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
+                        border.width: 1
+
+                        // Top rim highlight
+                        Rectangle {
+                            anchors.top: parent.top
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.leftMargin: Theme.px(10)
+                            anchors.rightMargin: Theme.px(10)
+                            height: 1
+                            color: Qt.rgba(255/255, 255/255, 255/255, 0.12)
+                        }
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: Theme.px(12)
+                            spacing: Theme.px(10)
+
+                            // Header Tag Row
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.px(6)
+
+                                Text {
+                                    text: "memory"
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: Theme.fontPx(14)
+                                    color: Theme.accent
+                                }
+
+                                Text {
+                                    text: "MEMORY ALLOCATION"
+                                    font.family: "JetBrains Mono"
+                                    font.pixelSize: Theme.fontPx(10)
+                                    font.bold: true
+                                    color: Theme.fgDim
+                                    Layout.fillWidth: true
+                                }
+                            }
+
+                            // ── RAM Section ──
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.px(4)
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+
+                                    Text {
+                                        text: "RAM USAGE"
+                                        font.family: "JetBrains Mono"
+                                        font.pixelSize: Theme.fontPx(9)
+                                        font.bold: true
+                                        color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.75)
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    Text {
+                                        property real used: commandCenterWindow.telemetryPayload ? (commandCenterWindow.telemetryPayload.ram_used_bytes / 1073741824) : 0
+                                        property real total: commandCenterWindow.telemetryPayload ? (commandCenterWindow.telemetryPayload.ram_total_bytes / 1073741824) : 0
+                                        property real pct: total > 0 ? (used / total * 100) : 0
+                                        text: pct.toFixed(0) + "%"
+                                        font.family: "JetBrains Mono"
+                                        font.pixelSize: Theme.fontPx(11)
+                                        font.bold: true
+                                        color: Theme.accent
+                                    }
+                                }
+
+                                // RAM Bar
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: Theme.px(7)
+                                    radius: Theme.px(3.5)
+                                    color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.10)
+
+                                    Rectangle {
+                                        height: parent.height
+                                        radius: parent.radius
+                                        property real used: commandCenterWindow.telemetryPayload ? commandCenterWindow.telemetryPayload.ram_used_bytes : 0
+                                        property real total: commandCenterWindow.telemetryPayload ? commandCenterWindow.telemetryPayload.ram_total_bytes : 1
+                                        width: parent.width * Math.min(1.0, Math.max(0.0, used / total))
+                                        color: (used / total >= 0.9) ? Theme.error : Theme.accent
+                                        Behavior on width { NumberAnimation { duration: 180 } }
+                                    }
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        property real used: commandCenterWindow.telemetryPayload ? (commandCenterWindow.telemetryPayload.ram_used_bytes / 1073741824) : 0
+                                        property real total: commandCenterWindow.telemetryPayload ? (commandCenterWindow.telemetryPayload.ram_total_bytes / 1073741824) : 0
+                                        text: used.toFixed(2) + " / " + total.toFixed(2) + " GB"
+                                        font.family: "JetBrains Mono"
+                                        font.pixelSize: Theme.fontPx(9)
+                                        color: Theme.fgDim
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                    Text {
+                                        property real free: commandCenterWindow.telemetryPayload ? ((commandCenterWindow.telemetryPayload.ram_total_bytes - commandCenterWindow.telemetryPayload.ram_used_bytes) / 1073741824) : 0
+                                        text: free.toFixed(1) + " GB free"
+                                        font.family: "JetBrains Mono"
+                                        font.pixelSize: Theme.fontPx(8.5)
+                                        color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.50)
+                                    }
+                                }
+                            }
+
+                            // Luminous Divider
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.16)
+                            }
+
+                            // ── SWAP Section ──
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.px(4)
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+
+                                    Text {
+                                        text: "SWAP USAGE"
+                                        font.family: "JetBrains Mono"
+                                        font.pixelSize: Theme.fontPx(9)
+                                        font.bold: true
+                                        color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.75)
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    Text {
+                                        property real used: commandCenterWindow.telemetryPayload ? (commandCenterWindow.telemetryPayload.swap_used_bytes / 1073741824) : 0
+                                        property real total: commandCenterWindow.telemetryPayload ? (commandCenterWindow.telemetryPayload.swap_total_bytes / 1073741824) : 0
+                                        property real pct: total > 0 ? (used / total * 100) : 0
+                                        text: pct.toFixed(0) + "%"
+                                        font.family: "JetBrains Mono"
+                                        font.pixelSize: Theme.fontPx(11)
+                                        font.bold: true
+                                        color: pct > 75 ? Theme.warning : Theme.accent
+                                    }
+                                }
+
+                                // SWAP Bar
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: Theme.px(7)
+                                    radius: Theme.px(3.5)
+                                    color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.10)
+
+                                    Rectangle {
+                                        height: parent.height
+                                        radius: parent.radius
+                                        property real used: commandCenterWindow.telemetryPayload ? commandCenterWindow.telemetryPayload.swap_used_bytes : 0
+                                        property real total: commandCenterWindow.telemetryPayload ? commandCenterWindow.telemetryPayload.swap_total_bytes : 1
+                                        width: parent.width * Math.min(1.0, Math.max(0.0, used / total))
+                                        color: (used / total >= 0.8) ? Theme.warning : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.75)
+                                        Behavior on width { NumberAnimation { duration: 180 } }
+                                    }
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        property real used: commandCenterWindow.telemetryPayload ? (commandCenterWindow.telemetryPayload.swap_used_bytes / 1073741824) : 0
+                                        property real total: commandCenterWindow.telemetryPayload ? (commandCenterWindow.telemetryPayload.swap_total_bytes / 1073741824) : 0
+                                        text: used.toFixed(2) + " / " + total.toFixed(2) + " GB"
+                                        font.family: "JetBrains Mono"
+                                        font.pixelSize: Theme.fontPx(9)
+                                        color: Theme.fgDim
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                    Text {
+                                        property real free: commandCenterWindow.telemetryPayload ? ((commandCenterWindow.telemetryPayload.swap_total_bytes - commandCenterWindow.telemetryPayload.swap_used_bytes) / 1073741824) : 0
+                                        text: free.toFixed(1) + " GB free"
+                                        font.family: "JetBrains Mono"
+                                        font.pixelSize: Theme.fontPx(8.5)
+                                        color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.50)
+                                    }
+                                }
+                            }
+
+                            Item { Layout.fillHeight: true }
+                        }
+                    }
+
+                    // ═════════════════════════════════════════════════════════
+                    // RIGHT COLUMN: NETWORK & KERNEL
+                    // ═════════════════════════════════════════════════════════
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        radius: Theme.px(10)
+                        color: Qt.rgba(12/255, 14/255, 18/255, 0.65)
+                        border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
+                        border.width: 1
+
+                        // Top rim highlight
+                        Rectangle {
+                            anchors.top: parent.top
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.leftMargin: Theme.px(10)
+                            anchors.rightMargin: Theme.px(10)
+                            height: 1
+                            color: Qt.rgba(255/255, 255/255, 255/255, 0.12)
+                        }
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: Theme.px(12)
+                            spacing: Theme.px(10)
+
+                            // Header Tag Row
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.px(6)
+
+                                Text {
+                                    text: "lan"
+                                    font.family: Theme.fontIcon
+                                    font.pixelSize: Theme.fontPx(14)
+                                    color: Theme.accent
+                                }
+
+                                Text {
+                                    text: "NETWORK & KERNEL"
+                                    font.family: "JetBrains Mono"
+                                    font.pixelSize: Theme.fontPx(10)
+                                    font.bold: true
+                                    color: Theme.fgDim
+                                    Layout.fillWidth: true
+                                }
+                            }
+
+                            // ── Live Network Throughput Readouts ──
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.px(6)
+
+                                // Download Row
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: Theme.px(34)
+                                    radius: Theme.px(6)
+                                    color: Qt.rgba(255/255, 255/255, 255/255, 0.03)
+                                    border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
+                                    border.width: 1
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: Theme.px(8)
+                                        spacing: Theme.px(6)
+
+                                        Text {
+                                            text: "south"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: Theme.fontPx(14)
+                                            font.bold: true
+                                            color: Theme.accent
+                                        }
+
+                                        Text {
+                                            text: "DOWN"
+                                            font.family: "JetBrains Mono"
+                                            font.pixelSize: Theme.fontPx(9)
+                                            font.bold: true
+                                            color: Theme.fgDim
+                                        }
+
+                                        Item { Layout.fillWidth: true }
+
+                                        Text {
+                                            text: commandCenterWindow.formatBytesSpeed(commandCenterWindow.telemetryPayload ? commandCenterWindow.telemetryPayload.net_rx_bps : 0)
+                                            font.family: "JetBrains Mono"
+                                            font.pixelSize: Theme.fontPx(11.5)
+                                            font.bold: true
+                                            color: "white"
+                                        }
+                                    }
+                                }
+
+                                // Upload Row
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: Theme.px(34)
+                                    radius: Theme.px(6)
+                                    color: Qt.rgba(255/255, 255/255, 255/255, 0.03)
+                                    border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
+                                    border.width: 1
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: Theme.px(8)
+                                        spacing: Theme.px(6)
+
+                                        Text {
+                                            text: "north"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: Theme.fontPx(14)
+                                            font.bold: true
+                                            color: Theme.accentLit
+                                        }
+
+                                        Text {
+                                            text: "UP"
+                                            font.family: "JetBrains Mono"
+                                            font.pixelSize: Theme.fontPx(9)
+                                            font.bold: true
+                                            color: Theme.fgDim
+                                        }
+
+                                        Item { Layout.fillWidth: true }
+
+                                        Text {
+                                            text: commandCenterWindow.formatBytesSpeed(commandCenterWindow.telemetryPayload ? commandCenterWindow.telemetryPayload.net_tx_bps : 0)
+                                            font.family: "JetBrains Mono"
+                                            font.pixelSize: Theme.fontPx(11.5)
+                                            font.bold: true
+                                            color: "white"
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Luminous Divider
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.16)
+                            }
+
+                            // ── Kernel & System Uptime Footer ──
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.px(5)
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.px(5)
+
+                                    Text {
+                                        text: "terminal"
+                                        font.family: Theme.fontIcon
+                                        font.pixelSize: Theme.fontPx(12)
+                                        color: Theme.accent
+                                    }
+
+                                    Text {
+                                        text: "KERNEL"
+                                        font.family: "JetBrains Mono"
+                                        font.pixelSize: Theme.fontPx(8.5)
+                                        font.bold: true
+                                        color: Theme.fgDim
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    Text {
+                                        text: (commandCenterWindow.telemetryPayload ? commandCenterWindow.telemetryPayload.kernel_version : "Linux")
+                                        font.family: "JetBrains Mono"
+                                        font.pixelSize: Theme.fontPx(9)
+                                        font.bold: true
+                                        color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.85)
+                                        elide: Text.ElideRight
+                                        Layout.maximumWidth: Theme.px(110)
+                                    }
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.px(5)
+
+                                    Text {
+                                        text: "schedule"
+                                        font.family: Theme.fontIcon
+                                        font.pixelSize: Theme.fontPx(12)
+                                        color: Theme.accent
+                                    }
+
+                                    Text {
+                                        text: "UPTIME"
+                                        font.family: "JetBrains Mono"
+                                        font.pixelSize: Theme.fontPx(8.5)
+                                        font.bold: true
+                                        color: Theme.fgDim
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    Text {
+                                        text: (commandCenterWindow.telemetryPayload ? commandCenterWindow.telemetryPayload.uptime_formatted : "--")
+                                        font.family: "JetBrains Mono"
+                                        font.pixelSize: Theme.fontPx(9.5)
+                                        font.bold: true
+                                        color: Theme.accent
+                                    }
+                                }
+                            }
+
+                            Item { Layout.fillHeight: true }
+                        }
+                    }
+                }
+            }
         } // closes ColumnLayout of mainPanel
         }
     }

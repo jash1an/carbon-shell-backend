@@ -1667,6 +1667,10 @@ ShellRoot {
                         root.openCommandCenter()
                         if (root.commandCenterItem) root.commandCenterItem.currentChannel = "overview"
                     }
+                    else if (cmd === "command-center-telemetry" || cmd === "telemetry" || cmd === "system-telemetry") {
+                        root.openCommandCenter()
+                        if (root.commandCenterItem) root.commandCenterItem.currentChannel = "telemetry"
+                    }
                     else if (cmd === "close-command-center" || cmd === "close-radar") {
                         root.closeCommandCenter()
                     }
