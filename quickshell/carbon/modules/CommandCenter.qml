@@ -102,6 +102,9 @@ PanelWindow {
             commandCenterWindow.currentChannel = "overview"
             calSyncProc.running = true
             centerKeyHandler.forceActiveFocus()
+            if (currentChannel === "telemetry") {
+                streamAnim.restart()
+            }
         }
     }
 
@@ -233,8 +236,24 @@ PanelWindow {
     })
 
     property string telemetrySubMode: "cpu" // "cpu" | "ram"
-    property var cpuHistory: [14, 16, 15, 20, 18, 14, 15, 22, 19, 14, 16, 25, 20, 16, 14, 18, 15, 22, 19, 14, 15, 17, 14, 15]
-    property var ramHistory: [74, 74, 75, 75, 76, 76, 76, 77, 77, 77, 78, 78, 78, 77, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78]
+    property var cpuHistory: [14, 16, 15, 20, 18, 14, 15, 22, 19, 14, 16, 25, 20, 16, 14, 18, 15, 22, 19, 14, 15, 17, 14, 15, 16, 18, 15, 16]
+    property var ramHistory: [74, 74, 75, 75, 76, 76, 76, 77, 77, 77, 78, 78, 78, 77, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78]
+
+    property real streamPhase: 0.0
+    property real lastTelemetryTickTime: 0
+    property real telemetryTickInterval: 2000
+
+    NumberAnimation {
+        id: streamAnim
+        target: commandCenterWindow
+        property: "streamPhase"
+        from: 0.0
+        to: 1.0
+        duration: commandCenterWindow.telemetryTickInterval
+        easing.type: Easing.Linear
+        running: commandCenterWindow.isOpen && commandCenterWindow.currentChannel === "telemetry"
+    }
+
 
     function nextChannel() {
         if (currentChannel === "overview") {
@@ -271,15 +290,31 @@ PanelWindow {
     }
 
     function pushTelemetryHistory(cpu, ram) {
+        var now = Date.now()
+        if (lastTelemetryTickTime > 0) {
+            var diff = now - lastTelemetryTickTime
+            if (diff >= 500 && diff <= 5000) {
+                telemetryTickInterval = diff
+            }
+        }
+        lastTelemetryTickTime = now
+
         var newCpu = cpuHistory.slice()
         newCpu.push(cpu)
-        if (newCpu.length > 28) newCpu.shift()
+        while (newCpu.length > 28) newCpu.shift()
         cpuHistory = newCpu
 
         var newRam = ramHistory.slice()
         newRam.push(ram)
-        if (newRam.length > 28) newRam.shift()
+        while (newRam.length > 28) newRam.shift()
         ramHistory = newRam
+
+        streamPhase = 0.0
+        if (commandCenterWindow.isOpen && commandCenterWindow.currentChannel === "telemetry") {
+            streamAnim.stop()
+            streamAnim.duration = telemetryTickInterval
+            streamAnim.start()
+        }
     }
 
     function formatBytesSpeed(bytes) {
@@ -317,6 +352,8 @@ PanelWindow {
         if (currentChannel === "github") {
             githubUplinkView.contentY = 0
             if (repoInput) repoInput.forceActiveFocus()
+        } else if (currentChannel === "telemetry" && isOpen) {
+            streamAnim.restart()
         }
     }
 
@@ -672,7 +709,10 @@ PanelWindow {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: Theme.px(12)
+            anchors.leftMargin: Theme.px(14)
+            anchors.rightMargin: Theme.px(14)
+            anchors.topMargin: Theme.px(12)
+            anchors.bottomMargin: Theme.px(14)
             spacing: Theme.px(8)
 
             // ── Minimal Sleek Header ──
@@ -916,10 +956,10 @@ PanelWindow {
 
                 // ── ROW 1: Obsidian Notes (Left) + Events / Schedule (Right) ──
                 RowLayout {
-                Layout.fillWidth: true
-                Layout.preferredHeight: Theme.px(144)
-                Layout.maximumHeight: Theme.px(144)
-                spacing: Theme.px(8)
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Theme.px(134)
+                    Layout.maximumHeight: Theme.px(134)
+                    spacing: Theme.px(8)
 
                 // ══════════════════════════════════════════════════
                 // TILE 1: OBSIDIAN NOTES
@@ -1206,8 +1246,8 @@ PanelWindow {
             // ── ROW 2: Recent Apps Tile (Left, Compact Landscape Dock) + Clipboard Tile (Right) ──
             RowLayout {
                 Layout.fillWidth: true
-                Layout.preferredHeight: Theme.px(144)
-                Layout.maximumHeight: Theme.px(144)
+                Layout.preferredHeight: Theme.px(134)
+                Layout.maximumHeight: Theme.px(134)
                 spacing: Theme.px(8)
 
                 // ══════════════════════════════════════════════════
@@ -1216,7 +1256,6 @@ PanelWindow {
                 Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    Layout.preferredWidth: (parent.width - Theme.px(8)) / 2
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -1510,7 +1549,6 @@ PanelWindow {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    Layout.preferredWidth: (parent.width - Theme.px(8)) / 2
                     color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.03)
                     border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.12)
                     border.width: 1
@@ -1708,9 +1746,9 @@ PanelWindow {
                     RowLayout {
                         id: githubSplitPanes
                         Layout.fillWidth: true
-                        Layout.preferredHeight: githubUplinkView.height
-                        Layout.minimumHeight: githubUplinkView.height
-                        implicitHeight: githubUplinkView.height
+                        Layout.preferredHeight: githubUplinkView.height - Theme.px(6)
+                        Layout.minimumHeight: githubUplinkView.height - Theme.px(6)
+                        implicitHeight: githubUplinkView.height - Theme.px(6)
                         spacing: Theme.px(8)
 
                         // LEFT: REPOSITORIES TILE (40% width)
@@ -2502,7 +2540,10 @@ PanelWindow {
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.margins: Theme.px(8)
+                    anchors.leftMargin: Theme.px(4)
+                    anchors.rightMargin: Theme.px(4)
+                    anchors.topMargin: Theme.px(2)
+                    anchors.bottomMargin: Theme.px(6)
                     spacing: Theme.px(10)
 
                     // ═════════════════════════════════════════════════════════
@@ -2510,8 +2551,10 @@ PanelWindow {
                     // ═════════════════════════════════════════════════════════
                     Rectangle {
                         id: telemetryLeftTile
-                        Layout.preferredWidth: Theme.px(220)
-                        Layout.fillHeight: true
+                        Layout.preferredWidth: Theme.px(204)
+                        Layout.preferredHeight: Theme.px(276)
+                        Layout.maximumHeight: Theme.px(276)
+                        Layout.alignment: Qt.AlignTop
                         radius: Theme.px(10)
                         color: Qt.rgba(12/255, 14/255, 18/255, 0.65)
                         border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
@@ -2539,8 +2582,8 @@ PanelWindow {
 
                         ColumnLayout {
                             anchors.fill: parent
-                            anchors.margins: Theme.px(12)
-                            spacing: Theme.px(8)
+                            anchors.margins: Theme.px(10)
+                            spacing: Theme.px(6)
 
                             // ── Header Tabs: CPU vs RAM ──
                             RowLayout {
@@ -2646,7 +2689,7 @@ PanelWindow {
 
                                     ColumnLayout {
                                         anchors.fill: parent
-                                        spacing: Theme.px(7)
+                                        spacing: Theme.px(5)
 
                                         // Primary Load % + Temp Badge
                                         RowLayout {
@@ -2819,7 +2862,7 @@ PanelWindow {
                                         // Bottom Scroll Hint
                                         Rectangle {
                                             Layout.fillWidth: true
-                                            Layout.preferredHeight: Theme.px(22)
+                                            Layout.preferredHeight: Theme.px(20)
                                             radius: Theme.px(5)
                                             color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.04)
                                             border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.10)
@@ -2870,7 +2913,7 @@ PanelWindow {
 
                                     ColumnLayout {
                                         anchors.fill: parent
-                                        spacing: Theme.px(7)
+                                        spacing: Theme.px(5)
 
                                         // Primary Load % + Free Badge
                                         RowLayout {
@@ -3028,7 +3071,7 @@ PanelWindow {
                                         // Bottom Scroll Hint
                                         Rectangle {
                                             Layout.fillWidth: true
-                                            Layout.preferredHeight: Theme.px(22)
+                                            Layout.preferredHeight: Theme.px(20)
                                             radius: Theme.px(5)
                                             color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.04)
                                             border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.10)
@@ -3066,7 +3109,9 @@ PanelWindow {
                     Rectangle {
                         id: telemetryRightTile
                         Layout.fillWidth: true
-                        Layout.fillHeight: true
+                        Layout.preferredHeight: Theme.px(276)
+                        Layout.maximumHeight: Theme.px(276)
+                        Layout.alignment: Qt.AlignTop
                         radius: Theme.px(10)
                         color: Qt.rgba(12/255, 14/255, 18/255, 0.65)
                         border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
@@ -3094,8 +3139,8 @@ PanelWindow {
 
                         ColumnLayout {
                             anchors.fill: parent
-                            anchors.margins: Theme.px(12)
-                            spacing: Theme.px(8)
+                            anchors.margins: Theme.px(10)
+                            spacing: Theme.px(6)
 
                             // ── Header Row: Dynamic Title & Live Value Badge ──
                             RowLayout {
@@ -3203,6 +3248,7 @@ PanelWindow {
                                     target: commandCenterWindow
                                     function onCpuHistoryChanged() { graphCanvas.requestPaint() }
                                     function onRamHistoryChanged() { graphCanvas.requestPaint() }
+                                    function onStreamPhaseChanged() { graphCanvas.requestPaint() }
                                 }
 
                                 Canvas {
@@ -3224,7 +3270,7 @@ PanelWindow {
                                         var leftPad = Theme.px(28)
                                         var rightPad = Theme.px(12)
                                         var topPad = Theme.px(10)
-                                        var bottomPad = Theme.px(20)
+                                        var bottomPad = Theme.px(22)
                                         var plotW = Math.max(10, w - leftPad - rightPad)
                                         var plotH = Math.max(10, h - topPad - bottomPad)
 
@@ -3252,13 +3298,17 @@ PanelWindow {
                                             ctx.fillText(Math.round(step * 100) + "%", leftPad - Theme.px(4), gy)
                                         }
 
-                                        // 2. Fetch history and interpolate with morphFactor
+                                        // 2. Fetch history and interpolate with morphFactor and continuous streamPhase
                                         var cpuArr = commandCenterWindow.cpuHistory || []
                                         var ramArr = commandCenterWindow.ramHistory || []
                                         var count = Math.max(cpuArr.length, ramArr.length)
                                         if (count < 2) return
 
                                         var morph = canvasContainer.morphFactor
+                                        var phase = commandCenterWindow.streamPhase || 0.0
+                                        var denom = count - 2
+                                        if (denom <= 0) denom = 1
+
                                         var points = []
                                         for (var i = 0; i < count; i++) {
                                             var cVal = i < cpuArr.length ? cpuArr[i] : 0
@@ -3266,9 +3316,9 @@ PanelWindow {
                                             var val = (1.0 - morph) * cVal + morph * rVal
                                             val = Math.max(0, Math.min(100, val))
 
-                                            var px = leftPad + (i / (count - 1)) * plotW
+                                            var px = leftPad + ((i - phase) / denom) * plotW
                                             var py = topPad + plotH * (1.0 - (val / 100.0))
-                                            points.push({ x: px, y: py })
+                                            points.push({ x: px, y: py, val: val })
                                         }
 
                                         // Compute dynamic active colors (CPU accent -> RAM vibrant accent)
@@ -3284,7 +3334,13 @@ PanelWindow {
                                         var curG = Math.round((1.0 - morph) * cpuG + morph * ramG)
                                         var curB = Math.round((1.0 - morph) * cpuB + morph * ramB)
 
-                                        // 3. Draw smooth Bézier curve spline
+                                        // 3. Draw spline & gradient clipped to plot area
+                                        ctx.save()
+                                        ctx.beginPath()
+                                        ctx.rect(leftPad, topPad - Theme.px(4), plotW, plotH + Theme.px(8))
+                                        ctx.clip()
+
+                                        // 3a. Draw smooth Bézier curve spline path
                                         ctx.beginPath()
                                         ctx.moveTo(points[0].x, points[0].y)
                                         for (var j = 0; j < points.length - 1; j++) {
@@ -3333,34 +3389,41 @@ PanelWindow {
                                         ctx.strokeStyle = "rgb(" + curR + "," + curG + "," + curB + ")"
                                         ctx.stroke()
 
-                                        // 6. Draw Glowing Endpoint Radar Pip
-                                        var last = points[points.length - 1]
+                                        ctx.restore() // restore clipping
+
+                                        // 6. Draw Glowing Endpoint Radar Pip at exact right edge of plot
+                                        var pPrev = points[count - 2]
+                                        var pNext = points[count - 1]
+                                        var rightVal = (1.0 - phase) * pPrev.val + phase * pNext.val
+                                        var pipY = topPad + plotH * (1.0 - (rightVal / 100.0))
+                                        var pipX = leftPad + plotW
+
                                         // Halo
                                         ctx.beginPath()
-                                        ctx.arc(last.x, last.y, Theme.px(5.5), 0, Math.PI * 2)
+                                        ctx.arc(pipX, pipY, Theme.px(5.5), 0, Math.PI * 2)
                                         ctx.fillStyle = "rgba(" + curR + "," + curG + "," + curB + ", 0.35)"
                                         ctx.fill()
                                         // Core
                                         ctx.beginPath()
-                                        ctx.arc(last.x, last.y, Theme.px(2.8), 0, Math.PI * 2)
+                                        ctx.arc(pipX, pipY, Theme.px(2.8), 0, Math.PI * 2)
                                         ctx.fillStyle = "rgb(" + curR + "," + curG + "," + curB + ")"
                                         ctx.fill()
                                         // White center
                                         ctx.beginPath()
-                                        ctx.arc(last.x, last.y, Theme.px(1.4), 0, Math.PI * 2)
+                                        ctx.arc(pipX, pipY, Theme.px(1.4), 0, Math.PI * 2)
                                         ctx.fillStyle = "#ffffff"
                                         ctx.fill()
 
                                         // 7. Time axis legend at the bottom
-                                        ctx.fillStyle = "rgba(255, 255, 255, 0.28)"
+                                        ctx.fillStyle = "rgba(255, 255, 255, 0.35)"
                                         ctx.font = Theme.fontPx(7.5) + "px 'Plus Jakarta Sans', sans-serif"
                                         ctx.textBaseline = "bottom"
                                         ctx.textAlign = "left"
-                                        ctx.fillText("-60s", leftPad, h - Theme.px(3))
+                                        ctx.fillText("-60s", leftPad, h - Theme.px(4))
                                         ctx.textAlign = "center"
-                                        ctx.fillText("-30s", leftPad + plotW / 2, h - Theme.px(3))
+                                        ctx.fillText("-30s", leftPad + plotW / 2, h - Theme.px(4))
                                         ctx.textAlign = "right"
-                                        ctx.fillText("NOW", leftPad + plotW, h - Theme.px(3))
+                                        ctx.fillText("NOW", leftPad + plotW, h - Theme.px(4))
                                     }
                                 }
                             }
