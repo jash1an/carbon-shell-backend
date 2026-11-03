@@ -2232,40 +2232,10 @@ Item {
                             }
                         }
 
-                        // Top Ruler & Info Header
-                        Rectangle {
-                            anchors.top: parent.top
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            height: Theme.px(26)
-                            color: Qt.rgba(0, 0, 0, 0.35)
-                            border.color: Qt.rgba(1, 1, 1, 0.06)
-                            border.width: 1
-                            z: 20
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: Theme.px(12)
-                                anchors.rightMargin: Theme.px(12)
-                                spacing: Theme.px(8)
-
-                                Text {
-                                    text: "BLUEPRINT // MINIMAL ISLAND (DYNAMIC CAPSULE)"
-                                    font.family: Theme.fontMono
-                                    font.pixelSize: Theme.fontPx(8.5)
-                                    font.weight: Font.Bold
-                                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.85)
-                                }
-
-                                Item { Layout.fillWidth: true }
-                            }
-                        }
-
                         // ── Blueprint Screen Workspace ─────────────────────
                         Item {
                             id: minimalBlueprintWorkspace
                             anchors.fill: parent
-                            anchors.topMargin: Theme.px(26)
                             anchors.margins: 1
                             clip: true
 
@@ -3857,39 +3827,12 @@ Item {
                             }
                         }
 
-                        // Top Ruler & Info Header
-                        Rectangle {
-                            anchors.top: parent.top
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            height: Theme.px(26)
-                            color: Qt.rgba(0, 0, 0, 0.35)
-                            border.color: Qt.rgba(1, 1, 1, 0.06)
-                            border.width: 1
-                            z: 20
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: Theme.px(12)
-                                anchors.rightMargin: Theme.px(12)
-
-                                Text {
-                                    text: "BLUEPRINT // VANISH MODE (BARLESS SP³ HYBRID NUCLEUS)"
-                                    font.family: Theme.fontMono
-                                    font.pixelSize: Theme.fontPx(8.5)
-                                    font.weight: Font.Bold
-                                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.85)
-                                }
-
-                                Item { Layout.fillWidth: true }
-                            }
-                        }
-
                         // ── Blueprint Screen Workspace ─────────────────────
                         Item {
                             id: vanishWorkspace
                             anchors.fill: parent
-                            anchors.topMargin: Theme.px(26)
+                            anchors.margins: 1
+                            clip: true
 
                             property string focusedLobe: ""
                             property real continuousPhase: 0.0
