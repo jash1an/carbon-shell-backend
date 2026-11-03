@@ -734,30 +734,6 @@ PanelWindow {
                     Layout.alignment: Qt.AlignVCenter
                     spacing: Theme.px(6)
 
-                    // Prev Arrow Button (<)
-                    Rectangle {
-                        width: Theme.px(22)
-                        height: Theme.px(22)
-                        radius: Theme.px(11)
-                        color: prevHover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08) : "transparent"
-                        Layout.alignment: Qt.AlignVCenter
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "chevron_left"
-                            font.family: Theme.fontIcon
-                            font.pixelSize: Theme.fontPx(16)
-                            color: prevHover.hovered ? Theme.accent : Theme.fgDim
-                        }
-
-                        HoverHandler { id: prevHover }
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: commandCenterWindow.prevChannel()
-                        }
-                    }
-
                     // Active Channel Title Text
                     Text {
                         id: channelTitleText
@@ -768,34 +744,12 @@ PanelWindow {
                         }
                         Layout.alignment: Qt.AlignVCenter
                         font.family: Theme.font
-                        font.pixelSize: Theme.fontPx(12)
+                        font.pixelSize: Theme.fontPx(12.5)
                         font.weight: Font.DemiBold
-                        color: Theme.fg
+                        color: tHover.hovered ? Theme.accent : Theme.fg
 
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: commandCenterWindow.nextChannel()
-                        }
-                    }
+                        HoverHandler { id: tHover }
 
-                    // Next Arrow Button (>)
-                    Rectangle {
-                        width: Theme.px(22)
-                        height: Theme.px(22)
-                        radius: Theme.px(11)
-                        color: nextHover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08) : "transparent"
-                        Layout.alignment: Qt.AlignVCenter
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "chevron_right"
-                            font.family: Theme.fontIcon
-                            font.pixelSize: Theme.fontPx(16)
-                            color: nextHover.hovered ? Theme.accent : Theme.fgDim
-                        }
-
-                        HoverHandler { id: nextHover }
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
@@ -2708,8 +2662,9 @@ PanelWindow {
 
                                             // Temp Badge
                                             Rectangle {
+                                                id: tempBadgeRect
                                                 Layout.preferredHeight: Theme.px(22)
-                                                Layout.preferredWidth: cpuTempText.implicitWidth + Theme.px(12)
+                                                Layout.preferredWidth: tempBadgeRow.implicitWidth + Theme.px(16)
                                                 radius: Theme.px(4)
                                                 property real t: commandCenterWindow.telemetryPayload ? commandCenterWindow.telemetryPayload.cpu_temp : 0.0
                                                 color: t >= 85 ? Qt.rgba(1.0, 0.25, 0.25, 0.20) : (t >= 75 ? Qt.rgba(1.0, 0.7, 0.2, 0.20) : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18))
@@ -2717,6 +2672,7 @@ PanelWindow {
                                                 border.width: 1
 
                                                 RowLayout {
+                                                    id: tempBadgeRow
                                                     anchors.centerIn: parent
                                                     spacing: Theme.px(3)
 
@@ -2724,7 +2680,7 @@ PanelWindow {
                                                         text: "device_thermostat"
                                                         font.family: Theme.fontIcon
                                                         font.pixelSize: Theme.fontPx(11)
-                                                        color: parent.parent.t >= 85 ? Theme.error : (parent.parent.t >= 75 ? Theme.warning : Theme.accent)
+                                                        color: tempBadgeRect.t >= 85 ? (Theme.err || "#f87171") : (tempBadgeRect.t >= 75 ? (Theme.warn || "#fbbf24") : Theme.accent)
                                                     }
 
                                                     Text {
@@ -2733,7 +2689,7 @@ PanelWindow {
                                                         font.family: Theme.fontMono
                                                         font.pixelSize: Theme.fontPx(9.5)
                                                         font.bold: true
-                                                        color: parent.parent.t >= 85 ? Theme.error : (parent.parent.t >= 75 ? Theme.warning : Theme.accent)
+                                                        color: tempBadgeRect.t >= 85 ? (Theme.err || "#f87171") : (tempBadgeRect.t >= 75 ? (Theme.warn || "#fbbf24") : Theme.accent)
                                                     }
                                                 }
                                             }
@@ -2932,14 +2888,16 @@ PanelWindow {
 
                                             // Free Badge
                                             Rectangle {
+                                                id: ramFreeBadgeRect
                                                 Layout.preferredHeight: Theme.px(22)
-                                                Layout.preferredWidth: ramFreeText.implicitWidth + Theme.px(12)
+                                                Layout.preferredWidth: ramFreeBadgeRow.implicitWidth + Theme.px(16)
                                                 radius: Theme.px(4)
                                                 color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
                                                 border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.40)
                                                 border.width: 1
 
                                                 RowLayout {
+                                                    id: ramFreeBadgeRow
                                                     anchors.centerIn: parent
                                                     spacing: Theme.px(3)
 
@@ -3028,7 +2986,7 @@ PanelWindow {
                                                     font.family: Theme.fontMono
                                                     font.pixelSize: Theme.fontPx(10)
                                                     font.bold: true
-                                                    color: ramSubView.swapPct > 75 ? Theme.warning : Theme.accent
+                                                    color: ramSubView.swapPct > 75 ? (Theme.warn || "#fbbf24") : Theme.accent
                                                 }
                                             }
 
@@ -3043,7 +3001,7 @@ PanelWindow {
                                                     height: parent.height
                                                     radius: parent.radius
                                                     width: parent.width * Math.min(1.0, Math.max(0.0, ramSubView.swapPct / 100.0))
-                                                    color: (ramSubView.swapPct >= 80) ? Theme.warning : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.75)
+                                                    color: (ramSubView.swapPct >= 80) ? (Theme.warn || "#fbbf24") : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.75)
                                                     Behavior on width { NumberAnimation { duration: 180 } }
                                                 }
                                             }
