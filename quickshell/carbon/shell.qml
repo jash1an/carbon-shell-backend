@@ -1671,6 +1671,20 @@ ShellRoot {
                         root.openCommandCenter()
                         if (root.commandCenterItem) root.commandCenterItem.currentChannel = "telemetry"
                     }
+                    else if (cmd === "telemetry-ram" || cmd === "telemetry-swap") {
+                        root.openCommandCenter()
+                        if (root.commandCenterItem) {
+                            root.commandCenterItem.currentChannel = "telemetry"
+                            root.commandCenterItem.telemetrySubMode = "ram"
+                        }
+                    }
+                    else if (cmd === "telemetry-cpu") {
+                        root.openCommandCenter()
+                        if (root.commandCenterItem) {
+                            root.commandCenterItem.currentChannel = "telemetry"
+                            root.commandCenterItem.telemetrySubMode = "cpu"
+                        }
+                    }
                     else if (cmd === "close-command-center" || cmd === "close-radar") {
                         root.closeCommandCenter()
                     }
