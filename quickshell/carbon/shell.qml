@@ -862,10 +862,6 @@ ShellRoot {
     property bool nucleusRestingVisible: true
     property bool screenshotFreezeActive: false
     onBarModeChanged: {
-        GlobalState.isVanishMode = (root.barMode === "nucleus" || root.barMode === "vanish")
-        if (!GlobalState.isVanishMode) {
-            GlobalState.isVanishOverlayOpen = false
-        }
         console.log("[BAR-MODE CHANGED] New root.barMode is now: " + root.barMode)
         Quickshell.execDetached(["bash", root.home + "/.config/hypr/scripts/carbon-mode-keybinds.sh", root.barMode])
     }
@@ -961,7 +957,6 @@ ShellRoot {
                         console.log("[BAR-MODE] Switching mode from", root.barMode, "to", target)
                         root.barMode = target
                     }
-                    GlobalState.isVanishMode = (root.barMode === "nucleus" || root.barMode === "vanish")
                 }
                 if (d.islandStyle) {
                     root.islandStyle = d.islandStyle
@@ -1353,7 +1348,6 @@ ShellRoot {
         reloadBarMode()
         applyBarPos(barPosFile.text())
         reloadControlCenterConfig()
-        GlobalState.isVanishMode = (root.barMode === "nucleus" || root.barMode === "vanish")
         var _initLyrics = LyricsService.hasTrack
     }
 
@@ -1644,23 +1638,6 @@ ShellRoot {
                     }
                     else if (cmd === "close-focus" || cmd === "close-focus-hud") {
                         root.closeFocusHud()
-                    }
-                    else if (cmd === "vanish-overlay" || cmd === "toggle-vanish-overlay") {
-                        if (!GlobalState.isVanishMode) {
-                            root.switchBarMode("vanish")
-                            GlobalState.isVanishOverlayOpen = true
-                        } else {
-                            GlobalState.isVanishOverlayOpen = !GlobalState.isVanishOverlayOpen
-                        }
-                        console.log("[IPC] vanish-overlay -> isVanishOverlayOpen is now:", GlobalState.isVanishOverlayOpen, "isVanishMode:", GlobalState.isVanishMode)
-                    }
-                    else if (cmd === "open-vanish-overlay") {
-                        GlobalState.isVanishOverlayOpen = true
-                        console.log("[IPC] open-vanish-overlay -> isVanishOverlayOpen is now:", GlobalState.isVanishOverlayOpen, "isVanishMode:", GlobalState.isVanishMode)
-                    }
-                    else if (cmd === "close-vanish-overlay") {
-                        GlobalState.isVanishOverlayOpen = false
-                        console.log("[IPC] close-vanish-overlay -> isVanishOverlayOpen is now:", GlobalState.isVanishOverlayOpen, "isVanishMode:", GlobalState.isVanishMode)
                     }
                     else if (cmd === "command-center" || cmd === "toggle-command-center" || cmd === "notch-command-center" || cmd === "radar") {
                         root.toggleCommandCenter()
@@ -5242,10 +5219,5 @@ ShellRoot {
                 asynchronous: false
             }
         }
-    }
-
-    /* Vanish Mode Horizontal Dashboard Overlay */
-    VanishOverlay {
-        id: vanishOverlayInst
     }
 }
