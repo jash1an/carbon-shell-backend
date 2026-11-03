@@ -27,5 +27,7 @@ hl.bind("SUPER + W", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-di
 
 -- Vanish Direct Lobe Blooms
 hl.bind("SUPER + C", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh focus-connect"))
-hl.bind("SUPER + S", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh focus-spaces"))
 hl.bind("SUPER + N", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-vanish-dispatch.sh focus-alerts"))
+
+-- Vanish Spotlight Command Palette (SUPER + R)
+hl.bind("SUPER + R", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh spotlight"))

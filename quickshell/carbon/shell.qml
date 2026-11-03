@@ -140,6 +140,9 @@ ShellRoot {
     }
 
     function closeAllPopupsExcept(keep) {
+        if (root.nucleusHubItem && root.nucleusHubItem.hubOpen) {
+            root.nucleusHubItem.close()
+        }
         if (keep !== "spotlight") { root.spotlightOpen = false }
         if (keep !== "launcher") { root.launcherOpen = false }
         if (keep !== "mixer") { root.mixerOpen = false; root.mixerPinned = false }
@@ -1587,25 +1590,21 @@ ShellRoot {
                         }
                     }
                     else if (cmd === "spotlight" || cmd === "toggle-spotlight") {
-                        if (root.barMode !== "nucleus") {
-                            root.toggleDefaultLauncher()
+                        if (root.nucleusHubItem && root.nucleusHubItem.hubOpen) {
+                            root.nucleusHubItem.close()
                         }
+                        root.toggleDefaultLauncher()
                     }
                     else if (cmd === "open-spotlight") {
-                        if (root.barMode === "nucleus") {
-                            if (root.nucleusHubItem) root.nucleusHubItem.open()
-                        } else {
-                            if (root.launcherStyle === "launcher") root.openLauncher()
-                            else root.openSpotlight()
+                        if (root.nucleusHubItem && root.nucleusHubItem.hubOpen) {
+                            root.nucleusHubItem.close()
                         }
+                        if (root.launcherStyle === "launcher") root.openLauncher()
+                        else root.openSpotlight()
                     }
                     else if (cmd === "close-spotlight") {
-                        if (root.barMode === "nucleus") {
-                            if (root.nucleusHubItem) root.nucleusHubItem.close()
-                        } else {
-                            root.closeSpotlight()
-                            root.closeLauncher()
-                        }
+                        root.closeSpotlight()
+                        root.closeLauncher()
                     }
                     else if (cmd.startsWith("focus-lobe ")) {
                         var lobeTarget = cmd.replace(/^focus-lobe\s+/, "").trim()

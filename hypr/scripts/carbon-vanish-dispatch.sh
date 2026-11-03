@@ -47,6 +47,9 @@ case "$ACTION" in
     launcher)
         sh "$IPC_SCRIPT" "nucleus launcher"
         ;;
+    spotlight)
+        sh "$IPC_SCRIPT" "spotlight"
+        ;;
     lyrics)
         sh "$IPC_SCRIPT" "nucleus lyrics"
         ;;

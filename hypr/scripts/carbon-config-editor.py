@@ -94,13 +94,13 @@ DEFAULT_VANISH_SHORTCUTS = {
         "icon": "view-reveal-symbolic"
     },
     "app_search": {
-        "title": "App Search and Launcher",
-        "desc": "Directly open App Launcher satellite with keyboard search focus",
+        "title": "Spotlight & App Search",
+        "desc": "Directly open Spotlight Command Palette with keyboard search focus",
         "category": "Primary Triggers",
         "mods": "$mainMod",
-        "key": "S",
-        "display_str": "SUPER + S",
-        "action": "launcher",
+        "key": "R",
+        "display_str": "SUPER + R",
+        "action": "spotlight",
         "icon": "applications-system-symbolic"
     },
     "lyrics_toggle": {
