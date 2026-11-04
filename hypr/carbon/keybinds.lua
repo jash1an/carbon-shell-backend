@@ -56,6 +56,10 @@ hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("~/.config/hypr/scripts/hyprlock.sh")
 -- Clipboard Manager (Cliphist + Rofi)
 hl.bind(mainMod .. " + V", hl.dsp.exec_cmd("bash -c 'cliphist list | rofi -dmenu | cliphist decode | wl-copy'"))
 
+-- Special Workspace (Scratchpad)
+hl.bind(mainMod .. " + S", hl.dsp.focus({ workspace = "special:special" }))
+hl.bind(mainMod .. " + ALT + S", hl.dsp.window.move({ workspace = "special:special" }))
+
 -- ==============================================================================
 -- NAVIGATION & WINDOW MOVEMENT
 -- ==============================================================================

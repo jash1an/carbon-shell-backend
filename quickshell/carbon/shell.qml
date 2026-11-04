@@ -112,8 +112,12 @@ ShellRoot {
     }
 
     property bool spotlightOpen: false
+    property real lastSpotlightToggleTime: 0
     function openSpotlight() {
         root.closeAllPopupsExcept("spotlight")
+        if (root.nucleusHubItem && root.nucleusHubItem.hubOpen) {
+            root.nucleusHubItem.close()
+        }
         root.launcherOpen = false
         root.spotlightOpen = true
     }
@@ -121,6 +125,9 @@ ShellRoot {
         root.spotlightOpen = false
     }
     function toggleSpotlight() {
+        var now = Date.now()
+        if (now - root.lastSpotlightToggleTime < 280) return
+        root.lastSpotlightToggleTime = now
         if (root.spotlightOpen) root.closeSpotlight()
         else root.openSpotlight()
     }
@@ -2074,6 +2081,7 @@ ShellRoot {
                         else root.switchBarMode("nucleus")
                     }
                     else if (cmd === "nucleus toggle") {
+                        if (root.spotlightOpen || (Date.now() - root.lastSpotlightToggleTime < 450)) return
                         if (root.barMode !== "nucleus") root.switchBarMode("nucleus")
                         if (root.nucleusHubItem) root.nucleusHubItem.toggle()
                     }

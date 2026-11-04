@@ -13,9 +13,9 @@
     "title": "App Search and Launcher",
     "desc": "Directly open App Launcher satellite with keyboard search focus",
     "category": "Primary Triggers",
-    "mods": "$mainMod",
-    "key": "S",
-    "display_str": "SUPER + S",
+    "mods": "",
+    "key": "",
+    "display_str": "Unset",
     "action": "launcher",
     "icon": "applications-system-symbolic"
   },
