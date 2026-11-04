@@ -88,7 +88,7 @@ return {
     kbSystemMonitorWs          = "CTRL + SHIFT + Escape",
     kbMusicWs                  = "SUPER + M",
     -- kbCommunicationWs          = "SUPER + D",
-    kbCarbonDrop               = nil,
+    kbCarbonDrop               = "SUPER + D",
     kbFocus                    = "SUPER + SHIFT + F",
     kbTodoWs                   = "SUPER + R",
 
