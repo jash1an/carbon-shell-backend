@@ -10,7 +10,9 @@ hl.bind(vars.kbScreenshot or "SUPER + Print", hl.dsp.exec_cmd("~/.config/hypr/sc
 hl.bind("Print", hl.dsp.exec_cmd("~/.config/hypr/scripts/screenshot.sh"))
 
 -- Wallpaper
-hl.bind(vars.kbWallpaper or "SUPER + W", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh wallpaper"))
+if vars.kbWallpaper then
+    hl.bind(vars.kbWallpaper, hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh wallpaper"))
+end
 
 -- Misc
 hl.bind(vars.kbSession, hl.dsp.global("caelestia:session"))

@@ -80,7 +80,7 @@ PanelWindow {
 
     onVisibleChanged: {
         GlobalState.isFocusActive = visible; // Broadcast to the rest of the shell
-        focusHud.isRevealed = false;         // Always start tucked away
+        focusHud.isRevealed = visible;       // Slide in on toggle
 
         if (visible) {
             let cmd = [

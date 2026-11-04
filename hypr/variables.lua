@@ -88,7 +88,7 @@ return {
     kbSystemMonitorWs          = "CTRL + SHIFT + Escape",
     kbMusicWs                  = "SUPER + M",
     -- kbCommunicationWs          = "SUPER + D",
-    kbCarbonDrop               = "SUPER + D",
+    kbCarbonDrop               = nil,
     kbFocus                    = "SUPER + SHIFT + F",
     kbTodoWs                   = "SUPER + R",
 
@@ -108,7 +108,7 @@ return {
     kbRestoreLock              = "SUPER + ALT + L",
     kbMenu                     = "SUPER + Space",
     kbScreenshot               = "SUPER + Print",
-    kbWallpaper                = "SUPER + W",
+    kbWallpaper                = nil,
     kbKillProcess              = "CTRL + ALT + K",
     kbColorPicker              = "SUPER + SHIFT + C",
     kbFloatingTerminal         = "SUPER + ALT + Return",

@@ -113,7 +113,7 @@ hl.bind("SUPER + Super_R", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/car
 hl.bind("SUPER + R", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh spotlight"))
 hl.bind("SUPER + K", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh spotlight"))
 hl.bind("SUPER + M", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/carbon-vanish-dispatch.sh lyrics"))
-hl.bind("SUPER + W", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/carbon-ipc.sh wallpaper"))
+hl.bind("SUPER + N", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/carbon-ipc.sh wallpaper"))
 hl.bind("SUPER + A", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/carbon-vanish-dispatch.sh focus-alerts"))
 hl.bind("SUPER + B", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/carbon-vanish-dispatch.sh quick-toggles"))
 hl.bind("SUPER + C", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/carbon-vanish-dispatch.sh quick-toggles"))

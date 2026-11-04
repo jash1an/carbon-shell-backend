@@ -10,13 +10,13 @@
     "icon": "view-reveal-symbolic"
   },
   "app_search": {
-    "title": "Spotlight & App Search",
-    "desc": "Directly open Spotlight Command Palette with keyboard search focus",
+    "title": "App Search and Launcher",
+    "desc": "Directly open App Launcher satellite with keyboard search focus",
     "category": "Primary Triggers",
     "mods": "$mainMod",
-    "key": "R",
-    "display_str": "SUPER + R",
-    "action": "spotlight",
+    "key": "S",
+    "display_str": "SUPER + S",
+    "action": "launcher",
     "icon": "applications-system-symbolic"
   },
   "lyrics_toggle": {
@@ -34,8 +34,8 @@
     "desc": "Open Carbon Wallpaper Picker",
     "category": "Primary Triggers",
     "mods": "$mainMod",
-    "key": "W",
-    "display_str": "SUPER + W",
+    "key": "N",
+    "display_str": "SUPER + N",
     "action": "wallpaper",
     "icon": "preferences-desktop-wallpaper-symbolic"
   },
