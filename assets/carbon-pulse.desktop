@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Carbon Pulse
+Comment=System & Task Monitor with Guaranteed Process Tree Killing
+Exec=carbon-pulse
+Icon=utilities-system-monitor
+Terminal=false
+Type=Application
+Categories=System;Monitor;
+Keywords=system;process;task;manager;pulse;
+StartupWMClass=carbon-pulse

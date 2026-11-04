@@ -145,7 +145,7 @@ hl.bind(vars.kbCloseWindow, hl.dsp.window.close())
 
 -- Special workspace toggles
 hl.bind(vars.kbSpecialWs, hl.dsp.exec_cmd("caelestia toggle specialws"))
-hl.bind(vars.kbSystemMonitorWs, hl.dsp.exec_cmd("caelestia toggle sysmon"))
+hl.bind(vars.kbSystemMonitorWs, hl.dsp.exec_cmd("~/.local/bin/carbon-pulse"))
 hl.bind(vars.kbMusicWs, hl.dsp.exec_cmd("caelestia toggle music"))
 if vars.kbCommunicationWs then hl.bind(vars.kbCommunicationWs, hl.dsp.exec_cmd("caelestia toggle communication")) end
 hl.bind(vars.kbTodoWs, hl.dsp.exec_cmd("caelestia toggle todo"))

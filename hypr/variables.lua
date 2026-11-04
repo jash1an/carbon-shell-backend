@@ -85,7 +85,8 @@ return {
 
     -- Special workspaces toggles
     kbSpecialWs                = "SUPER + S",
-    kbSystemMonitorWs          = "CTRL + SHIFT + Escape",
+    kbSystemMonitorWs          = "SUPER + Escape",
+    kbCarbonPulse              = "SUPER + Escape",
     kbMusicWs                  = "SUPER + M",
     -- kbCommunicationWs          = "SUPER + D",
     kbCarbonDrop               = "SUPER + D",
