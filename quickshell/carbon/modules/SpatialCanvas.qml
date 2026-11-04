@@ -544,37 +544,42 @@ PanelWindow {
 
     Process {
         id: wallpaperListProc
+        property string buffer: ""
         command: [
             "python3", "-c",
             "import os, glob, json;\n" +
             "exts = ('.jpg', '.jpeg', '.png', '.webp');\n" +
-            "dirs = [os.path.expanduser('~/Pictures/Wallpapers'), os.path.expanduser('~/Pictures')];\n" +
+            "wp_dir = os.path.expanduser('~/Pictures/Wallpapers');\n" +
             "res = [];\n" +
-            "for d in dirs:\n" +
-            "    if os.path.isdir(d):\n" +
-            "        for root, _, files in os.walk(d):\n" +
-            "            for f in files:\n" +
-            "                if f.lower().endswith(exts):\n" +
-            "                    res.append(os.path.join(root, f));\n" +
+            "if os.path.isdir(wp_dir):\n" +
+            "    for root, _, files in os.walk(wp_dir):\n" +
+            "        for f in files:\n" +
+            "            if f.lower().endswith(exts) and not f.startswith('.'):\n" +
+            "                res.append(os.path.join(root, f));\n" +
             "res.sort(key=lambda x: os.path.getmtime(x), reverse=True);\n" +
-            "print(json.dumps(res[:280]))"
+            "print(json.dumps(res))"
         ]
         running: false
-        stdout: StdioCollector {
-            waitForEnd: true
-            onTextChanged: {
-                if (text && text.trim().length > 0) {
+        onRunningChanged: {
+            if (running) {
+                buffer = ""
+            } else {
+                if (buffer.trim().length > 0) {
                     try {
-                        var parsed = JSON.parse(text.trim());
+                        var parsed = JSON.parse(buffer.trim());
                         if (Array.isArray(parsed) && parsed.length > 0) spatialCanvasWindow.wallpaperList = parsed;
                     } catch(e) {}
                 }
             }
         }
+        stdout: SplitParser {
+            onRead: (chunk) => { wallpaperListProc.buffer += chunk + "\n" }
+        }
     }
 
     function refreshWallpapers() {
-        if (!wallpaperListProc.running) wallpaperListProc.running = true;
+        wallpaperListProc.running = false
+        wallpaperListProc.running = true
     }
 
     function setRandomWallpaper() {
@@ -1063,9 +1068,11 @@ PanelWindow {
                             anchors.topMargin: Theme.px(14); anchors.leftMargin: Theme.px(22); anchors.rightMargin: Theme.px(22)
                             height: Theme.px(28); spacing: Theme.px(10); z: 10
 
-                            Rectangle {
-                                Layout.preferredWidth: Theme.px(8); Layout.preferredHeight: Theme.px(8); radius: Theme.px(4)
-                                color: cardNode0_0.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.50)
+                            CarbonLogoIcon {
+                                Layout.preferredWidth: Theme.px(16)
+                                Layout.preferredHeight: Theme.px(16)
+                                Layout.alignment: Qt.AlignVCenter
+                                color: cardNode0_0.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.65)
                             }
                             Text { text: cardNode0_0.cardIcon; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(16); color: cardNode0_0.isCurrentTarget ? Theme.primary : Theme.fgDim }
                             Text { text: cardNode0_0.cardTitle; font.family: Theme.font; font.pixelSize: Theme.fontPx(13.5); font.bold: true; color: cardNode0_0.isCurrentTarget ? Theme.fg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.75) }
@@ -1257,9 +1264,11 @@ PanelWindow {
                             anchors.topMargin: Theme.px(14); anchors.leftMargin: Theme.px(22); anchors.rightMargin: Theme.px(22)
                             height: Theme.px(28); spacing: Theme.px(10); z: 10
 
-                            Rectangle {
-                                Layout.preferredWidth: Theme.px(8); Layout.preferredHeight: Theme.px(8); radius: Theme.px(4)
-                                color: cardNodeMinus1_0.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.50)
+                            CarbonLogoIcon {
+                                Layout.preferredWidth: Theme.px(16)
+                                Layout.preferredHeight: Theme.px(16)
+                                Layout.alignment: Qt.AlignVCenter
+                                color: cardNodeMinus1_0.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.65)
                             }
                             Text { text: cardNodeMinus1_0.cardIcon; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(16); color: cardNodeMinus1_0.isCurrentTarget ? Theme.primary : Theme.fgDim }
                             Text { text: cardNodeMinus1_0.cardTitle; font.family: Theme.font; font.pixelSize: Theme.fontPx(13.5); font.bold: true; color: cardNodeMinus1_0.isCurrentTarget ? Theme.fg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.75) }
@@ -1574,9 +1583,11 @@ PanelWindow {
                             anchors.topMargin: Theme.px(14); anchors.leftMargin: Theme.px(22); anchors.rightMargin: Theme.px(22)
                             height: Theme.px(28); spacing: Theme.px(10); z: 10
 
-                            Rectangle {
-                                Layout.preferredWidth: Theme.px(8); Layout.preferredHeight: Theme.px(8); radius: Theme.px(4)
-                                color: cardNode1_0.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.50)
+                            CarbonLogoIcon {
+                                Layout.preferredWidth: Theme.px(16)
+                                Layout.preferredHeight: Theme.px(16)
+                                Layout.alignment: Qt.AlignVCenter
+                                color: cardNode1_0.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.65)
                             }
                             Text { text: cardNode1_0.cardIcon; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(16); color: cardNode1_0.isCurrentTarget ? Theme.primary : Theme.fgDim }
                             Text { text: cardNode1_0.cardTitle; font.family: Theme.font; font.pixelSize: Theme.fontPx(13.5); font.bold: true; color: cardNode1_0.isCurrentTarget ? Theme.fg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.75) }
@@ -1868,9 +1879,11 @@ PanelWindow {
                             anchors.topMargin: Theme.px(14); anchors.leftMargin: Theme.px(22); anchors.rightMargin: Theme.px(22)
                             height: Theme.px(28); spacing: Theme.px(10); z: 10
 
-                            Rectangle {
-                                Layout.preferredWidth: Theme.px(8); Layout.preferredHeight: Theme.px(8); radius: Theme.px(4)
-                                color: cardNode0_Minus1.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.50)
+                            CarbonLogoIcon {
+                                Layout.preferredWidth: Theme.px(16)
+                                Layout.preferredHeight: Theme.px(16)
+                                Layout.alignment: Qt.AlignVCenter
+                                color: cardNode0_Minus1.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.65)
                             }
                             Text { text: cardNode0_Minus1.cardIcon; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(16); color: cardNode0_Minus1.isCurrentTarget ? Theme.primary : Theme.fgDim }
                             Text { text: cardNode0_Minus1.cardTitle; font.family: Theme.font; font.pixelSize: Theme.fontPx(13.5); font.bold: true; color: cardNode0_Minus1.isCurrentTarget ? Theme.fg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.75) }
@@ -2162,9 +2175,11 @@ PanelWindow {
                             anchors.topMargin: Theme.px(14); anchors.leftMargin: Theme.px(22); anchors.rightMargin: Theme.px(22)
                             height: Theme.px(28); spacing: Theme.px(10); z: 10
 
-                            Rectangle {
-                                Layout.preferredWidth: Theme.px(8); Layout.preferredHeight: Theme.px(8); radius: Theme.px(4)
-                                color: cardNode0_1.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.50)
+                            CarbonLogoIcon {
+                                Layout.preferredWidth: Theme.px(16)
+                                Layout.preferredHeight: Theme.px(16)
+                                Layout.alignment: Qt.AlignVCenter
+                                color: cardNode0_1.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.65)
                             }
                             Text { text: cardNode0_1.cardIcon; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(16); color: cardNode0_1.isCurrentTarget ? Theme.primary : Theme.fgDim }
                             Text { text: cardNode0_1.cardTitle; font.family: Theme.font; font.pixelSize: Theme.fontPx(13.5); font.bold: true; color: cardNode0_1.isCurrentTarget ? Theme.fg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.75) }
