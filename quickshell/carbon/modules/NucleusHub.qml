@@ -2400,9 +2400,9 @@ Item {
                 anchors.centerIn: parent
                 width: 140
                 height: 140
-                hostVisible: (root.hubOpen || root.hubProgress > 0.05) && (root.activeMode === "hub")
-                opacity: (root.hubProgress > 0.35 && root.activeMode === "hub") ? root.mediaPlayProgress : 0.0
-                scale: 0.7 + (0.3 * root.hubProgress)
+                hostVisible: (root.hubOpen || root.hubProgress > 0.05 || root.isMediaPlaying) && (root.activeMode === "hub")
+                opacity: (root.activeMode === "hub") ? (root.nucleusExpanded ? root.mediaPlayProgress : (root.mediaPlayProgress * 0.90)) : 0.0
+                scale: 0.58 + (0.42 * root.hubProgress)
                 Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
                 Behavior on scale { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
             }

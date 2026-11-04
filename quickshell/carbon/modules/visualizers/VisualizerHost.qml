@@ -18,7 +18,18 @@ Item {
 
     /* ── Visibility / Activation Gating ── */
     property bool hostVisible: true
-    readonly property bool isPlaying: LyricsService.isPlaying && LyricsService.hasTrack
+    readonly property bool isPlaying: {
+        if (LyricsService.isPlaying) return true
+        if (Mpris.players) {
+            var list = Mpris.players.values !== undefined ? Mpris.players.values : Mpris.players
+            if (list && list.length > 0) {
+                for (var i = 0; i < list.length; i++) {
+                    if (list[i] && list[i].playbackState === MprisPlaybackState.Playing) return true
+                }
+            }
+        }
+        return false
+    }
     readonly property bool activeAndVisible: hostVisible && (root.opacity > 0.05) && root.visible
 
     implicitWidth: 140
