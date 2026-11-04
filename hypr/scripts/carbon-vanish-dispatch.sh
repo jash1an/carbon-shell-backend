@@ -45,7 +45,7 @@ case "$ACTION" in
         sh "$IPC_SCRIPT" "nucleus toggle"
         ;;
     launcher)
-        sh "$IPC_SCRIPT" "nucleus launcher"
+        sh "$IPC_SCRIPT" "spotlight"
         ;;
     spotlight)
         sh "$IPC_SCRIPT" "spotlight"

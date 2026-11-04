@@ -132,11 +132,7 @@ ShellRoot {
     }
 
     function toggleDefaultLauncher() {
-        if (root.launcherStyle === "launcher") {
-            root.toggleLauncher()
-        } else {
-            root.toggleSpotlight()
-        }
+        root.toggleSpotlight()
     }
 
     function closeAllPopupsExcept(keep) {
@@ -733,22 +729,14 @@ ShellRoot {
     }
 
     function openLauncher() {
-        root.closeAllPopupsExcept("launcher")
-        root.spotlightOpen = false
-        root.closeWallpaperPicker()
-        root.launcherOpen = true
+        root.openSpotlight()
     }
     property real lastLauncherToggleTime: 0
     function closeLauncher() {
-        root.launcherOpen = false
-        // Preserve active workspace so Hyprland does not revert to old workspace where launcher opened
-        Quickshell.execDetached(["sh", "-c", "ws=$(hyprctl activeworkspace -j | jq -r .id 2>/dev/null); [ -n \"$ws\" ] && (sleep 0.05 && hyprctl dispatch workspace \"$ws\")"])
+        root.closeSpotlight()
     }
     function toggleLauncher() {
-        var now = Date.now()
-        if (now - root.lastLauncherToggleTime < 280) return
-        root.lastLauncherToggleTime = now
-        if (root.launcherOpen) closeLauncher(); else openLauncher()
+        root.toggleSpotlight()
     }
 
     property real lastWpToggleTime: 0
@@ -3927,48 +3915,7 @@ ShellRoot {
         }
     }
 
-    /* Launcher popup */
-    Variants {
-        model: Quickshell.screens
-
-        PanelWindow {
-            id: launcherWindow
-            required property var modelData
-
-            screen: modelData
-            color: "transparent"
-            WlrLayershell.namespace: "carbon-launcher"
-            WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.keyboardFocus: root.launcherOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
-            exclusionMode: ExclusionMode.Ignore
-            anchors { top: true; left: true; right: true; bottom: true }
-
-            aboveWindows: true
-            visible: root.launcherOpen || (launcherItem && launcherItem.animatingOut)
-
-            MouseArea {
-                anchors.fill: parent
-                enabled: root.launcherOpen
-                onClicked: (mouse) => {
-                    var lw = launcherItem.width
-                    var lh = launcherItem.height
-                    var lx = launcherItem.x
-                    var ly = launcherItem.y
-                    if (mouse.x < lx || mouse.x > lx + lw || mouse.y < ly || mouse.y > ly + lh)
-                        root.closeLauncher()
-                }
-            }
-
-            LauncherMod {
-                id: launcherItem
-                open: root.launcherOpen
-                barEdge: root.mainBarEdge
-                onCloseRequested: root.closeLauncher()
-            }
-        }
-    }
-
-    /* Spotlight Command Palette */
+    /* Spotlight Command Palette (Single Unified Launcher with Blank Tile) */
     Variants {
         model: Quickshell.screens
 

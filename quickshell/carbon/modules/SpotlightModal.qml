@@ -181,11 +181,11 @@ Item {
             h += 60
         }
         if (resultsModel.count > 0) {
-            h += 10 + Math.min(240, resultsModel.count * 48)
+            h += 10 + Math.min(260, resultsModel.count * 48)
         } else if (!calcCard.visible) {
             h += 52 // empty placeholder
         }
-        return Math.max(160, Math.min(460, h))
+        return Math.max(160, Math.min(480, h))
     }
     height: calculatedHeight
     implicitHeight: height
@@ -335,15 +335,29 @@ Item {
 
     /* ── Desktop Applications Loader ──────────────────────────────────── */
     function loadApps() {
-        const values = DesktopEntries.applications.values || []
+        const values = (typeof DesktopEntries !== "undefined" && DesktopEntries && DesktopEntries.applications)
+            ? (DesktopEntries.applications.values || [])
+            : []
         const list = []
         for (let i = 0; i < values.length; i++) {
             const e = values[i]
-            if (e.noDisplay || !e.name || !e.command || e.command.length === 0) continue
+            if (!e || e.noDisplay || !e.name) continue
+            if (e.command && e.command.length === 0) continue
             list.push(e)
         }
-        list.sort((a, b) => a.name.localeCompare(b.name))
+        list.sort((a, b) => (a.name || "").localeCompare(b.name || ""))
         root.allApps = list
+    }
+
+    Timer {
+        id: initAppsTimer
+        interval: 600
+        running: true
+        repeat: false
+        onTriggered: {
+            root.loadApps()
+            if (root.open) root.rebuildResults()
+        }
     }
 
     function resolveAppIcon(app) {
@@ -517,13 +531,19 @@ Item {
         }
 
         // 3. Applications mode (default)
+        if (!root.allApps || root.allApps.length === 0) {
+            root.loadApps()
+        }
         let count = 0
         for (let i = 0; i < root.allApps.length; i++) {
             const app = root.allApps[i]
             const name = (app.name || "").toLowerCase()
             const generic = (app.genericName || "").toLowerCase()
             const comment = (app.comment || "").toLowerCase()
-            if (q.length === 0 || name.includes(q) || generic.includes(q) || comment.includes(q)) {
+            const appId = (app.id || "").toLowerCase()
+            const cmd = (app.command && Array.isArray(app.command)) ? app.command.join(" ").toLowerCase() : ""
+
+            if (q.length === 0 || name.includes(q) || generic.includes(q) || comment.includes(q) || appId.includes(q) || cmd.includes(q)) {
                 resultsModel.append({
                     itemType: "app",
                     itemId: app.id || app.name,
@@ -534,7 +554,7 @@ Item {
                     rawRef: ""
                 })
                 count++
-                if (count > 30) break
+                if (count > 50) break
             }
         }
 
@@ -590,6 +610,7 @@ Item {
     /* ── Activation & Reset ───────────────────────────────────────────── */
     onOpenChanged: {
         if (root.open) {
+            root.loadApps()
             root.reloadBlankTileConfig()
             searchInput.text = ""
             root.calcResult = ""
@@ -744,9 +765,7 @@ Item {
                 id: idleContainer
                 Layout.fillWidth: true
                 spacing: 10
-                visible: root.isVanishMode && opacity > 0.01
-                opacity: (root.isVanishMode && root.isSearchEmpty) ? 1.0 : 0.0
-                Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                visible: root.isVanishMode && root.isSearchEmpty
 
                 /* ── Top Personalized Tile (Rounded Corners + Right-Side Weather) ── */
                 Rectangle {
@@ -1093,9 +1112,7 @@ Item {
                 id: searchContainer
                 Layout.fillWidth: true
                 spacing: 8
-                visible: (!root.isVanishMode || !root.isSearchEmpty) && opacity > 0.01
-                opacity: (!root.isVanishMode || !root.isSearchEmpty) ? 1.0 : 0.0
-                Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                visible: (!root.isVanishMode || !root.isSearchEmpty)
 
                 /* Divider */
                 Rectangle {

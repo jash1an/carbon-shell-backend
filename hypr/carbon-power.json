@@ -8,7 +8,7 @@
   "hibernationEnabled": true,
   "dimEnabled": true,
   "dimTimeout": 180,
-  "dimBrightnessPercent": 20,
-  "screenOffTimeout": 300,
-  "autoSuspendTimeout": 1800
+  "dimBrightnessPercent": 13,
+  "screenOffTimeout": 900,
+  "autoSuspendTimeout": 0
 }
