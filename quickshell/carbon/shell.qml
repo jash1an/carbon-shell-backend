@@ -44,6 +44,7 @@ ShellRoot {
     property var centerDashboardItem: null
     property var focusHudItem: null
     property var commandCenterItem: null
+    property var spatialCanvasItem: null
 
     property bool commandCenterOpen: false
     property bool commandCenterAnimatingOut: false
@@ -65,6 +66,36 @@ ShellRoot {
         root.lastCommandCenterToggleTime = now
         if (root.commandCenterOpen) root.closeCommandCenter()
         else root.openCommandCenter()
+    }
+
+    property bool spatialCanvasOpen: false
+    property bool spatialCanvasAnimatingOut: false
+    function openSpatialCanvas() {
+        root.closeAllPopupsExcept("spatialCanvas")
+        root.spatialCanvasAnimatingOut = false
+        root.spatialCanvasOpen = true
+        if (root.spatialCanvasItem) root.spatialCanvasItem.zoomToOverview()
+    }
+    function openSpatialCanvasNode(gx, gy) {
+        root.closeAllPopupsExcept("spatialCanvas")
+        root.spatialCanvasAnimatingOut = false
+        root.spatialCanvasOpen = true
+        if (root.spatialCanvasItem) {
+            root.spatialCanvasItem.zoomToNode(gx, gy)
+        }
+    }
+    function closeSpatialCanvas() {
+        if (!root.spatialCanvasOpen && !root.spatialCanvasAnimatingOut) return
+        root.spatialCanvasAnimatingOut = true
+        root.spatialCanvasOpen = false
+    }
+    property real lastSpatialCanvasToggleTime: 0
+    function toggleSpatialCanvas() {
+        var now = Date.now()
+        if (now - root.lastSpatialCanvasToggleTime < 250) return
+        root.lastSpatialCanvasToggleTime = now
+        if (root.spatialCanvasOpen) root.closeSpatialCanvas()
+        else root.openSpatialCanvas()
     }
 
     property bool focusHudOpen: false
@@ -154,7 +185,9 @@ ShellRoot {
         if (keep !== "centerDashboard") { root.centerDashboardOpen = false; root.centerDashboardPinned = false }
         if (keep !== "controls") { root.controlsVisible = false; root.controlsPinned = false }
         if (keep !== "commandCenter") { root.commandCenterOpen = false; root.commandCenterAnimatingOut = false }
+        if (keep !== "spatialCanvas") { root.spatialCanvasOpen = false; root.spatialCanvasAnimatingOut = false }
         if (keep !== "focus") { root.focusHudOpen = false }
+        if (keep !== "settings") { root.settingsHubOpen = false }
     }
 
     property bool smallMusicOpen: false
@@ -1626,52 +1659,84 @@ ShellRoot {
                     else if (cmd === "close-focus" || cmd === "close-focus-hud") {
                         root.closeFocusHud()
                     }
-                    else if (cmd === "command-center" || cmd === "toggle-command-center" || cmd === "notch-command-center" || cmd === "radar") {
+                    else if (cmd === "command-center" || cmd === "toggle-command-center" || cmd === "notch-command-center" || cmd === "radar" || cmd === "panel" || cmd === "toggle-panel") {
                         root.toggleCommandCenter()
                     }
-                    else if (cmd === "open-command-center" || cmd === "open-radar") {
+                    else if (cmd === "open-command-center" || cmd === "open-radar" || cmd === "open-panel") {
                         root.openCommandCenter()
                     }
-                    else if (cmd === "github-uplink" || cmd === "github" || cmd === "spatial-github") {
-                        root.openCommandCenter()
-                        if (root.commandCenterItem) root.commandCenterItem.zoomToNode(0, -1)
+                    else if (cmd === "close-command-center" || cmd === "close-radar" || cmd === "close-panel") {
+                        root.closeCommandCenter()
                     }
-                    else if (cmd === "command-center-overview" || cmd === "overview" || cmd === "spatial-overview") {
+                    else if (cmd === "command-center-overview" || cmd === "radar-overview") {
                         root.openCommandCenter()
-                        if (root.commandCenterItem) root.commandCenterItem.zoomToOverview()
+                        if (root.commandCenterItem) root.commandCenterItem.currentChannel = "overview"
                     }
-                    else if (cmd === "command-center-telemetry" || cmd === "telemetry" || cmd === "system-telemetry" || cmd === "spatial-telemetry") {
+                    else if (cmd === "github-uplink" || cmd === "github") {
                         root.openCommandCenter()
-                        if (root.commandCenterItem) root.commandCenterItem.zoomToNode(0, 1)
+                        if (root.commandCenterItem) root.commandCenterItem.currentChannel = "github"
                     }
-                    else if (cmd === "spatial-workspace" || cmd === "workspaces" || cmd === "workspace-blueprint") {
+                    else if (cmd === "command-center-telemetry" || cmd === "telemetry" || cmd === "system-telemetry") {
                         root.openCommandCenter()
-                        if (root.commandCenterItem) root.commandCenterItem.zoomToNode(0, 0)
-                    }
-                    else if (cmd === "spatial-radar" || cmd === "local-radar") {
-                        root.openCommandCenter()
-                        if (root.commandCenterItem) root.commandCenterItem.zoomToNode(-1, 0)
-                    }
-                    else if (cmd === "spatial-settings" || cmd === "settings-node") {
-                        root.openCommandCenter()
-                        if (root.commandCenterItem) root.commandCenterItem.zoomToNode(1, 0)
+                        if (root.commandCenterItem) root.commandCenterItem.currentChannel = "telemetry"
                     }
                     else if (cmd === "telemetry-ram" || cmd === "telemetry-swap") {
                         root.openCommandCenter()
                         if (root.commandCenterItem) {
-                            root.commandCenterItem.zoomToNode(0, 1)
+                            root.commandCenterItem.currentChannel = "telemetry"
                             root.commandCenterItem.telemetrySubMode = "ram"
                         }
                     }
                     else if (cmd === "telemetry-cpu") {
                         root.openCommandCenter()
                         if (root.commandCenterItem) {
-                            root.commandCenterItem.zoomToNode(0, 1)
+                            root.commandCenterItem.currentChannel = "telemetry"
                             root.commandCenterItem.telemetrySubMode = "cpu"
                         }
                     }
-                    else if (cmd === "close-command-center" || cmd === "close-radar") {
-                        root.closeCommandCenter()
+                    else if (cmd === "spatial-canvas" || cmd === "toggle-spatial-canvas" || cmd === "spatial-overview" || cmd === "overview" || cmd === "toggle-overview") {
+                        root.toggleSpatialCanvas()
+                    }
+                    else if (cmd === "open-spatial-canvas") {
+                        root.openSpatialCanvas()
+                    }
+                    else if (cmd === "close-spatial-canvas" || cmd === "close-overview") {
+                        root.closeSpatialCanvas()
+                    }
+                    else if (cmd === "spatial-wifi" || cmd === "spatial-network") {
+                        root.openSpatialCanvasNode(-1, -1)
+                    }
+                    else if (cmd === "spatial-files" || cmd === "spatial-file-browser") {
+                        root.openSpatialCanvasNode(0, -1)
+                    }
+                    else if (cmd === "spatial-weather") {
+                        root.openSpatialCanvasNode(1, -1)
+                    }
+                    else if (cmd === "spatial-launcher") {
+                        root.openSpatialCanvasNode(-1, 0)
+                    }
+                    else if (cmd === "spatial-workspace" || cmd === "workspaces" || cmd === "workspace-blueprint") {
+                        root.openSpatialCanvasNode(0, 0)
+                    }
+                    else if (cmd === "spatial-engine" || cmd === "spatial-settings" || cmd === "settings-node") {
+                        root.openSpatialCanvasNode(1, 0)
+                    }
+                    else if (cmd === "spatial-updater" || cmd === "spatial-updates") {
+                        root.openSpatialCanvasNode(-1, 1)
+                    }
+                    else if (cmd === "spatial-media") {
+                        root.openSpatialCanvasNode(0, 1)
+                    }
+                    else if (cmd === "spatial-session" || cmd === "spatial-power") {
+                        root.openSpatialCanvasNode(1, 1)
+                    }
+                    else if (cmd.indexOf("spatial-node ") === 0) {
+                        var parts = cmd.trim().split(/\s+/);
+                        if (parts.length >= 3) {
+                            var nx = parseInt(parts[1]);
+                            var ny = parseInt(parts[2]);
+                            root.openSpatialCanvasNode(nx, ny);
+                        }
                     }
                     else if (cmd === "mixer")
                         root.toggleMixer()
@@ -4093,6 +4158,27 @@ ShellRoot {
                 root.commandCenterAnimatingOut = false
             }
             Component.onCompleted: root.commandCenterItem = this
+        }
+    }
+
+    /* 3x3 Spatial Canvas OS App Suite & Blueprint Workspace Switcher */
+    Variants {
+        model: Quickshell.screens
+
+        SpatialCanvas {
+            id: spatialCanvasInst
+            required property var modelData
+            modelData: modelData
+            screen: modelData
+            barEdge: root.mainBarEdge
+            barMode: root.barMode
+            visible: root.spatialCanvasOpen || root.spatialCanvasAnimatingOut || spatialCanvasInst.animatingOut
+            isOpen: root.spatialCanvasOpen
+            onCloseRequested: root.closeSpatialCanvas()
+            onAnimationFinished: {
+                root.spatialCanvasAnimatingOut = false
+            }
+            Component.onCompleted: root.spatialCanvasItem = this
         }
     }
 

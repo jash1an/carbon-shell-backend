@@ -157,11 +157,12 @@ Item {
         id: haloCanvas
         anchors.fill: parent
         renderTarget: Canvas.FramebufferObject
-        renderStrategy: Canvas.Threaded
+        renderStrategy: Canvas.Immediate
 
         onPaint: {
             var ctx = getContext("2d")
-            ctx.reset()
+            ctx.save()
+            ctx.clearRect(0, 0, width, height)
 
             var cx = width / 2.0
             var cy = height / 2.0
@@ -191,12 +192,12 @@ Item {
                 ctx.closePath()
 
                 // Translucent liquid fill
-                ctx.fillStyle = Qt.rgba(col.r, col.g, col.b, 0.20)
+                ctx.fillStyle = Qt.rgba(col.r, col.g, col.b, 0.22)
                 ctx.fill()
 
                 // Crisp contour stroke
-                ctx.strokeStyle = Qt.rgba(col.r, col.g, col.b, 0.72)
-                ctx.lineWidth = 1.2
+                ctx.strokeStyle = Qt.rgba(col.r, col.g, col.b, 0.75)
+                ctx.lineWidth = 1.3
                 ctx.stroke()
             }
 
@@ -226,6 +227,8 @@ Item {
                 root.phase1_1, root.phase1_2,
                 root.colorAccent1
             )
+
+            ctx.restore()
         }
     }
 }
