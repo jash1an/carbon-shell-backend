@@ -1715,32 +1715,20 @@ ShellRoot {
                     else if (cmd === "close-spatial-canvas" || cmd === "close-overview") {
                         root.closeSpatialCanvas()
                     }
-                    else if (cmd === "spatial-wifi" || cmd === "spatial-network") {
-                        root.openSpatialCanvasNode(-1, -1)
+                    else if (cmd === "spatial-wifi" || cmd === "spatial-bluetooth" || cmd === "spatial-network" || cmd === "spatial-connectivity") {
+                        root.openSpatialCanvasNode(-1, 0)
                     }
                     else if (cmd === "spatial-files" || cmd === "spatial-file-browser") {
                         root.openSpatialCanvasNode(0, -1)
                     }
-                    else if (cmd === "spatial-weather") {
-                        root.openSpatialCanvasNode(1, -1)
-                    }
-                    else if (cmd === "spatial-launcher") {
-                        root.openSpatialCanvasNode(-1, 0)
-                    }
                     else if (cmd === "spatial-workspace" || cmd === "workspaces" || cmd === "workspace-blueprint") {
                         root.openSpatialCanvasNode(0, 0)
                     }
-                    else if (cmd === "spatial-engine" || cmd === "spatial-settings" || cmd === "settings-node") {
+                    else if (cmd === "spatial-engine" || cmd === "spatial-wallpapers" || cmd === "spatial-settings" || cmd === "settings-node") {
                         root.openSpatialCanvasNode(1, 0)
                     }
-                    else if (cmd === "spatial-updater" || cmd === "spatial-updates") {
-                        root.openSpatialCanvasNode(-1, 1)
-                    }
-                    else if (cmd === "spatial-media") {
+                    else if (cmd === "spatial-media" || cmd === "spatial-session" || cmd === "spatial-power") {
                         root.openSpatialCanvasNode(0, 1)
-                    }
-                    else if (cmd === "spatial-session" || cmd === "spatial-power") {
-                        root.openSpatialCanvasNode(1, 1)
                     }
                     else if (cmd.indexOf("spatial-node ") === 0) {
                         var parts = cmd.trim().split(/\s+/);
