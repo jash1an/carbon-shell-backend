@@ -10,7 +10,7 @@ return {
     browser                    = "firefox",
     editor                     = (os.getenv("HOME") or "") .. "/.config/carbon/scripts/carbon-settings-hub",
     pomodoro                   = (os.getenv("HOME") or "") .. "/.config/hypr/scripts/carbon-pomodoro",
-    fileExplorer               = "thunar",
+    fileExplorer               = "nautilus",
     audioSettings              = "pavucontrol",
 
     -- Touchpad
@@ -97,18 +97,18 @@ return {
     kbBrowser                  = "SUPER + B",
     kbEditor                   = "SUPER + C",
     kbPomodoro                 = "SUPER + P",
-    kbFileExplorer             = "SUPER + SHIFT + E",
+    kbFileExplorer             = "SUPER + N",
 
     -- Misc
     kbSession                  = "CTRL + ALT + Delete",
-    kbShowSidebar              = "SUPER + N",
+    kbShowSidebar              = "SUPER + W",
     kbClearNotifs              = "CTRL + ALT + C",
     kbShowPanels               = "SUPER + K",
     kbLock                     = "SUPER + L",
     kbRestoreLock              = "SUPER + ALT + L",
     kbMenu                     = "SUPER + Space",
     kbScreenshot               = "SUPER + Print",
-    kbWallpaper                = nil,
+    kbWallpaper                = "SUPER + W",
     kbKillProcess              = "CTRL + ALT + K",
     kbColorPicker              = "SUPER + SHIFT + C",
     kbFloatingTerminal         = "SUPER + ALT + Return",

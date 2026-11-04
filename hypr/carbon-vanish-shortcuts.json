@@ -34,8 +34,8 @@
     "desc": "Open Carbon Wallpaper Picker",
     "category": "Primary Triggers",
     "mods": "$mainMod",
-    "key": "N",
-    "display_str": "SUPER + N",
+    "key": "W",
+    "display_str": "SUPER + W",
     "action": "wallpaper",
     "icon": "preferences-desktop-wallpaper-symbolic"
   },
