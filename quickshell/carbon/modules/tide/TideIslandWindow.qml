@@ -15,7 +15,7 @@ import "qml/workspace"
 
 PanelWindow {
     id: root
-    visible: shellRootController ? (shellRootController.barMode === "minimal" || shellRootController.barMode === "minimal_notch") : false
+    visible: (shellRootController ? (shellRootController.barMode === "minimal" || shellRootController.barMode === "minimal_notch") : false) && !GlobalState.isFocusActive
     property var shellRootController: null
     property string overviewPhase: "closed"
     property bool overviewPreloading: false
@@ -221,13 +221,19 @@ PanelWindow {
     }
 
     color: StyleTokens.transparent
-    anchors { top: true; left: true; right: true }
+    readonly property bool isAttachedBottom: shellRootController ? (shellRootController.mainBarEdge === "bottom") : false
+    anchors {
+        top: !root.isAttachedBottom
+        bottom: root.isAttachedBottom
+        left: true
+        right: true
+    }
     mask: Region {
         // Input is the union of the island's visible surfaces plus a compact top
         // gesture strip. The gesture strip must not grow with expanded content.
         Region {
             x: Math.floor(root.topGestureInputX)
-            y: 0
+            y: root.isAttachedBottom ? Math.floor(root.height - root.topGestureInputHeight) : 0
             width: Math.ceil(root.topGestureInputWidth)
             height: Math.ceil(root.topGestureInputHeight)
         }
@@ -2021,6 +2027,9 @@ PanelWindow {
         Rectangle {
             id: mainCapsule
             z: 5
+            property var notchRoot: mainCapsule
+            property bool dragActive: false
+            property bool isUploading: false
             property int morphDuration: 400
             readonly property bool notificationHistorySurface: islandContainer.islandState === "notification_center"
             property real outlineWidth: (root.overviewContentVisible || notificationHistorySurface || !Theme.isDark) ? 1 : 0
@@ -2075,6 +2084,7 @@ PanelWindow {
                 }
             }
             readonly property real targetHeight: {
+                if (mainCapsule.dragActive || mainCapsule.isUploading) return 48;
                 if (root.overviewVisible) return root.overviewCapsuleHeight;
 
                 switch (islandContainer.islandState) {
@@ -2136,8 +2146,10 @@ PanelWindow {
                 ? root.overviewCapsuleColor
                 : root.baseCapsuleColor
             color: root.isNotchMode ? "transparent" : mainCapsule.baseCapsuleColor
-            y: Math.round(root.effectiveTopMargin
-                - (1 - root.autoHideProgress) * (targetHeight + root.effectiveTopMargin + 8))
+            y: root.isAttachedBottom
+                ? Math.round(root.height - targetHeight - root.effectiveTopMargin + (1 - root.autoHideProgress) * (targetHeight + root.effectiveTopMargin + 8))
+                : Math.round(root.effectiveTopMargin
+                    - (1 - root.autoHideProgress) * (targetHeight + root.effectiveTopMargin + 8))
             x: Math.round(((parent && parent.width > 0) ? parent.width : root.width) * userConfig.islandPositionX / 100 - width / 2)
             clip: true
             width: Math.round(displayedWidth)
@@ -2145,7 +2157,7 @@ PanelWindow {
             radius: targetRadius
             opacity: root.autoHideProgress
             scale: 0.96 + root.autoHideProgress * 0.04
-            transformOrigin: Item.Top
+            transformOrigin: root.isAttachedBottom ? Item.Bottom : Item.Top
             layer.enabled: false
 
             onBaseTargetWidthChanged: {
@@ -2182,11 +2194,16 @@ PanelWindow {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 anchors.top: parent.top
-                anchors.topMargin: -mainCapsule.radius
+                anchors.topMargin: root.isAttachedBottom ? 0 : -mainCapsule.radius
+                anchors.bottomMargin: root.isAttachedBottom ? -mainCapsule.radius : 0
                 radius: mainCapsule.radius
                 color: mainCapsule.baseCapsuleColor
                 z: -0.5
+                border.width: (mainCapsule.dragActive || mainCapsule.isUploading) ? 2 : 1
+                border.color: mainCapsule.isUploading ? "#f5b86e" : (mainCapsule.dragActive ? "#8ee8a8" : Qt.rgba(1, 1, 1, 0.15))
 
+                Behavior on border.width { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
+                Behavior on border.color { ColorAnimation { duration: 200; easing.type: Easing.OutQuad } }
                 Behavior on color { ColorAnimation { duration: 280; easing.type: Easing.InOutQuad } }
             }
 
@@ -2207,6 +2224,83 @@ PanelWindow {
                 }
             }
 
+            Process {
+                id: mainCapsuleUploadProcess
+                running: false
+                command: []
+                stdout: StdioCollector {
+                    id: mainCapsuleUploadStdout
+                    waitForEnd: true
+                }
+                onExited: (exitCode) => {
+                    let out = mainCapsuleUploadStdout.text ? mainCapsuleUploadStdout.text.trim() : "";
+                    let url = "";
+                    try {
+                        let lines = out.split("\n");
+                        for (let i = lines.length - 1; i >= 0; i--) {
+                            let l = lines[i].trim();
+                            if (!l) continue;
+                            try {
+                                let msg = JSON.parse(l);
+                                if (msg && msg.url) { url = msg.url; break; }
+                            } catch(e) {}
+                            if (l.startsWith("http://") || l.startsWith("https://")) {
+                                url = l;
+                                break;
+                            }
+                        }
+                    } catch(e) {}
+
+                    if (url && url.length > 0) {
+                        Quickshell.execDetached(["wl-copy", url]);
+                    }
+
+                    mainCapsule.isUploading = false;
+                }
+            }
+
+            DropArea {
+                id: mainCapsuleDropArea
+                anchors.fill: parent
+                z: 10
+
+                onEntered: (drag) => {
+                    if (drag.hasUrls) {
+                        drag.accept(Qt.CopyAction);
+                        mainCapsule.dragActive = true;
+                    }
+                }
+
+                onPositionChanged: (drag) => {
+                    if (drag.hasUrls) {
+                        drag.accept(Qt.CopyAction);
+                    }
+                }
+
+                onExited: {
+                    mainCapsule.dragActive = false;
+                }
+
+                onDropped: (drop) => {
+                    mainCapsule.dragActive = false;
+                    if (!drop.hasUrls || drop.urls.length === 0) return;
+                    drop.acceptProposedAction();
+
+                    let rawUrl = drop.urls[0].toString();
+                    let cleanPath = decodeURIComponent(rawUrl.replace(/^file:\/\//, ""));
+                    if (!cleanPath || cleanPath.length === 0) return;
+
+                    mainCapsule.isUploading = true;
+
+                    let dropBin = Quickshell.env("CARBON_DROP_ENGINE") || ((Quickshell.env("HOME") || "") + "/.local/bin/carbon-drop-engine");
+                    mainCapsuleUploadProcess.command = [
+                        dropBin,
+                        "Buzzheavier (10GB+)",
+                        cleanPath
+                    ];
+                    mainCapsuleUploadProcess.running = true;
+                }
+            }
 
             MouseArea {
                 id: capsuleMouseArea
@@ -2853,7 +2947,11 @@ PanelWindow {
             z: mainCapsule.z
             opacity: mainCapsule.opacity
             scale: mainCapsule.scale
-            transformOrigin: Item.Top
+            transformOrigin: root.isAttachedBottom ? Item.Bottom : Item.Top
+            transform: Scale {
+                origin.y: root.isAttachedBottom ? leftNotchEar.height : 0
+                yScale: root.isAttachedBottom ? -1 : 1
+            }
             preferredRendererType: Shape.CurveRenderer
             antialiasing: true
 
@@ -2902,7 +3000,11 @@ PanelWindow {
             z: mainCapsule.z
             opacity: mainCapsule.opacity
             scale: mainCapsule.scale
-            transformOrigin: Item.Top
+            transformOrigin: root.isAttachedBottom ? Item.Bottom : Item.Top
+            transform: Scale {
+                origin.y: root.isAttachedBottom ? rightNotchEar.height : 0
+                yScale: root.isAttachedBottom ? -1 : 1
+            }
             preferredRendererType: Shape.CurveRenderer
             antialiasing: true
 

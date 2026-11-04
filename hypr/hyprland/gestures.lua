@@ -13,13 +13,14 @@ hl.config({
 })
 
 hl.gesture({ fingers = vars.workspaceSwipeFingers, direction = "horizontal", action = "workspace" })
-hl.gesture({
-    fingers   = vars.gestureFingers,
-    direction = "up",
-    action    = function()
-        hl.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh toggle-overview")
-    end,
-})
+-- 3-finger UP swipe is now handled natively by hyprexpo (workspace overview)
+-- hl.gesture({
+--     fingers   = vars.gestureFingers,
+--     direction = "up",
+--     action    = function()
+--         hl.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh toggle-overview")
+--     end,
+-- })
 hl.gesture({
     fingers   = vars.gestureFingers,
     direction = "down",

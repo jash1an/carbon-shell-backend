@@ -1,5 +1,7 @@
 import QtQuick
 import QtQuick.Shapes
+import Quickshell
+import Quickshell.Io
 import "../Singletons"
 
 /**
@@ -22,7 +24,9 @@ Item {
     default property alias content: contentRow.data
     readonly property real contentImplicitWidth: contentRow.implicitWidth
 
-    implicitHeight: Math.round(34 * (Theme && Theme.shellScale !== undefined ? Theme.shellScale : 1.0))
+    implicitHeight: (root.dragActive || root.isUploading)
+        ? Math.round(48 * (Theme && Theme.shellScale !== undefined ? Theme.shellScale : 1.0))
+        : Math.round(34 * (Theme && Theme.shellScale !== undefined ? Theme.shellScale : 1.0))
     implicitWidth: Math.max(70, contentRow.implicitWidth 
                    + (leftFillet ? filletRadius : 0) 
                    + (rightFillet ? filletRadius : 0) 
@@ -43,9 +47,27 @@ Item {
         }
     }
 
+    property var uploadHosts: ["Buzzheavier", "x0.at", "kappa.lol"]
+    property int currentHostIndex: 0
+
     property bool attachedBottom: false
     property bool hasAttachedPopup: false
     property real notchOpacity: 0.96
+
+    readonly property color defaultBorderColor: "transparent"
+    property color borderColor: defaultBorderColor
+    property bool dragActive: false
+    property bool isUploading: false
+
+    readonly property string dropEngineBin: {
+        var envPath = Quickshell.env("CARBON_DROP_ENGINE")
+        if (envPath && envPath.length > 0) return envPath
+        var home = Quickshell.env("HOME") || ""
+        if (home.length > 0) {
+            return home + "/.local/bin/carbon-drop-engine"
+        }
+        return "carbon-drop-engine"
+    }
 
     // SaneAspect deep dark OLED notch surface
     readonly property color notchBgColor: Theme.isDark 
@@ -64,6 +86,7 @@ Item {
         anchors.rightMargin: (root.rightFillet && root.filletRadius > 0) ? root.filletRadius : 0
 
         Rectangle {
+            id: notchBackground
             anchors.left: parent.left
             anchors.leftMargin: (!root.leftFillet && root.rightFillet) ? -root.bottomRadius : 0
             anchors.right: parent.right
@@ -72,6 +95,37 @@ Item {
             height: parent.height + root.bottomRadius
             radius: root.bottomRadius
             color: root.notchBgColor
+            border.width: (root.dragActive || root.isUploading) ? 2 : 0
+            border.color: (root.dragActive || root.isUploading) ? (root.isUploading ? "#f5b86e" : "#8ee8a8") : "transparent"
+
+            Behavior on border.width {
+                NumberAnimation {
+                    duration: 150
+                    easing.type: Easing.OutQuad
+                }
+            }
+
+            Behavior on border.color {
+                ColorAnimation {
+                    duration: 200
+                    easing.type: Easing.OutQuad
+                }
+            }
+
+            MouseArea {
+                id: notchWheelMouseArea
+                anchors.fill: parent
+                acceptedButtons: Qt.NoButton
+                onWheel: (wheel) => {
+                    if (wheel.angleDelta.y > 0) {
+                        root.currentHostIndex = (root.currentHostIndex + 1) % root.uploadHosts.length;
+                    } else {
+                        root.currentHostIndex = (root.currentHostIndex - 1 + root.uploadHosts.length) % root.uploadHosts.length;
+                    }
+                    notchText.text = "API: " + root.uploadHosts[root.currentHostIndex].toUpperCase();
+                    hostTextResetTimer.restart();
+                }
+            }
         }
     }
 
@@ -137,19 +191,34 @@ Item {
 
     property bool isPlaying: false
     property string trackTitle: ""
-    property alias mouseArea: notchMouseArea
+    property alias mouseArea: notchWheelMouseArea
 
-    MouseArea {
-        id: notchMouseArea
-        anchors.fill: parent
-        hoverEnabled: false
-        cursorShape: Qt.ArrowCursor
-        z: 0
+    Timer {
+        id: hostTextResetTimer
+        interval: 1500
+        onTriggered: notchText.text = "" // Revert to default text
+    }
+
+    Text {
+        id: notchText
+        anchors.centerIn: parent
+        z: 95
+        visible: text.length > 0
+        text: ""
+        color: (typeof Theme !== "undefined" && Theme.accentLit) ? Theme.accentLit : "#8ee8a8"
+        font.family: (typeof Theme !== "undefined" && Theme.fontMono) ? Theme.fontMono : "JetBrainsMono Nerd Font"
+        font.pixelSize: (typeof Theme !== "undefined" && Theme.fontPx) ? Theme.fontPx(11) : 11
+        font.bold: true
     }
 
     Row {
         id: contentRow
         z: 1
+        opacity: notchText.text.length > 0 ? 0.0 : 1.0
+        visible: opacity > 0.01
+        Behavior on opacity {
+            NumberAnimation { duration: 150 }
+        }
         height: root.hasAttachedPopup ? root.implicitHeight : root.height
         anchors.verticalCenter: root.hasAttachedPopup ? undefined : parent.verticalCenter
         anchors.top: root.hasAttachedPopup && !root.attachedBottom ? parent.top : undefined
@@ -160,5 +229,89 @@ Item {
         anchors.rightMargin: (!root.rightFillet && root.leftFillet) ? root.horizontalPadding : undefined
         anchors.horizontalCenter: (root.leftFillet && root.rightFillet) ? parent.horizontalCenter : undefined
         spacing: root.contentSpacing
+    }
+
+    Process {
+        id: uploadProcess
+        running: false
+        command: []
+        stdout: StdioCollector {
+            id: uploadStdout
+            waitForEnd: true
+        }
+        onExited: (exitCode) => {
+            let out = uploadStdout.text ? uploadStdout.text.trim() : "";
+            let url = "";
+            try {
+                let lines = out.split("\n");
+                for (let i = lines.length - 1; i >= 0; i--) {
+                    let l = lines[i].trim();
+                    if (!l) continue;
+                    try {
+                        let msg = JSON.parse(l);
+                        if (msg && msg.url) { url = msg.url; break; }
+                    } catch(e) {}
+                    if (l.startsWith("http://") || l.startsWith("https://")) {
+                        url = l;
+                        break;
+                    }
+                }
+            } catch(e) {}
+
+            if (url && url.length > 0) {
+                Quickshell.execDetached(["wl-copy", url]);
+                Quickshell.execDetached(["notify-send", "-a", "Carbon Drop", "File Uploaded", "Link copied to clipboard:\n" + url]);
+            }
+
+            root.isUploading = false;
+        }
+    }
+
+    DropArea {
+        id: notchDropArea
+        anchors.fill: parent
+        z: 99
+
+        onEntered: (drag) => {
+            if (drag.hasUrls) {
+                drag.accept(Qt.CopyAction);
+                root.dragActive = true;
+            }
+        }
+
+        onPositionChanged: (drag) => {
+            if (drag.hasUrls) {
+                drag.accept(Qt.CopyAction);
+            }
+        }
+
+        onExited: {
+            root.dragActive = false;
+        }
+
+        onDropped: (drop) => {
+            root.dragActive = false;
+            if (!drop.hasUrls || drop.urls.length === 0) return;
+            drop.acceptProposedAction();
+
+            let rawUrl = drop.urls[0].toString();
+            let cleanPath = decodeURIComponent(rawUrl.replace(/^file:\/\//, ""));
+            if (!cleanPath || cleanPath.length === 0) return;
+
+            root.isUploading = true;
+
+            let selectedHost = (root.uploadHosts && root.uploadHosts.length > root.currentHostIndex)
+                ? root.uploadHosts[root.currentHostIndex]
+                : "Buzzheavier";
+
+            let engineCmd = [
+                root.dropEngineBin || (home ? (home + "/.local/bin/carbon-drop-engine") : "carbon-drop-engine"),
+                selectedHost,
+                cleanPath
+            ];
+
+            uploadProcess.command = engineCmd;
+            uploadProcess.running = true;
+        }
     }
 }

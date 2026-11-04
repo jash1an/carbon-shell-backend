@@ -346,6 +346,37 @@ Item {
         root.allApps = list
     }
 
+    function resolveAppIcon(app) {
+        if (!app) return ""
+        if (app.icon) {
+            var p = Quickshell.iconPath(app.icon, "")
+            if (p) return p
+        }
+        var appId = (app.id || "").toString()
+        var appName = (app.name || "").toString()
+        var searchTerms = [(app.icon || ""), appId, appName]
+        for (var i = 0; i < searchTerms.length; i++) {
+            var t = searchTerms[i].toLowerCase()
+            if (t.indexOf("obsidian") !== -1) {
+                var o = Quickshell.iconPath("obsidian", "") || Quickshell.iconPath("md.obsidian.Obsidian", "")
+                if (o) return o
+                return "file://" + (Quickshell.env("HOME") || "") + "/.local/share/icons/hicolor/scalable/apps/obsidian.svg"
+            }
+        }
+        if (appId) {
+            var p2 = Quickshell.iconPath(appId, "")
+            if (p2) return p2
+            var parts = appId.split(".")
+            var last = parts[parts.length - 1]
+            var p3 = Quickshell.iconPath(last, "")
+            if (p3) return p3
+        }
+        if (app.icon) {
+            return Quickshell.iconPath(app.icon, "application-x-executable")
+        }
+        return ""
+    }
+
     Component.onCompleted: {
         root.loadApps()
         root.reloadBlankTileConfig()
@@ -499,7 +530,7 @@ Item {
                     title: app.name,
                     subTitle: app.genericName || app.comment || "Application",
                     glyph: "apps",
-                    iconSource: app.icon ? Quickshell.iconPath(app.icon, "application-x-executable") : "",
+                    iconSource: root.resolveAppIcon(app),
                     rawRef: ""
                 })
                 count++
@@ -601,13 +632,11 @@ Item {
                 Layout.preferredHeight: 38
                 spacing: 10
 
-                Text {
-                    font.family: "Noto Sans CJK JP, Valley Sans, sans-serif"
-                    font.pixelSize: 18
-                    font.bold: true
-                    color: Theme.accent
-                    text: "力"
+                CarbonLogoIcon {
+                    Layout.preferredWidth: Theme.px(26)
+                    Layout.preferredHeight: Theme.px(26)
                     Layout.alignment: Qt.AlignVCenter
+                    color: Theme.accent
                 }
 
                 TextInput {

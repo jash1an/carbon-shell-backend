@@ -14,5 +14,7 @@ MonolineIcon MonolineIcon.qml
 TacticalChronometer TacticalChronometer.qml
 TacticalPomodoro TacticalPomodoro.qml
 MiniCairo MiniCairo.qml
+Cairo Cairo.qml
 TerminalStatusBadge TerminalStatusBadge.qml
 RazorWireSlider RazorWireSlider.qml
+CarbonLogoIcon CarbonLogoIcon.qml

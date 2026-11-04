@@ -240,6 +240,13 @@ cp -rf "$REPO_DIR/quickshell/carbon/"* "$QUICKSHELL_DIR/"
 chmod +x "$QUICKSHELL_DIR/scripts/"* 2>/dev/null || true
 ok "Quickshell updated"
 
+# Synchronize shell assets
+if [[ -d "$REPO_DIR/assets" ]]; then
+    mkdir -p "$CONFIG_DIR/assets"
+    cp -rf "$REPO_DIR/assets/"* "$CONFIG_DIR/assets/" 2>/dev/null || true
+    ok "Assets updated"
+fi
+
 # ── Synchronize Runtime Scripts & Configs ─────────────────────────────────────
 msg "Updating configurations and scripts..."
 mkdir -p "$CONFIG_DIR/scripts" "$CONFIG_DIR/configs" "$HOME/.config/hypr/scripts" "$HOME/.config/hypr/configs"
@@ -381,6 +388,16 @@ fi
 # ── Refresh Mode Keybinds ─────────────────────────────────────────────────────
 if [[ -f "$CONFIG_DIR/scripts/carbon-mode-keybinds.sh" ]]; then
     bash "$CONFIG_DIR/scripts/carbon-mode-keybinds.sh" >/dev/null 2>&1 || true
+fi
+
+# Build & deploy Rust apps
+if command -v cargo >/dev/null 2>&1 && [[ -d "$REPO_DIR/apps" ]]; then
+    msg "Compiling Carbon backend apps..."
+    for app_dir in "$REPO_DIR/apps/"*; do
+        if [[ -d "$app_dir" && -f "$app_dir/Cargo.toml" ]]; then
+            (cd "$app_dir" && cargo build --release 2>/dev/null && cp -f target/release/carbon-* "$BIN_DIR/" 2>/dev/null) || true
+        fi
+    done
 fi
 
 # ── Reload Services ───────────────────────────────────────────────────────────

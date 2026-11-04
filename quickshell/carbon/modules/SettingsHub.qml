@@ -135,8 +135,8 @@ Item {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: Theme.px(38)
                                 radius: Theme.px(6)
-                                color: (root.currentSection === modelData.name) ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12) : (navMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.05) : "transparent")
-                                border.color: (root.currentSection === modelData.name) ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : "transparent"
+                                color: (root.currentSection.toLowerCase() === modelData.name.toLowerCase()) ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12) : (navMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.05) : "transparent")
+                                border.color: (root.currentSection.toLowerCase() === modelData.name.toLowerCase()) ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : "transparent"
                                 border.width: 1
 
                                 RowLayout {
@@ -149,15 +149,15 @@ Item {
                                         text: modelData.glyph
                                         font.family: Theme.fontMono
                                         font.pixelSize: Theme.fontPx(15)
-                                        color: (root.currentSection === modelData.name) ? Theme.primary : Qt.rgba(1, 1, 1, 0.60)
+                                        color: (root.currentSection.toLowerCase() === modelData.name.toLowerCase()) ? Theme.primary : Qt.rgba(1, 1, 1, 0.60)
                                     }
 
                                     Text {
                                         text: modelData.name
                                         font.family: Theme.font
                                         font.pixelSize: Theme.fontPx(13)
-                                        font.weight: (root.currentSection === modelData.name) ? Font.DemiBold : Font.Normal
-                                        color: (root.currentSection === modelData.name) ? Qt.rgba(1, 1, 1, 0.95) : Qt.rgba(1, 1, 1, 0.65)
+                                        font.weight: (root.currentSection.toLowerCase() === modelData.name.toLowerCase()) ? Font.DemiBold : Font.Normal
+                                        color: (root.currentSection.toLowerCase() === modelData.name.toLowerCase()) ? Qt.rgba(1, 1, 1, 0.95) : Qt.rgba(1, 1, 1, 0.65)
                                         Layout.fillWidth: true
                                     }
 
@@ -209,33 +209,33 @@ Item {
 
                     AppearanceTab {
                         anchors.fill: parent
-                        visible: root.currentSection === "Appearance"
+                        visible: root.currentSection.toLowerCase() === "appearance"
                     }
 
                     ModesTab {
                         anchors.fill: parent
-                        visible: root.currentSection === "Modes"
+                        visible: root.currentSection.toLowerCase() === "modes"
                     }
 
                     DisplaysTab {
                         anchors.fill: parent
-                        visible: root.currentSection === "Display"
+                        visible: root.currentSection.toLowerCase() === "display" || root.currentSection.toLowerCase() === "displays"
                     }
 
                     AudioTab {
                         anchors.fill: parent
-                        visible: root.currentSection === "Audio"
+                        visible: root.currentSection.toLowerCase() === "audio"
                     }
 
                     NetworkTab {
                         anchors.fill: parent
-                        visible: root.currentSection === "Network"
+                        visible: root.currentSection.toLowerCase() === "network"
                     }
 
                     // Placeholder for other sections (e.g. System)
                     Item {
                         anchors.fill: parent
-                        visible: root.currentSection === "System"
+                        visible: root.currentSection.toLowerCase() === "system"
 
                         ColumnLayout {
                             anchors.centerIn: parent

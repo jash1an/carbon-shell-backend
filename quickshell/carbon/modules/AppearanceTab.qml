@@ -229,12 +229,12 @@ Item {
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.preferredWidth: 460
+            Layout.preferredWidth: Theme.px(460)
 
             Flickable {
                 anchors.fill: parent
                 contentWidth: width
-                contentHeight: leftColContent.implicitHeight + 40
+                contentHeight: leftColContent.implicitHeight + Theme.px(40)
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
 
@@ -243,8 +243,8 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: 20
-                    spacing: 16
+                    anchors.margins: Theme.px(20)
+                    spacing: Theme.px(16)
 
                     // Section Header: Wallpaper Gallery
                     Text {
@@ -255,36 +255,62 @@ Item {
                         color: Qt.rgba(1, 1, 1, 0.45)
                     }
 
-                    // Active Hero Wallpaper Preview (radius: 10, clip: true, NO text overlay)
+                    // Active Hero Wallpaper Preview (radius: Theme.px(10), clip: true, NO text overlay)
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 190
-                        radius: 10
+                        Layout.preferredHeight: Theme.px(280)
+                        radius: Theme.px(10)
                         color: Qt.rgba(0, 0, 0, 0.40)
                         border.color: Qt.rgba(1, 1, 1, 0.12)
                         border.width: 1
                         clip: true
 
                         Image {
+                            id: heroWpImage
                             anchors.fill: parent
                             fillMode: Image.PreserveAspectCrop
-                            source: root.currentWallpaperPath ? ("file://" + root.currentWallpaperPath) : ""
+                            source: root.currentWallpaperPath ? (root.currentWallpaperPath.startsWith("file://") ? root.currentWallpaperPath : ("file://" + root.currentWallpaperPath)) : ""
                             asynchronous: true
                             smooth: true
+                            mipmap: true
+                            sourceSize: Qt.size(1920, 1080)
                             cache: true
+
+                            // Subtle loading / fallback placeholder
+                            Rectangle {
+                                anchors.fill: parent
+                                color: Qt.rgba(0, 0, 0, 0.40)
+                                visible: heroWpImage.status !== Image.Ready
+                                RowLayout {
+                                    anchors.centerIn: parent
+                                    spacing: Theme.px(8)
+                                    Text {
+                                        text: "󰸉"
+                                        font.family: Theme.fontMono
+                                        font.pixelSize: Theme.fontPx(22)
+                                        color: Qt.rgba(1, 1, 1, 0.35)
+                                    }
+                                    Text {
+                                        text: "Loading Wallpaper Preview..."
+                                        font.family: Theme.font
+                                        font.pixelSize: Theme.fontPx(12)
+                                        color: Qt.rgba(1, 1, 1, 0.45)
+                                    }
+                                }
+                            }
                         }
                     }
 
                     // Controls Row: [ ⤨ SHUFFLE RANDOM ] + Live BG Pause Badge
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 12
+                        spacing: Theme.px(12)
 
                         // Flush Shuffle Random Button
                         Rectangle {
-                            Layout.preferredWidth: shuffleText.implicitWidth + 24
-                            Layout.preferredHeight: 32
-                            radius: 6
+                            Layout.preferredWidth: shuffleText.implicitWidth + Theme.px(24)
+                            Layout.preferredHeight: Theme.px(32)
+                            radius: Theme.px(6)
                             color: shuffleMouse.pressed ? Qt.rgba(1, 1, 1, 0.14) : (shuffleMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(1, 1, 1, 0.04))
                             border.color: Qt.rgba(1, 1, 1, 0.12)
                             border.width: 1
@@ -312,7 +338,7 @@ Item {
 
                         // Live BG Pause Toggle Row
                         RowLayout {
-                            spacing: 8
+                            spacing: Theme.px(8)
                             Text {
                                 text: "Live BG Pause"
                                 font.family: Theme.font
@@ -333,20 +359,20 @@ Item {
                     // Horizontal Scrolling Thumbnails Carousel (140x80, radius 8, NO text overlays)
                     Item {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 88
+                        Layout.preferredHeight: Theme.px(88)
 
                         ListView {
                             id: thumbList
                             anchors.fill: parent
                             orientation: ListView.Horizontal
-                            spacing: 12
+                            spacing: Theme.px(12)
                             clip: true
                             model: root.localWallpapers
 
                             delegate: Rectangle {
-                                width: 140
-                                height: 80
-                                radius: 8
+                                width: Theme.px(140)
+                                height: Theme.px(80)
+                                radius: Theme.px(8)
                                 clip: true
                                 color: Qt.rgba(0, 0, 0, 0.35)
                                 border.color: (modelData.path === root.currentWallpaperPath) ? Theme.primary : (thumbMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.30) : Qt.rgba(1, 1, 1, 0.10))
@@ -354,11 +380,14 @@ Item {
 
                                 Image {
                                     anchors.fill: parent
-                                    anchors.margins: (modelData.path === root.currentWallpaperPath) ? 2 : 0
+                                    anchors.margins: (modelData.path === root.currentWallpaperPath) ? Theme.px(2) : 0
                                     fillMode: Image.PreserveAspectCrop
-                                    source: modelData.thumb || ("file://" + modelData.path)
+                                    source: modelData.thumb ? (modelData.thumb.startsWith("file://") ? modelData.thumb : ("file://" + modelData.thumb)) : (modelData.path ? (modelData.path.startsWith("file://") ? modelData.path : ("file://" + modelData.path)) : "")
                                     asynchronous: true
                                     smooth: true
+                                    mipmap: true
+                                    sourceSize: Qt.size(280, 160)
+                                    cache: true
                                 }
 
                                 MouseArea {
@@ -393,9 +422,9 @@ Item {
                         color: Qt.rgba(1, 1, 1, 0.85)
                     }
 
-                    // 5 Live Circular Color Chips (radius: 12, 24px)
+                    // 5 Live Circular Color Chips (radius: Theme.px(12), 24px)
                     RowLayout {
-                        spacing: 14
+                        spacing: Theme.px(14)
 
                         Repeater {
                             model: [
@@ -407,13 +436,13 @@ Item {
                             ]
 
                             delegate: ColumnLayout {
-                                spacing: 4
+                                spacing: Theme.px(4)
                                 Layout.alignment: Qt.AlignHCenter
 
                                 Rectangle {
-                                    width: 24
-                                    height: 24
-                                    radius: 12
+                                    width: Theme.px(24)
+                                    height: Theme.px(24)
+                                    radius: Theme.px(12)
                                     color: modelData.col
                                     border.color: Qt.rgba(1, 1, 1, 0.20)
                                     border.width: 1
@@ -442,7 +471,7 @@ Item {
 
                             delegate: Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 30
+                                Layout.preferredHeight: Theme.px(30)
                                 color: (root.activeScheme === modelData) ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : (segMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(1, 1, 1, 0.02))
                                 border.color: (root.activeScheme === modelData) ? Theme.primary : Qt.rgba(1, 1, 1, 0.08)
                                 border.width: 1
@@ -488,12 +517,12 @@ Item {
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.preferredWidth: 340
+            Layout.preferredWidth: Theme.px(340)
 
             Flickable {
                 anchors.fill: parent
                 contentWidth: width
-                contentHeight: rightColContent.implicitHeight + 40
+                contentHeight: rightColContent.implicitHeight + Theme.px(40)
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
 
@@ -502,8 +531,8 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: 20
-                    spacing: 16
+                    anchors.margins: Theme.px(20)
+                    spacing: Theme.px(16)
 
                     // Section Header: Hyprland Compositor Controls
                     Text {

@@ -19,7 +19,7 @@ NotchContainer {
     property bool isExpanded: false
     clip: true
     bottomRadius: isExpanded ? Theme.px(20) : Theme.px(14)
-    implicitHeight: isExpanded ? Theme.px(270) : Theme.px(34)
+    implicitHeight: isExpanded ? Theme.px(270) : ((root.dragActive || root.isUploading) ? Theme.px(48) : Theme.px(34))
     implicitWidth: isExpanded ? Theme.px(820) : (contentImplicitWidth + (leftFillet ? filletRadius : 0) + (rightFillet ? filletRadius : 0) + (horizontalPadding * 2))
 
     earWidth: Theme.px(20)

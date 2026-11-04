@@ -15,3 +15,4 @@ singleton SysBackend SysBackend.qml
 singleton SystemServices SystemServices.qml
 singleton WifiController WifiController.qml
 singleton GreetingEngine GreetingEngine.qml
+singleton GlobalState GlobalState.qml

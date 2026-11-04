@@ -42,6 +42,43 @@ ShellRoot {
     property var notifItem: null
     property var calendarItem: null
     property var centerDashboardItem: null
+    property var focusHudItem: null
+    property var commandCenterItem: null
+
+    property bool commandCenterOpen: false
+    property bool commandCenterAnimatingOut: false
+    function openCommandCenter() {
+        root.closeAllPopupsExcept("commandCenter")
+        root.commandCenterAnimatingOut = false
+        root.commandCenterOpen = true
+        if (root.commandCenterItem) root.commandCenterItem.currentChannel = "overview"
+    }
+    function closeCommandCenter() {
+        if (!root.commandCenterOpen && !root.commandCenterAnimatingOut) return
+        root.commandCenterAnimatingOut = true
+        root.commandCenterOpen = false
+    }
+    property real lastCommandCenterToggleTime: 0
+    function toggleCommandCenter() {
+        var now = Date.now()
+        if (now - root.lastCommandCenterToggleTime < 250) return
+        root.lastCommandCenterToggleTime = now
+        if (root.commandCenterOpen) root.closeCommandCenter()
+        else root.openCommandCenter()
+    }
+
+    property bool focusHudOpen: false
+    function openFocusHud() {
+        root.closeAllPopupsExcept("focus")
+        root.focusHudOpen = true
+    }
+    function closeFocusHud() {
+        root.focusHudOpen = false
+    }
+    function toggleFocusHud() {
+        if (root.focusHudOpen) root.closeFocusHud()
+        else root.openFocusHud()
+    }
 
     property bool spotlightOpen: false
     function openSpotlight() {
@@ -103,6 +140,9 @@ ShellRoot {
     }
 
     function closeAllPopupsExcept(keep) {
+        if (root.nucleusHubItem && root.nucleusHubItem.hubOpen) {
+            root.nucleusHubItem.close()
+        }
         if (keep !== "spotlight") { root.spotlightOpen = false }
         if (keep !== "launcher") { root.launcherOpen = false }
         if (keep !== "mixer") { root.mixerOpen = false; root.mixerPinned = false }
@@ -117,6 +157,8 @@ ShellRoot {
         if (keep !== "notif") { root.notifOpen = false; root.notifPinned = false }
         if (keep !== "centerDashboard") { root.centerDashboardOpen = false; root.centerDashboardPinned = false }
         if (keep !== "controls") { root.controlsVisible = false; root.controlsPinned = false }
+        if (keep !== "commandCenter") { root.commandCenterOpen = false; root.commandCenterAnimatingOut = false }
+        if (keep !== "focus") { root.focusHudOpen = false }
     }
 
     property bool smallMusicOpen: false
@@ -1469,8 +1511,10 @@ ShellRoot {
                 parser: SplitParser {
                 splitMarker: "\n"
                 onRead: function (message) {
-                    var cmd = message.trim()
-                    console.log("[IPC RECEIVED] " + cmd)
+                    try {
+                        var cmd = (message || "").trim()
+                        if (!cmd) return
+                        console.log("[IPC RECEIVED] " + cmd)
                     if (cmd === "wallpaper" || cmd === "wallpaper-local") {
                         root.wallpaperSource = "local"
                         if (root.barMode === "nucleus" && root.nucleusHubItem && root.nucleusHubItem.hubOpen) {
@@ -1500,7 +1544,7 @@ ShellRoot {
                     }
                     else if (cmd.startsWith("settings-tab ")) {
                         var tabName = cmd.replace(/^settings-tab\s+/, "").trim()
-                        if (tabName.length > 0) root.settingsHubActiveTab = tabName
+                        if (tabName.length > 0) root.settingsHubActiveTab = tabName.toLowerCase()
                         root.openSettingsHub()
                     }
                     else if (cmd === "close-settings") {
@@ -1546,25 +1590,21 @@ ShellRoot {
                         }
                     }
                     else if (cmd === "spotlight" || cmd === "toggle-spotlight") {
-                        if (root.barMode !== "nucleus") {
-                            root.toggleDefaultLauncher()
+                        if (root.nucleusHubItem && root.nucleusHubItem.hubOpen) {
+                            root.nucleusHubItem.close()
                         }
+                        root.toggleDefaultLauncher()
                     }
                     else if (cmd === "open-spotlight") {
-                        if (root.barMode === "nucleus") {
-                            if (root.nucleusHubItem) root.nucleusHubItem.open()
-                        } else {
-                            if (root.launcherStyle === "launcher") root.openLauncher()
-                            else root.openSpotlight()
+                        if (root.nucleusHubItem && root.nucleusHubItem.hubOpen) {
+                            root.nucleusHubItem.close()
                         }
+                        if (root.launcherStyle === "launcher") root.openLauncher()
+                        else root.openSpotlight()
                     }
                     else if (cmd === "close-spotlight") {
-                        if (root.barMode === "nucleus") {
-                            if (root.nucleusHubItem) root.nucleusHubItem.close()
-                        } else {
-                            root.closeSpotlight()
-                            root.closeLauncher()
-                        }
+                        root.closeSpotlight()
+                        root.closeLauncher()
                     }
                     else if (cmd.startsWith("focus-lobe ")) {
                         var lobeTarget = cmd.replace(/^focus-lobe\s+/, "").trim()
@@ -1589,6 +1629,62 @@ ShellRoot {
                         root.startWallpaperTransition("Testing")
                     else if (cmd === "test-wp-finish")
                         root.finishWallpaperTransition()
+                    else if (cmd === "focus" || cmd === "focus-hud" || cmd === "toggle-focus" || cmd === "toggle-focus-hud") {
+                        root.toggleFocusHud()
+                    }
+                    else if (cmd === "open-focus" || cmd === "open-focus-hud") {
+                        root.openFocusHud()
+                    }
+                    else if (cmd === "close-focus" || cmd === "close-focus-hud") {
+                        root.closeFocusHud()
+                    }
+                    else if (cmd === "command-center" || cmd === "toggle-command-center" || cmd === "notch-command-center" || cmd === "radar") {
+                        root.toggleCommandCenter()
+                    }
+                    else if (cmd === "open-command-center" || cmd === "open-radar") {
+                        root.openCommandCenter()
+                    }
+                    else if (cmd === "github-uplink" || cmd === "github" || cmd === "spatial-github") {
+                        root.openCommandCenter()
+                        if (root.commandCenterItem) root.commandCenterItem.zoomToNode(0, -1)
+                    }
+                    else if (cmd === "command-center-overview" || cmd === "overview" || cmd === "spatial-overview") {
+                        root.openCommandCenter()
+                        if (root.commandCenterItem) root.commandCenterItem.zoomToOverview()
+                    }
+                    else if (cmd === "command-center-telemetry" || cmd === "telemetry" || cmd === "system-telemetry" || cmd === "spatial-telemetry") {
+                        root.openCommandCenter()
+                        if (root.commandCenterItem) root.commandCenterItem.zoomToNode(0, 1)
+                    }
+                    else if (cmd === "spatial-workspace" || cmd === "workspaces" || cmd === "workspace-blueprint") {
+                        root.openCommandCenter()
+                        if (root.commandCenterItem) root.commandCenterItem.zoomToNode(0, 0)
+                    }
+                    else if (cmd === "spatial-radar" || cmd === "local-radar") {
+                        root.openCommandCenter()
+                        if (root.commandCenterItem) root.commandCenterItem.zoomToNode(-1, 0)
+                    }
+                    else if (cmd === "spatial-settings" || cmd === "settings-node") {
+                        root.openCommandCenter()
+                        if (root.commandCenterItem) root.commandCenterItem.zoomToNode(1, 0)
+                    }
+                    else if (cmd === "telemetry-ram" || cmd === "telemetry-swap") {
+                        root.openCommandCenter()
+                        if (root.commandCenterItem) {
+                            root.commandCenterItem.zoomToNode(0, 1)
+                            root.commandCenterItem.telemetrySubMode = "ram"
+                        }
+                    }
+                    else if (cmd === "telemetry-cpu") {
+                        root.openCommandCenter()
+                        if (root.commandCenterItem) {
+                            root.commandCenterItem.zoomToNode(0, 1)
+                            root.commandCenterItem.telemetrySubMode = "cpu"
+                        }
+                    }
+                    else if (cmd === "close-command-center" || cmd === "close-radar") {
+                        root.closeCommandCenter()
+                    }
                     else if (cmd === "mixer")
                         root.toggleMixer()
                     else if (cmd === "brightness")
@@ -2127,10 +2223,13 @@ ShellRoot {
                         else if (icmd === "show" || icmd === "open" || icmd === "reveal") root.showIslandAll()
                         else if (icmd === "hide") root.hideIslandAll()
                     }
+                } catch (e) {
+                    console.warn("[IPC ERROR] Exception in command handler:", e)
                 }
             }
         }
     }
+}
 }
 
     /* Tide Island IPC */
@@ -2306,6 +2405,46 @@ ShellRoot {
         }
     }
 
+    /* Focus HUD (Hyper-Tunnel) IPC */
+    IpcHandler {
+        target: "focus"
+
+        function toggle() {
+            root.toggleFocusHud();
+        }
+
+        function open() {
+            root.openFocusHud();
+        }
+        function close() {
+            root.closeFocusHud();
+        }
+
+        function reveal() {
+            if (root.focusHudItem) root.focusHudItem.isRevealed = true;
+        }
+
+        function conceal() {
+            if (root.focusHudItem) root.focusHudItem.isRevealed = false;
+        }
+    }
+
+    IpcHandler {
+        target: "focus-hud"
+
+        function toggle() {
+            root.toggleFocusHud();
+        }
+
+        function open() {
+            root.openFocusHud();
+        }
+
+        function close() {
+            root.closeFocusHud();
+        }
+    }
+
     /* Lock Screen */
     LockScreen {
         id: sessionLock
@@ -2405,7 +2544,7 @@ ShellRoot {
             required property var modelData
 
             screen: modelData
-            color: "#000000"
+            color: "transparent"
             WlrLayershell.namespace: "carbon-wallpaper"
             WlrLayershell.layer: WlrLayer.Background
             exclusionMode: ExclusionMode.Ignore
@@ -2413,6 +2552,8 @@ ShellRoot {
 
             WallpaperMod {
                 id: wpInstance
+                width: wallpaperWindow.width
+                height: wallpaperWindow.height
                 anchors.fill: parent
 
                 Component.onCompleted: {
@@ -3133,7 +3274,7 @@ ShellRoot {
 
             implicitHeight: 370
             WlrLayershell.keyboardFocus: root.centerDashboardOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
-            visible: root.barMode === "notch"
+            visible: (root.barMode === "notch") && !GlobalState.isFocusActive
 
             Item {
                 id: notchKeyHandler
@@ -3207,8 +3348,8 @@ ShellRoot {
                 showEqualizer: root.showEqualizer
                 attachedBottom: root.mainBarEdge === "bottom"
                 hasAttachedPopup: (root.calendarOpen || root.smallMusicOpen) && !root.centerDashboardOpen
-                height: isExpanded ? 270 : root.notchHeight
-                implicitHeight: isExpanded ? 270 : root.notchHeight
+                height: isExpanded ? 270 : ((notchCenterItem.dragActive || notchCenterItem.isUploading) ? Math.round(48 * root.shellScale) : root.notchHeight)
+                implicitHeight: isExpanded ? 270 : ((notchCenterItem.dragActive || notchCenterItem.isUploading) ? Math.round(48 * root.shellScale) : root.notchHeight)
                 y: root.mainBarEdge === "bottom" ? (notchBarWindow.height - height) : 0
                 anchors.horizontalCenter: parent.horizontalCenter
                 leftFillet: true
@@ -3762,9 +3903,9 @@ ShellRoot {
                 top: root.musicBarEdge !== "bottom"
                 bottom: root.musicBarEdge === "bottom"
             }
-            implicitHeight: 34
+            implicitHeight: (separateNotchCenter.dragActive || separateNotchCenter.isUploading) ? Math.round(48 * root.shellScale) : 34
             implicitWidth: separateNotchCenter.implicitWidth
-            visible: root.barMode === "notch" && (root.musicBarEdge !== root.mainBarEdge || root.mainBarEdge === "left" || root.mainBarEdge === "right")
+            visible: root.barMode === "notch" && (root.musicBarEdge !== root.mainBarEdge || root.mainBarEdge === "left" || root.mainBarEdge === "right") && !GlobalState.isFocusActive
 
             NotchBarCenter {
                 id: separateNotchCenter
@@ -3957,6 +4098,54 @@ ShellRoot {
                 }
                 onCloseRequested: root.closeSettingsHub()
             }
+        }
+    }
+
+    /* Focus HUD Background (Blueprint & Dimming) */
+    Variants {
+        model: Quickshell.screens
+
+        FocusHUDBackground {
+            required property var modelData
+            modelData: modelData
+            screen: modelData
+            visible: root.focusHudOpen
+        }
+    }
+
+    /* Focus HUD (Hyper-Tunnel) Side Bar */
+    Variants {
+        model: Quickshell.screens
+
+        FocusHUD {
+            id: focusHudInst
+            required property var modelData
+            modelData: modelData
+            screen: modelData
+            visible: root.focusHudOpen
+            onCloseRequested: root.closeFocusHud()
+            Component.onCompleted: root.focusHudItem = this
+        }
+    }
+
+    /* Notch Command Center (Radar 2x2 Blueprint Panel) */
+    Variants {
+        model: Quickshell.screens
+
+        CommandCenter {
+            id: commandCenterInst
+            required property var modelData
+            modelData: modelData
+            screen: modelData
+            barEdge: root.mainBarEdge
+            barMode: root.barMode
+            visible: root.commandCenterOpen || root.commandCenterAnimatingOut || commandCenterInst.animatingOut
+            isOpen: root.commandCenterOpen
+            onCloseRequested: root.closeCommandCenter()
+            onAnimationFinished: {
+                root.commandCenterAnimatingOut = false
+            }
+            Component.onCompleted: root.commandCenterItem = this
         }
     }
 
@@ -4825,7 +5014,7 @@ ShellRoot {
     /* Quick-settings panel: now-playing strip over the quick toggles, positioned
      * dynamically according to root.controlsCorner ("bottom_right", "top_left", or "bottom_left"). */
     Variants {
-        model: (root.barMode === "minimal" || root.barMode === "minimal_notch") ? [] : [Quickshell.screens[0]]
+        model: Quickshell.screens.length > 0 ? [Quickshell.screens[0]] : []
 
         PanelWindow {
             id: controlsWindow
@@ -4876,10 +5065,9 @@ ShellRoot {
                 ControlHub {
                     id: controlsItem
                     anchors.right: parent.right
-                    anchors.bottom: parent.bottom
                     anchors.rightMargin: 14
-                    anchors.bottomMargin: 14
-                    corner: "bottom_right"
+                    y: root.mainBarEdge === "bottom" ? 14 : (parent.height - height - 14)
+                    corner: root.mainBarEdge === "bottom" ? "top_right" : "bottom_right"
                     width: controlsItem.implicitWidth
                     height: controlsItem.implicitHeight
                     open: root.controlsVisible
@@ -4901,7 +5089,7 @@ ShellRoot {
         }
     }
 
-    /* Bottom-Right Hot Corner Trigger for ControlHub */
+    /* Hot Corner Trigger for ControlHub (Top-Right when bar on bottom, Bottom-Right when bar on top) */
     Variants {
         model: Quickshell.screens
 
@@ -4916,17 +5104,19 @@ ShellRoot {
             aboveWindows: true
 
             anchors {
-                bottom: true
+                top: root.mainBarEdge === "bottom"
+                bottom: root.mainBarEdge !== "bottom"
                 right: true
             }
 
             implicitWidth: 48
             implicitHeight: 48
-            visible: true
+            visible: !GlobalState.isFocusActive
 
             MouseArea {
                 anchors.fill: parent
                 hoverEnabled: true
+                enabled: !GlobalState.isFocusActive
                 cursorShape: Qt.PointingHandCursor
                 onEntered: {
                     root.openControls()

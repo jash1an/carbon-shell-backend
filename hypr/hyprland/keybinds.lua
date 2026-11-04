@@ -17,6 +17,10 @@ hl.bind(vars.kbSession, hl.dsp.global("caelestia:session"))
 hl.bind(vars.kbShowSidebar, hl.dsp.global("caelestia:sidebar"))
 -- Spotlight Command Palette (Super + K)
 hl.bind(vars.kbShowPanels or "SUPER + K", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh spotlight"), { release = true })
+
+-- Command Center / View Point (Super + G)
+hl.bind("SUPER + G", hl.dsp.exec_cmd("sh ~/.config/hypr/scripts/carbon-ipc.sh command-center"))
+
 hl.bind(vars.kbLock, hl.dsp.exec_cmd("~/.config/hypr/scripts/hyprlock.sh"))
 
 -- Restore lock
@@ -92,7 +96,7 @@ hl.bind("CTRL + ALT + Tab", hl.dsp.group.next(), { repeating = true })
 hl.bind("CTRL + SHIFT + ALT + Tab", hl.dsp.group.prev(), { repeating = true })
 hl.bind(vars.kbToggleGroup, hl.dsp.group.toggle())
 hl.bind(vars.kbUngroup, hl.dsp.window.move({ out_of_group = true }))
-hl.bind("SUPER + SHIFT + Comma", hl.dsp.group.lock_active())
+hl.bind("SUPER + SHIFT + Comma", hl.dsp.group.lock())
 
 -- Window actions
 hl.bind("SUPER + left", hl.dsp.focus({ direction = "left" }))
@@ -152,6 +156,7 @@ hl.bind(vars.kbPomodoro, hl.dsp.exec_cmd(vars.pomodoro))
 hl.bind(vars.kbFileExplorer, hl.dsp.exec_cmd(vars.fileExplorer))
 if vars.kbCarbonDrop then hl.bind(vars.kbCarbonDrop, hl.dsp.exec_cmd("~/.config/carbon/scripts/carbon-drop.sh")) end
 hl.bind("SUPER + SHIFT + D", hl.dsp.exec_cmd("~/.config/carbon/scripts/carbon-drop.sh"))
+if vars.kbFocus then hl.bind(vars.kbFocus, hl.dsp.exec_cmd("~/.config/hypr/scripts/carbon-focus.sh")) end
 hl.bind("SUPER + H", hl.dsp.exec_cmd("discord"))
 hl.bind("SUPER + E", hl.dsp.exec_cmd("rofi -show drun"))
 hl.bind("CTRL + ALT + V", hl.dsp.exec_cmd(vars.audioSettings))
