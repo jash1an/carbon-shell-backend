@@ -16,29 +16,10 @@ Scope {
     property var notificationServer: null
 
     function lock() {
-        if (LockState.cairoModeEnabled) {
-            LockState.lock()
-            return
-        }
-        if (LockTransition.lockSync) {
-            sessionLock.locked = true
-            LockTransition.startLock(false)
-        } else {
-            // Legacy asynchronous lock
-            if (LockTransition.phase === "idle") {
-                LockTransition.startLock(false)
-            } else {
-                sessionLock.locked = true
-            }
-        }
+        Quickshell.execDetached([root.home + "/.config/carbon/scripts/hyprlock.sh"])
     }
 
     function unlock() {
-        if (LockState.cairoModeEnabled) {
-            LockState.unlock()
-            return
-        }
-        LockTransition.startUnlock()
     }
 
     Connections {

@@ -1828,7 +1828,7 @@ ShellRoot {
                                 root.nucleusHubItem.triggerPowerAction("lock")
                             } else {
                                 root.closePower()
-                                sessionLock.lock()
+                                Quickshell.execDetached([root.home + "/.config/carbon/scripts/hyprlock.sh"])
                             }
                         } else if (sub === "sleep") {
                             if (root.barMode === "nucleus" && root.nucleusHubItem) {
@@ -1873,7 +1873,7 @@ ShellRoot {
                         root.closePower()
                     else if (cmd === "lock") {
                         root.closePower()
-                        sessionLock.lock()
+                        Quickshell.execDetached([root.home + "/.config/carbon/scripts/hyprlock.sh"])
                     }
                     else if (cmd === "lock-test") {
                         root.closePower()
@@ -2048,7 +2048,7 @@ ShellRoot {
                         root.applyBarPos(barPosFile.text())
                     }
                     else if (cmd === "lock") {
-                        sessionLock.lock()
+                        Quickshell.execDetached([root.home + "/.config/carbon/scripts/hyprlock.sh"])
                     }
                     else if (cmd === "lock-test") {
                         LockTransition.testLock()
@@ -2314,7 +2314,7 @@ ShellRoot {
 
     GlobalShortcut {
         name: "lock"
-        onPressed: sessionLock.lock()
+        onPressed: Quickshell.execDetached([root.home + "/.config/carbon/scripts/hyprlock.sh"])
     }
 
     /* Lock Transition */
@@ -3642,7 +3642,7 @@ ShellRoot {
                 onOpenLauncher: root.openLauncher()
                 onOpenWallpapers: root.openWallpaperPicker()
                 onOpenPower: root.openPower()
-                onRequestLock: sessionLock.lock()
+                onRequestLock: Quickshell.execDetached([root.home + "/.config/carbon/scripts/hyprlock.sh"])
                 onClosingStarted: {
                     root.nucleusHubItem.isClosing = true
                 }
@@ -4788,7 +4788,7 @@ ShellRoot {
                 onRequestClose: root.closePower()
                 onRequestLock: {
                     root.closePower()
-                    sessionLock.lock()
+                    Quickshell.execDetached([root.home + "/.config/carbon/scripts/hyprlock.sh"])
                 }
             }
         }
