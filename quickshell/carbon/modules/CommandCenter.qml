@@ -111,6 +111,7 @@ PanelWindow {
                 entranceTimer.restart()
             }
             commandCenterWindow.refreshWeather()
+            commandCenterWindow.refreshClients()
             calSyncProc.running = true
             centerKeyHandler.forceActiveFocus()
             if (radarEngineProc.running) {
@@ -556,8 +557,100 @@ PanelWindow {
             radarEngineProc.write("refresh\n")
         }
         commandCenterWindow.refreshWeather()
+            commandCenterWindow.refreshClients()
     }
 
+
+    
+    // ── Live Hyprland Clients for Opened Apps Switcher ──
+    property var liveClients: []
+    property string appFilterQuery: ""
+
+    Process {
+        id: clientsFetcherProc
+        command: ["sh", "-c", "hyprctl clients -j"]
+        running: false
+        stdout: StdioCollector {
+            waitForEnd: true
+            onTextChanged: {
+                if (text && text.trim().length > 0) {
+                    try {
+                        var parsed = JSON.parse(text.trim());
+                        if (Array.isArray(parsed)) {
+                            commandCenterWindow.liveClients = parsed.filter(function(c) {
+                                return c.mapped && !c.hidden && c.workspace && c.workspace.id > 0 && c.class && c.class.length > 0;
+                            });
+                        }
+                    } catch(e) {}
+                }
+            }
+        }
+    }
+
+    function refreshClients() {
+        if (!clientsFetcherProc.running) {
+            clientsFetcherProc.running = true;
+        }
+    }
+
+    function closeWindow(addr) {
+        execCommand("hyprctl dispatch closewindow address:" + addr);
+        clientsRefreshTimer.restart();
+    }
+
+    function triggerThemeReload() {
+        themeReloadTimer.restart();
+    }
+
+    Timer {
+        id: clientsRefreshTimer
+        interval: 120
+        onTriggered: refreshClients()
+    }
+
+    Timer {
+        id: themeReloadTimer
+        interval: 800
+        onTriggered: Theme.reload(true)
+    }
+
+    readonly property var allOpenWindows: {
+        if (liveClients && liveClients.length > 0) {
+            return liveClients;
+        }
+        var res = [];
+        var raw = workspacesData || [];
+        for (var i = 0; i < raw.length; i++) {
+            var ws = raw[i];
+            if (ws && ws.windows && Array.isArray(ws.windows)) {
+                for (var j = 0; j < ws.windows.length; j++) {
+                    var w = ws.windows[j];
+                    res.push({
+                        address: w.address,
+                        class: w.class,
+                        title: w.title,
+                        workspace: { id: ws.id, name: ws.name || String(ws.id) },
+                        is_focused: w.is_focused,
+                        at: w.at,
+                        size: w.size
+                    });
+                }
+            }
+        }
+        return res;
+    }
+
+    readonly property var filteredWindows: {
+        var list = allOpenWindows;
+        var q = (appFilterQuery || "").trim().toLowerCase();
+        if (!q) return list;
+        return list.filter(function(w) {
+            var cls = (w.class || "").toLowerCase();
+            var ttl = (w.title || "").toLowerCase();
+            var wsName = w.workspace ? String(w.workspace.name || w.workspace.id).toLowerCase() : "";
+            return cls.indexOf(q) !== -1 || ttl.indexOf(q) !== -1 || wsName.indexOf(q) !== -1;
+        });
+    }
 
     // ── 2D Spatial Zoom State ──
     property int activeGridX: 0
@@ -908,12 +1001,16 @@ PanelWindow {
                 // ══════════════════════════════════════════════════════════
                 // NODE (0, 0) :: WORKSPACE BLUEPRINT
                 // ══════════════════════════════════════════════════════════
+                // ══════════════════════════════════════════════════════════
+                // NODE (0, 0) :: WORKSPACE BLUEPRINT
+                // ══════════════════════════════════════════════════════════
                 Rectangle {
                     id: cardNodeCenter
                     readonly property int nodeX: 0
                     readonly property int nodeY: 0
                     readonly property bool isCurrentTarget: (commandCenterWindow.activeGridX === cardNodeCenter.nodeX && commandCenterWindow.activeGridY === cardNodeCenter.nodeY)
-                    readonly property string cardTitle: "WORKSPACE BLUEPRINT SWITCHER"
+                    readonly property string cardTitle: "Workspace Blueprint"
+                    readonly property string cardSubtitle: "3x3 Desktops & Live Windows"
                     readonly property string lodIcon: "grid_view"
                     readonly property string lodTitle: "WORKSPACE BLUEPRINT"
                     readonly property string lodSubtitle: "3x3 Virtual Desktops & Wireframe Monitor"
@@ -924,14 +1021,42 @@ PanelWindow {
                     y: Math.round((viewport.height - height) / 2 + (cardNodeCenter.nodeY * viewport.stepY))
                     radius: 16
                     color: Qt.rgba(0.047, 0.055, 0.07, 0.82)
-                    border.color: cardNodeCenter.isCurrentTarget ? "#8ee8a8" : ((commandCenterWindow.isOverview && cardNodeCenterClickArea.containsMouse) ? Qt.rgba(0.557, 0.91, 0.659, 0.6) : Qt.rgba(1, 1, 1, 0.12))
+                    border.color: cardNodeCenter.isCurrentTarget ? Theme.primary : ((commandCenterWindow.isOverview && cardNodeCenterClickArea.containsMouse) ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.60) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.16))
                     border.width: cardNodeCenter.isCurrentTarget ? 2 : 1
                     scale: (commandCenterWindow.isOverview && cardNodeCenterClickArea.containsMouse) ? 1.03 : 1.0
                     transformOrigin: Item.Center
                     Behavior on scale {
                         NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
                     }
+                    Behavior on border.color {
+                        ColorAnimation { duration: 300; easing.type: Easing.OutCubic }
+                    }
                     clip: true
+
+                    // Inner Matugen Glass Gradient Tint
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 16
+                        z: 1
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.06) }
+                            GradientStop { position: 0.35; color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.02) }
+                            GradientStop { position: 1.0; color: "transparent" }
+                        }
+                    }
+
+                    // Top-Edge Specular Highlight (1px)
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.topMargin: 1
+                        anchors.leftMargin: Theme.px(16)
+                        anchors.rightMargin: Theme.px(16)
+                        height: 1
+                        color: Qt.rgba(255, 255, 255, 0.18)
+                        z: 2
+                    }
 
                     // Click interception for overview or peeking neighbor cards
                     MouseArea {
@@ -951,10 +1076,11 @@ PanelWindow {
                         id: cardNodeCenterLodOverlay
                         anchors.fill: parent
                         z: 400
-                        opacity: commandCenterWindow.isOverview ? 0.92 : 0.0
+                        opacity: viewport.isOverview ? 1.0 : 0.0
                         visible: opacity > 0.01
+                        enabled: viewport.isOverview
                         Behavior on opacity {
-                            NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
+                            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
                         }
 
                         Rectangle {
@@ -972,7 +1098,7 @@ PanelWindow {
                                 text: cardNodeCenter.lodIcon
                                 font.family: Theme.fontIcon
                                 font.pixelSize: Theme.fontPx(64)
-                                color: cardNodeCenter.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255, 255, 255, 0.90)
+                                color: cardNodeCenter.isCurrentTarget ? Theme.primary : Qt.rgba(255, 255, 255, 0.90)
                             }
 
                             Text {
@@ -981,7 +1107,7 @@ PanelWindow {
                                 font.family: Theme.fontMono || "monospace"
                                 font.pixelSize: Theme.fontPx(20)
                                 font.bold: true
-                                color: cardNodeCenter.isCurrentTarget ? "#8ee8a8" : Theme.fg
+                                color: cardNodeCenter.isCurrentTarget ? Theme.primary : Theme.fg
                             }
 
                             Text {
@@ -995,51 +1121,89 @@ PanelWindow {
                     }
 
                     // Corner brackets (+)
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeCenter.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeCenter.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeCenter.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeCenter.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeCenter.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.left: parent.left; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeCenter.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.right: parent.right; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeCenter.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeCenter.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
 
-                    // Card Header Bar
+                    // Modern Card Header Bar
                     RowLayout {
                         anchors.top: parent.top
                         anchors.left: parent.left
                         anchors.right: parent.right
-                        anchors.topMargin: Theme.px(10)
+                        anchors.topMargin: Theme.px(12)
                         anchors.leftMargin: Theme.px(20)
                         anchors.rightMargin: Theme.px(20)
-                        height: Theme.px(24)
-                        spacing: Theme.px(8)
+                        height: Theme.px(26)
+                        spacing: Theme.px(10)
                         z: 10
 
+                        // Glowing Matugen Accent Dot
+                        Rectangle {
+                            Layout.preferredWidth: Theme.px(7)
+                            Layout.preferredHeight: Theme.px(7)
+                            radius: Theme.px(3.5)
+                            color: cardNodeCenter.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.50)
+
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: Theme.px(13)
+                                height: Theme.px(13)
+                                radius: Theme.px(6.5)
+                                color: cardNodeCenter.isCurrentTarget ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : "transparent"
+                                z: -1
+                            }
+                        }
+
+                        // Bold Title
                         Text {
-                            text: "// NODE [" + cardNodeCenter.nodeX + ", " + cardNodeCenter.nodeY + "] :: " + cardNodeCenter.cardTitle
-                            font.family: Theme.fontMono || "monospace"
-                            font.pixelSize: Theme.fontPx(11)
+                            text: cardNodeCenter.cardTitle
+                            font.family: Theme.font
+                            font.pixelSize: Theme.fontPx(13)
                             font.weight: Font.Bold
-                            color: cardNodeCenter.isCurrentTarget ? "#8ee8a8" : Theme.fg
+                            color: cardNodeCenter.isCurrentTarget ? Theme.fg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.75)
+                        }
+
+                        // Muted Subtitle Pill
+                        Rectangle {
+                            Layout.preferredHeight: Theme.px(18)
+                            Layout.preferredWidth: cardNodeCenterSubtitleText.implicitWidth + Theme.px(12)
+                            radius: Theme.px(9)
+                            color: Qt.rgba(255, 255, 255, 0.05)
+                            border.color: Qt.rgba(255, 255, 255, 0.08)
+                            border.width: 1
+
+                            Text {
+                                id: cardNodeCenterSubtitleText
+                                anchors.centerIn: parent
+                                text: cardNodeCenter.cardSubtitle
+                                font.family: Theme.fontMono || "monospace"
+                                font.pixelSize: Theme.fontPx(8.5)
+                                color: Theme.fgDim
+                            }
                         }
 
                         Item { Layout.fillWidth: true }
 
+                        // Sleek rounded pill button for Overview [ESC]
                         Rectangle {
                             visible: cardNodeCenter.isCurrentTarget && !commandCenterWindow.isOverview
-                            Layout.preferredHeight: Theme.px(18)
-                            Layout.preferredWidth: cardNodeCenterHintText.implicitWidth + Theme.px(12)
-                            radius: Theme.px(4)
-                            color: cardNodeCenterHintHover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.12) : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.05)
-                            border.color: Qt.rgba(255, 255, 255, 0.15)
+                            Layout.preferredHeight: Theme.px(22)
+                            Layout.preferredWidth: cardNodeCenterOverviewBtnText.implicitWidth + Theme.px(16)
+                            radius: Theme.px(11)
+                            color: cardNodeCenterOverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(255, 255, 255, 0.06)
+                            border.color: cardNodeCenterOverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : Qt.rgba(255, 255, 255, 0.12)
                             border.width: 1
 
-                            HoverHandler { id: cardNodeCenterHintHover }
+                            HoverHandler { id: cardNodeCenterOverviewHover }
                             Text {
-                                id: cardNodeCenterHintText
+                                id: cardNodeCenterOverviewBtnText
                                 anchors.centerIn: parent
-                                text: "OVERVIEW (ESC)"
+                                text: "Overview [ESC]"
                                 font.family: Theme.fontMono || "monospace"
-                                font.pixelSize: Theme.fontPx(8.5)
+                                font.pixelSize: Theme.fontPx(9)
                                 font.bold: true
-                                color: Theme.fgDim
+                                color: cardNodeCenterOverviewHover.hovered ? Theme.primary : Theme.fgDim
                             }
                             MouseArea {
                                 anchors.fill: parent
@@ -1049,151 +1213,466 @@ PanelWindow {
                         }
                     }
 
-                Item {
-                    anchors.fill: parent
-                    anchors.margins: Theme.px(16)
-                    anchors.topMargin: Theme.px(44)
-
-                    ColumnLayout {
+                    // Detailed Inner Content Container (Dimmed in overview)
+                    Item {
+                        id: cardNodeCenterInner
                         anchors.fill: parent
-                        spacing: Theme.px(10)
+                        anchors.margins: Theme.px(16)
+                        anchors.topMargin: Theme.px(48)
+                        clip: true
+                        opacity: viewport.isOverview ? 0.35 : 1.0
+                        Behavior on opacity {
+                            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+                        }
 
-                        // 3x3 Grid of 9 Workspaces
-                        GridLayout {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            columns: 3
-                            rows: 3
-                            columnSpacing: Theme.px(10)
-                            rowSpacing: Theme.px(10)
+                        RowLayout {
+                            anchors.fill: parent
+                            spacing: Theme.px(14)
 
-                            Repeater {
-                                model: commandCenterWindow.getWorkspaces()
+                            // ─────────────────────────────────────────────────────────────
+                            // LEFT SECTION (68% width): 3x3 Workspace Blueprint Grid
+                            // ─────────────────────────────────────────────────────────────
+                            Item {
+                                Layout.fillWidth: true
+                                Layout.preferredWidth: Math.round(parent.width * 0.68)
+                                Layout.fillHeight: true
 
-                                Rectangle {
-                                    id: wsCard
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: true
-                                    radius: Theme.px(8)
-                                    color: modelData.is_active ? Qt.rgba(0.55, 0.91, 0.66, 0.10) : Qt.rgba(0.06, 0.08, 0.11, 0.85)
-                                    border.color: modelData.is_active ? "#8ee8a8" : (tileHover.hovered ? Qt.rgba(0.55, 0.91, 0.66, 0.5) : Qt.rgba(255, 255, 255, 0.12))
-                                    border.width: modelData.is_active ? 1.5 : 1
-                                    clip: true
+                                GridLayout {
+                                    anchors.fill: parent
+                                    columns: 3
+                                    rows: 3
+                                    columnSpacing: Theme.px(10)
+                                    rowSpacing: Theme.px(10)
 
-                                    HoverHandler { id: tileHover }
+                                    Repeater {
+                                        model: commandCenterWindow.getWorkspaces()
 
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: commandCenterWindow.switchToWorkspace(modelData.id)
+                                        Rectangle {
+                                            id: wsCard
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            radius: Theme.px(8)
+                                            opacity: (modelData.windows && modelData.windows.length > 0) || modelData.is_active ? 1.0 : 0.35
+                                            Behavior on opacity {
+                                                NumberAnimation { duration: 200 }
+                                            }
+                                            color: modelData.is_active 
+                                                ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.10) 
+                                                : Qt.rgba(0.06, 0.08, 0.11, 0.85)
+                                            border.color: modelData.is_active 
+                                                ? Theme.primary 
+                                                : (tileHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.50) : Qt.rgba(255, 255, 255, 0.12))
+                                            border.width: modelData.is_active ? 1.5 : 1
+                                            clip: true
+
+                                            HoverHandler { id: tileHover }
+
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: commandCenterWindow.switchToWorkspace(modelData.id)
+                                            }
+
+                                            // Tile Header Row
+                                            RowLayout {
+                                                anchors.top: parent.top
+                                                anchors.left: parent.left
+                                                anchors.right: parent.right
+                                                anchors.topMargin: Theme.px(6)
+                                                anchors.leftMargin: Theme.px(8)
+                                                anchors.rightMargin: Theme.px(8)
+                                                height: Theme.px(18)
+                                                spacing: Theme.px(6)
+                                                z: 10
+
+                                                Text {
+                                                    text: "WS " + (modelData.id < 10 ? "0" + modelData.id : modelData.id)
+                                                    font.family: Theme.fontMono || "monospace"
+                                                    font.pixelSize: Theme.fontPx(11)
+                                                    font.weight: Font.Bold
+                                                    color: modelData.is_active ? Theme.primary : (tileHover.hovered ? Theme.primary : Theme.fg)
+                                                }
+
+                                                Rectangle {
+                                                    visible: modelData.is_active
+                                                    width: Theme.px(6)
+                                                    height: Theme.px(6)
+                                                    radius: Theme.px(3)
+                                                    color: Theme.primary
+                                                }
+
+                                                Item { Layout.fillWidth: true }
+
+                                                Text {
+                                                    text: (modelData.windows ? modelData.windows.length : 0) + " WIN"
+                                                    font.family: Theme.fontMono || "monospace"
+                                                    font.pixelSize: Theme.fontPx(9)
+                                                    color: modelData.is_active ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.6)
+                                                }
+                                            }
+
+                                            // Blueprint Proportional Wireframe Canvas Area
+                                            Item {
+                                                anchors.top: parent.top
+                                                anchors.topMargin: Theme.px(26)
+                                                anchors.bottom: parent.bottom
+                                                anchors.bottomMargin: Theme.px(6)
+                                                anchors.left: parent.left
+                                                anchors.leftMargin: Theme.px(6)
+                                                anchors.right: parent.right
+                                                anchors.rightMargin: Theme.px(6)
+                                                clip: true
+
+                                                Rectangle {
+                                                    anchors.fill: parent
+                                                    color: "transparent"
+                                                    border.color: Qt.rgba(255, 255, 255, 0.05)
+                                                    border.width: 1
+                                                    radius: Theme.px(4)
+                                                }
+
+                                                // Proportional Windows
+                                                Repeater {
+                                                    model: modelData.windows || []
+
+                                                    Rectangle {
+                                                        width: Math.max(Theme.px(20), Math.min(parent.width, Math.round((modelData.size && modelData.size.length > 0 ? modelData.size[0] : 0.25) * parent.width)))
+                                                        height: Math.max(Theme.px(14), Math.min(parent.height, Math.round((modelData.size && modelData.size.length > 1 ? modelData.size[1] : 0.25) * parent.height)))
+                                                        x: Math.max(0, Math.min(parent.width - width, Math.round((modelData.at && modelData.at.length > 0 ? modelData.at[0] : 0) * parent.width)))
+                                                        y: Math.max(0, Math.min(parent.height - height, Math.round((modelData.at && modelData.at.length > 1 ? modelData.at[1] : 0) * parent.height)))
+                                                        radius: Theme.px(4)
+                                                        color: (modelData.is_focused === true) 
+                                                            ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.22) 
+                                                            : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.08)
+                                                        border.color: (modelData.is_focused === true) 
+                                                            ? Theme.primary 
+                                                            : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.35)
+                                                        border.width: 1
+                                                        clip: true
+
+                                                        RowLayout {
+                                                            anchors.centerIn: parent
+                                                            width: Math.min(implicitWidth, parent.width - Theme.px(4))
+                                                            spacing: Theme.px(4)
+
+                                                            Image {
+                                                                visible: parent.parent.width > Theme.px(28) && parent.parent.height > Theme.px(18)
+                                                                Layout.preferredWidth: Theme.px(12)
+                                                                Layout.preferredHeight: Theme.px(12)
+                                                                source: commandCenterWindow.resolveAppIcon(modelData.class)
+                                                                sourceSize: Qt.size(24, 24)
+                                                                fillMode: Image.PreserveAspectFit
+                                                            }
+
+                                                            Text {
+                                                                text: modelData.title || modelData.class || ""
+                                                                font.family: Theme.font
+                                                                font.pixelSize: Theme.fontPx(8.5)
+                                                                font.weight: Font.Medium
+                                                                color: modelData.is_focused ? Theme.primary : Qt.rgba(255, 255, 255, 0.90)
+                                                                elide: Text.ElideRight
+                                                                Layout.maximumWidth: parent.parent.width - (parent.parent.width > Theme.px(28) ? Theme.px(18) : Theme.px(4))
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                Text {
+                                                    anchors.centerIn: parent
+                                                    visible: !modelData.windows || modelData.windows.length === 0
+                                                    text: "[ ∅ EMPTY BUFFER ]"
+                                                    font.family: Theme.fontMono || "monospace"
+                                                    font.pixelSize: Theme.fontPx(9.5)
+                                                    color: Qt.rgba(255, 255, 255, 0.16)
+                                                }
+                                            }
+                                        }
                                     }
+                                }
+                            }
 
-                                    // Tile Header Row
+                            // ─────────────────────────────────────────────────────────────
+                            // VERTICAL DIVIDER
+                            // ─────────────────────────────────────────────────────────────
+                            Rectangle {
+                                Layout.preferredWidth: 1
+                                Layout.fillHeight: true
+                                color: Qt.rgba(255, 255, 255, 0.08)
+                            }
+
+                            // ─────────────────────────────────────────────────────────────
+                            // RIGHT SECTION (32% width): OPENED APPS & WINDOWS LIVE SWITCHER
+                            // ─────────────────────────────────────────────────────────────
+                            Item {
+                                Layout.fillWidth: true
+                                Layout.preferredWidth: Math.round(parent.width * 0.32)
+                                Layout.fillHeight: true
+
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    spacing: Theme.px(8)
+
+                                    // Header Row: Title & Active Windows Count
                                     RowLayout {
-                                        anchors.top: parent.top
-                                        anchors.left: parent.left
-                                        anchors.right: parent.right
-                                        anchors.topMargin: Theme.px(6)
-                                        anchors.leftMargin: Theme.px(8)
-                                        anchors.rightMargin: Theme.px(8)
-                                        height: Theme.px(18)
-                                        spacing: Theme.px(6)
+                                        Layout.fillWidth: true
+                                        spacing: Theme.px(8)
 
                                         Text {
-                                            text: "WS " + (modelData.id < 10 ? "0" + modelData.id : modelData.id)
+                                            text: "grid_view"
+                                            font.family: Theme.fontIcon
+                                            font.pixelSize: Theme.fontPx(14)
+                                            color: Theme.primary
+                                        }
+
+                                        Text {
+                                            text: "OPENED APPS & WINDOWS"
                                             font.family: Theme.fontMono || "monospace"
                                             font.pixelSize: Theme.fontPx(11)
                                             font.weight: Font.Bold
-                                            color: modelData.is_active ? "#8ee8a8" : (tileHover.hovered ? "#8ee8a8" : Theme.fg)
-                                        }
-
-                                        Rectangle {
-                                            visible: modelData.is_active
-                                            width: Theme.px(6)
-                                            height: Theme.px(6)
-                                            radius: Theme.px(3)
-                                            color: "#8ee8a8"
+                                            color: Theme.fg
                                         }
 
                                         Item { Layout.fillWidth: true }
 
-                                        Text {
-                                            text: (modelData.windows ? modelData.windows.length : 0) + " WND"
-                                            font.family: Theme.fontMono || "monospace"
-                                            font.pixelSize: Theme.fontPx(9)
-                                            color: Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.6)
+                                        Rectangle {
+                                            Layout.preferredHeight: Theme.px(18)
+                                            Layout.preferredWidth: winCountText.implicitWidth + Theme.px(12)
+                                            radius: Theme.px(9)
+                                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
+                                            border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25)
+                                            border.width: 1
+
+                                            Text {
+                                                id: winCountText
+                                                anchors.centerIn: parent
+                                                text: commandCenterWindow.filteredWindows.length + " ACTIVE"
+                                                font.family: Theme.fontMono || "monospace"
+                                                font.pixelSize: Theme.fontPx(8.5)
+                                                font.bold: true
+                                                color: Theme.primary
+                                            }
                                         }
                                     }
 
-                                    // Blueprint Wireframe Canvas
-                                    Item {
-                                        anchors.top: parent.top
-                                        anchors.topMargin: Theme.px(26)
-                                        anchors.bottom: parent.bottom
-                                        anchors.bottomMargin: Theme.px(6)
-                                        anchors.left: parent.left
-                                        anchors.leftMargin: Theme.px(6)
-                                        anchors.right: parent.right
-                                        anchors.rightMargin: Theme.px(6)
-                                        clip: true
+                                    // Quick Filter / Search Bar
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: Theme.px(30)
+                                        radius: Theme.px(6)
+                                        color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.05)
+                                        border.color: appFilterInput.activeFocus ? Theme.primary : Qt.rgba(255, 255, 255, 0.12)
+                                        border.width: 1
 
-                                        Rectangle {
+                                        RowLayout {
                                             anchors.fill: parent
-                                            color: "transparent"
-                                            border.color: Qt.rgba(255, 255, 255, 0.05)
-                                            border.width: 1
-                                            radius: Theme.px(4)
+                                            anchors.leftMargin: Theme.px(8)
+                                            anchors.rightMargin: Theme.px(8)
+                                            spacing: Theme.px(6)
+
+                                            Text {
+                                                text: "search"
+                                                font.family: Theme.fontIcon
+                                                font.pixelSize: Theme.fontPx(13)
+                                                color: appFilterInput.activeFocus ? Theme.primary : Theme.fgDim
+                                            }
+
+                                            TextInput {
+                                                id: appFilterInput
+                                                Layout.fillWidth: true
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(11)
+                                                color: Theme.fg
+                                                clip: true
+                                                selectByMouse: true
+                                                text: commandCenterWindow.appFilterQuery
+                                                onTextChanged: commandCenterWindow.appFilterQuery = text
+
+                                                Text {
+                                                    visible: !appFilterInput.text && !appFilterInput.activeFocus
+                                                    text: "Filter open apps or windows..."
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(11)
+                                                    color: Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.5)
+                                                }
+                                            }
+
+                                            Text {
+                                                visible: appFilterInput.text.length > 0
+                                                text: "close"
+                                                font.family: Theme.fontIcon
+                                                font.pixelSize: Theme.fontPx(12)
+                                                color: Theme.fgDim
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: {
+                                                        appFilterInput.text = "";
+                                                        commandCenterWindow.appFilterQuery = "";
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // ListView of running windows
+                                    ListView {
+                                        id: appsListView
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        clip: true
+                                        spacing: Theme.px(4)
+                                        model: commandCenterWindow.filteredWindows
+
+                                        boundsBehavior: Flickable.StopAtBounds
+
+                                        ScrollBar.vertical: ScrollBar {
+                                            active: appsListView.moving || appsListView.dragging
+                                            policy: ScrollBar.AsNeeded
                                         }
 
-                                        // Windows Wireframe Boxes
-                                        Repeater {
-                                            model: modelData.windows || []
+                                        delegate: Rectangle {
+                                            id: appItemRow
+                                            width: appsListView.width
+                                            height: Theme.px(44)
+                                            radius: Theme.px(6)
+                                            color: itemHover.hovered 
+                                                ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12) 
+                                                : ((modelData.is_focused === true) ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.06) : Qt.rgba(255, 255, 255, 0.03))
+                                            border.color: itemHover.hovered 
+                                                ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.35) 
+                                                : ((modelData.is_focused === true) ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : Qt.rgba(255, 255, 255, 0.06))
+                                            border.width: 1
 
-                                            Rectangle {
-                                                x: Math.round(modelData.at[0] * parent.width)
-                                                y: Math.round(modelData.at[1] * parent.height)
-                                                width: Math.max(Theme.px(22), Math.round(modelData.size[0] * parent.width))
-                                                height: Math.max(Theme.px(14), Math.round(modelData.size[1] * parent.height))
-                                                radius: Theme.px(3)
-                                                color: modelData.is_focused ? Qt.rgba(0.55, 0.91, 0.66, 0.22) : Qt.rgba(255, 255, 255, 0.06)
-                                                border.color: modelData.is_focused ? "#8ee8a8" : Qt.rgba(255, 255, 255, 0.35)
-                                                border.width: 1
-                                                clip: true
+                                            HoverHandler { id: itemHover }
 
-                                                RowLayout {
-                                                    anchors.centerIn: parent
-                                                    width: Math.min(implicitWidth, parent.width - Theme.px(4))
-                                                    spacing: Theme.px(3)
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    commandCenterWindow.execCommand("hyprctl dispatch focuswindow address:" + modelData.address);
+                                                    commandCenterWindow.closeRequested();
+                                                }
+                                            }
 
-                                                    Image {
-                                                        visible: parent.parent.width > Theme.px(36) && parent.parent.height > Theme.px(22)
-                                                        Layout.preferredWidth: Theme.px(12)
-                                                        Layout.preferredHeight: Theme.px(12)
-                                                        source: commandCenterWindow.resolveAppIcon(modelData.class)
-                                                        sourceSize: Qt.size(24, 24)
-                                                        fillMode: Image.PreserveAspectFit
+                                            RowLayout {
+                                                anchors.fill: parent
+                                                anchors.leftMargin: Theme.px(8)
+                                                anchors.rightMargin: Theme.px(8)
+                                                spacing: Theme.px(8)
+
+                                                // App Icon
+                                                Image {
+                                                    Layout.preferredWidth: Theme.px(24)
+                                                    Layout.preferredHeight: Theme.px(24)
+                                                    source: commandCenterWindow.resolveAppIcon(modelData.class)
+                                                    sourceSize: Qt.size(48, 48)
+                                                    fillMode: Image.PreserveAspectFit
+                                                }
+
+                                                // Title and App Class
+                                                ColumnLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: Theme.px(1)
+
+                                                    Text {
+                                                        Layout.fillWidth: true
+                                                        text: modelData.title || modelData.class || "Untitled Window"
+                                                        font.family: Theme.font
+                                                        font.pixelSize: Theme.fontPx(11)
+                                                        font.weight: Font.DemiBold
+                                                        color: itemHover.hovered ? Theme.primary : Theme.fg
+                                                        elide: Text.ElideRight
                                                     }
 
                                                     Text {
-                                                        text: modelData.class || modelData.title || ""
-                                                        font.family: Theme.font
+                                                        Layout.fillWidth: true
+                                                        text: modelData.class || ""
+                                                        font.family: Theme.fontMono || "monospace"
                                                         font.pixelSize: Theme.fontPx(8.5)
-                                                        font.weight: Font.Medium
-                                                        color: modelData.is_focused ? "#8ee8a8" : Qt.rgba(255, 255, 255, 0.85)
+                                                        color: Theme.fgDim
                                                         elide: Text.ElideRight
-                                                        Layout.maximumWidth: parent.parent.width - (parent.parent.width > Theme.px(36) ? Theme.px(18) : Theme.px(4))
+                                                    }
+                                                }
+
+                                                // Workspace Pill (WS 01, etc.)
+                                                Rectangle {
+                                                    Layout.preferredHeight: Theme.px(18)
+                                                    Layout.preferredWidth: wsPillText.implicitWidth + Theme.px(10)
+                                                    radius: Theme.px(4)
+                                                    color: Qt.rgba(255, 255, 255, 0.06)
+                                                    border.color: Qt.rgba(255, 255, 255, 0.12)
+                                                    border.width: 1
+
+                                                    Text {
+                                                        id: wsPillText
+                                                        anchors.centerIn: parent
+                                                        readonly property var wsVal: (modelData.workspace && modelData.workspace.id !== undefined) ? modelData.workspace.id : (modelData.workspaceId !== undefined ? modelData.workspaceId : "?")
+                                                        text: "WS " + (typeof wsVal === "number" ? (wsVal < 10 ? "0" + wsVal : wsVal) : wsVal)
+                                                        font.family: Theme.fontMono || "monospace"
+                                                        font.pixelSize: Theme.fontPx(8.5)
+                                                        font.bold: true
+                                                        color: Theme.fgDim
+                                                    }
+                                                }
+
+                                                // Close Button (revealed on hover)
+                                                Rectangle {
+                                                    visible: itemHover.hovered
+                                                    Layout.preferredWidth: Theme.px(20)
+                                                    Layout.preferredHeight: Theme.px(20)
+                                                    radius: Theme.px(4)
+                                                    color: closeHover.hovered ? Qt.rgba(Theme.err.r, Theme.err.g, Theme.err.b, 0.25) : Qt.rgba(255, 255, 255, 0.08)
+                                                    border.color: closeHover.hovered ? Theme.err : Qt.rgba(255, 255, 255, 0.15)
+                                                    border.width: 1
+
+                                                    HoverHandler { id: closeHover }
+
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: "close"
+                                                        font.family: Theme.fontIcon
+                                                        font.pixelSize: Theme.fontPx(12)
+                                                        color: closeHover.hovered ? Theme.err : Theme.fgDim
+                                                    }
+
+                                                    MouseArea {
+                                                        anchors.fill: parent
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        onClicked: {
+                                                            commandCenterWindow.closeWindow(modelData.address);
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
 
-                                        Text {
+                                        // Empty state if no windows match filter
+                                        Item {
                                             anchors.centerIn: parent
-                                            visible: !modelData.windows || modelData.windows.length === 0
-                                            text: "[ ∅ EMPTY BUFFER ]"
-                                            font.family: Theme.fontMono || "monospace"
-                                            font.pixelSize: Theme.fontPx(9.5)
-                                            color: Qt.rgba(255, 255, 255, 0.16)
+                                            visible: commandCenterWindow.filteredWindows.length === 0
+                                            width: parent.width - Theme.px(32)
+                                            height: Theme.px(80)
+
+                                            ColumnLayout {
+                                                anchors.centerIn: parent
+                                                spacing: Theme.px(4)
+
+                                                Text {
+                                                    Layout.alignment: Qt.AlignHCenter
+                                                    text: "search_off"
+                                                    font.family: Theme.fontIcon
+                                                    font.pixelSize: Theme.fontPx(22)
+                                                    color: Theme.fgDim
+                                                }
+
+                                                Text {
+                                                    Layout.alignment: Qt.AlignHCenter
+                                                    text: appFilterInput.text ? "No matching windows" : "No open windows"
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(11)
+                                                    color: Theme.fgDim
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -1201,9 +1680,6 @@ PanelWindow {
                         }
                     }
                 }
-
-                }
-
                 // ══════════════════════════════════════════════════════════
                 // NODE (-1, 0) :: LOCAL RADAR
                 // ══════════════════════════════════════════════════════════
@@ -1212,7 +1688,8 @@ PanelWindow {
                     readonly property int nodeX: -1
                     readonly property int nodeY: 0
                     readonly property bool isCurrentTarget: (commandCenterWindow.activeGridX === cardNodeLeft.nodeX && commandCenterWindow.activeGridY === cardNodeLeft.nodeY)
-                    readonly property string cardTitle: "LOCAL RADAR (VAULT / AGENDA / APPS / CLIPBOARD)"
+                    readonly property string cardTitle: "Local Radar"
+                    readonly property string cardSubtitle: "Vault, Agenda, Apps & Clipboard"
                     readonly property string lodIcon: "radar"
                     readonly property string lodTitle: "LOCAL RADAR"
                     readonly property string lodSubtitle: "Obsidian Vault, Agenda, Dock & Clipboard"
@@ -1223,14 +1700,42 @@ PanelWindow {
                     y: Math.round((viewport.height - height) / 2 + (cardNodeLeft.nodeY * viewport.stepY))
                     radius: 16
                     color: Qt.rgba(0.047, 0.055, 0.07, 0.82)
-                    border.color: cardNodeLeft.isCurrentTarget ? "#8ee8a8" : ((commandCenterWindow.isOverview && cardNodeLeftClickArea.containsMouse) ? Qt.rgba(0.557, 0.91, 0.659, 0.6) : Qt.rgba(1, 1, 1, 0.12))
+                    border.color: cardNodeLeft.isCurrentTarget ? Theme.primary : ((commandCenterWindow.isOverview && cardNodeLeftClickArea.containsMouse) ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.60) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.16))
                     border.width: cardNodeLeft.isCurrentTarget ? 2 : 1
                     scale: (commandCenterWindow.isOverview && cardNodeLeftClickArea.containsMouse) ? 1.03 : 1.0
                     transformOrigin: Item.Center
                     Behavior on scale {
                         NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
                     }
+                    Behavior on border.color {
+                        ColorAnimation { duration: 300; easing.type: Easing.OutCubic }
+                    }
                     clip: true
+
+                    // Inner Matugen Glass Gradient Tint
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 16
+                        z: 1
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.06) }
+                            GradientStop { position: 0.35; color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.02) }
+                            GradientStop { position: 1.0; color: "transparent" }
+                        }
+                    }
+
+                    // Top-Edge Specular Highlight (1px)
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.topMargin: 1
+                        anchors.leftMargin: Theme.px(16)
+                        anchors.rightMargin: Theme.px(16)
+                        height: 1
+                        color: Qt.rgba(255, 255, 255, 0.18)
+                        z: 2
+                    }
 
                     // Click interception for overview or peeking neighbor cards
                     MouseArea {
@@ -1250,10 +1755,11 @@ PanelWindow {
                         id: cardNodeLeftLodOverlay
                         anchors.fill: parent
                         z: 400
-                        opacity: commandCenterWindow.isOverview ? 0.92 : 0.0
+                        opacity: viewport.isOverview ? 1.0 : 0.0
                         visible: opacity > 0.01
+                        enabled: viewport.isOverview
                         Behavior on opacity {
-                            NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
+                            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
                         }
 
                         Rectangle {
@@ -1271,7 +1777,7 @@ PanelWindow {
                                 text: cardNodeLeft.lodIcon
                                 font.family: Theme.fontIcon
                                 font.pixelSize: Theme.fontPx(64)
-                                color: cardNodeLeft.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255, 255, 255, 0.90)
+                                color: cardNodeLeft.isCurrentTarget ? Theme.primary : Qt.rgba(255, 255, 255, 0.90)
                             }
 
                             Text {
@@ -1280,7 +1786,7 @@ PanelWindow {
                                 font.family: Theme.fontMono || "monospace"
                                 font.pixelSize: Theme.fontPx(20)
                                 font.bold: true
-                                color: cardNodeLeft.isCurrentTarget ? "#8ee8a8" : Theme.fg
+                                color: cardNodeLeft.isCurrentTarget ? Theme.primary : Theme.fg
                             }
 
                             Text {
@@ -1294,51 +1800,89 @@ PanelWindow {
                     }
 
                     // Corner brackets (+)
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeLeft.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeLeft.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeLeft.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeLeft.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeLeft.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.left: parent.left; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeLeft.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.right: parent.right; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeLeft.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeLeft.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
 
-                    // Card Header Bar
+                    // Modern Card Header Bar
                     RowLayout {
                         anchors.top: parent.top
                         anchors.left: parent.left
                         anchors.right: parent.right
-                        anchors.topMargin: Theme.px(10)
+                        anchors.topMargin: Theme.px(12)
                         anchors.leftMargin: Theme.px(20)
                         anchors.rightMargin: Theme.px(20)
-                        height: Theme.px(24)
-                        spacing: Theme.px(8)
+                        height: Theme.px(26)
+                        spacing: Theme.px(10)
                         z: 10
 
+                        // Glowing Matugen Accent Dot
+                        Rectangle {
+                            Layout.preferredWidth: Theme.px(7)
+                            Layout.preferredHeight: Theme.px(7)
+                            radius: Theme.px(3.5)
+                            color: cardNodeLeft.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.50)
+
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: Theme.px(13)
+                                height: Theme.px(13)
+                                radius: Theme.px(6.5)
+                                color: cardNodeLeft.isCurrentTarget ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : "transparent"
+                                z: -1
+                            }
+                        }
+
+                        // Bold Title
                         Text {
-                            text: "// NODE [" + cardNodeLeft.nodeX + ", " + cardNodeLeft.nodeY + "] :: " + cardNodeLeft.cardTitle
-                            font.family: Theme.fontMono || "monospace"
-                            font.pixelSize: Theme.fontPx(11)
+                            text: cardNodeLeft.cardTitle
+                            font.family: Theme.font
+                            font.pixelSize: Theme.fontPx(13)
                             font.weight: Font.Bold
-                            color: cardNodeLeft.isCurrentTarget ? "#8ee8a8" : Theme.fg
+                            color: cardNodeLeft.isCurrentTarget ? Theme.fg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.75)
+                        }
+
+                        // Muted Subtitle Pill
+                        Rectangle {
+                            Layout.preferredHeight: Theme.px(18)
+                            Layout.preferredWidth: cardNodeLeftSubtitleText.implicitWidth + Theme.px(12)
+                            radius: Theme.px(9)
+                            color: Qt.rgba(255, 255, 255, 0.05)
+                            border.color: Qt.rgba(255, 255, 255, 0.08)
+                            border.width: 1
+
+                            Text {
+                                id: cardNodeLeftSubtitleText
+                                anchors.centerIn: parent
+                                text: cardNodeLeft.cardSubtitle
+                                font.family: Theme.fontMono || "monospace"
+                                font.pixelSize: Theme.fontPx(8.5)
+                                color: Theme.fgDim
+                            }
                         }
 
                         Item { Layout.fillWidth: true }
 
+                        // Sleek rounded pill button for Overview [ESC]
                         Rectangle {
                             visible: cardNodeLeft.isCurrentTarget && !commandCenterWindow.isOverview
-                            Layout.preferredHeight: Theme.px(18)
-                            Layout.preferredWidth: cardNodeLeftHintText.implicitWidth + Theme.px(12)
-                            radius: Theme.px(4)
-                            color: cardNodeLeftHintHover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.12) : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.05)
-                            border.color: Qt.rgba(255, 255, 255, 0.15)
+                            Layout.preferredHeight: Theme.px(22)
+                            Layout.preferredWidth: cardNodeLeftOverviewBtnText.implicitWidth + Theme.px(16)
+                            radius: Theme.px(11)
+                            color: cardNodeLeftOverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(255, 255, 255, 0.06)
+                            border.color: cardNodeLeftOverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : Qt.rgba(255, 255, 255, 0.12)
                             border.width: 1
 
-                            HoverHandler { id: cardNodeLeftHintHover }
+                            HoverHandler { id: cardNodeLeftOverviewHover }
                             Text {
-                                id: cardNodeLeftHintText
+                                id: cardNodeLeftOverviewBtnText
                                 anchors.centerIn: parent
-                                text: "OVERVIEW (ESC)"
+                                text: "Overview [ESC]"
                                 font.family: Theme.fontMono || "monospace"
-                                font.pixelSize: Theme.fontPx(8.5)
+                                font.pixelSize: Theme.fontPx(9)
                                 font.bold: true
-                                color: Theme.fgDim
+                                color: cardNodeLeftOverviewHover.hovered ? Theme.primary : Theme.fgDim
                             }
                             MouseArea {
                                 anchors.fill: parent
@@ -1348,10 +1892,17 @@ PanelWindow {
                         }
                     }
 
+                    // Detailed Inner Content Container (Dimmed in overview)
                     Item {
+                        id: cardNodeLeftInner
                         anchors.fill: parent
                         anchors.margins: Theme.px(16)
-                        anchors.topMargin: Theme.px(44)
+                        anchors.topMargin: Theme.px(48)
+                        clip: true
+                        opacity: viewport.isOverview ? 0.35 : 1.0
+                        Behavior on opacity {
+                            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+                        }
 
                         GridLayout {
                             anchors.fill: parent
@@ -2076,10 +2627,9 @@ PanelWindow {
                 }
 
                         }
+
                     }
-
                 }
-
                 // ══════════════════════════════════════════════════════════
                 // NODE (0, -1) :: GITHUB UPLINK
                 // ══════════════════════════════════════════════════════════
@@ -2088,7 +2638,8 @@ PanelWindow {
                     readonly property int nodeX: 0
                     readonly property int nodeY: -1
                     readonly property bool isCurrentTarget: (commandCenterWindow.activeGridX === cardNodeTop.nodeX && commandCenterWindow.activeGridY === cardNodeTop.nodeY)
-                    readonly property string cardTitle: "GITHUB UPLINK (HEATMAP / COMMITS / PR GATEKEEPER)"
+                    readonly property string cardTitle: "GitHub Uplink"
+                    readonly property string cardSubtitle: "Contributions, Git & PRs"
                     readonly property string lodIcon: "hub"
                     readonly property string lodTitle: "GITHUB UPLINK"
                     readonly property string lodSubtitle: "Contributions, Git Sync & PR Gatekeeper"
@@ -2099,14 +2650,42 @@ PanelWindow {
                     y: Math.round((viewport.height - height) / 2 + (cardNodeTop.nodeY * viewport.stepY))
                     radius: 16
                     color: Qt.rgba(0.047, 0.055, 0.07, 0.82)
-                    border.color: cardNodeTop.isCurrentTarget ? "#8ee8a8" : ((commandCenterWindow.isOverview && cardNodeTopClickArea.containsMouse) ? Qt.rgba(0.557, 0.91, 0.659, 0.6) : Qt.rgba(1, 1, 1, 0.12))
+                    border.color: cardNodeTop.isCurrentTarget ? Theme.primary : ((commandCenterWindow.isOverview && cardNodeTopClickArea.containsMouse) ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.60) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.16))
                     border.width: cardNodeTop.isCurrentTarget ? 2 : 1
                     scale: (commandCenterWindow.isOverview && cardNodeTopClickArea.containsMouse) ? 1.03 : 1.0
                     transformOrigin: Item.Center
                     Behavior on scale {
                         NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
                     }
+                    Behavior on border.color {
+                        ColorAnimation { duration: 300; easing.type: Easing.OutCubic }
+                    }
                     clip: true
+
+                    // Inner Matugen Glass Gradient Tint
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 16
+                        z: 1
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.06) }
+                            GradientStop { position: 0.35; color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.02) }
+                            GradientStop { position: 1.0; color: "transparent" }
+                        }
+                    }
+
+                    // Top-Edge Specular Highlight (1px)
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.topMargin: 1
+                        anchors.leftMargin: Theme.px(16)
+                        anchors.rightMargin: Theme.px(16)
+                        height: 1
+                        color: Qt.rgba(255, 255, 255, 0.18)
+                        z: 2
+                    }
 
                     // Click interception for overview or peeking neighbor cards
                     MouseArea {
@@ -2126,10 +2705,11 @@ PanelWindow {
                         id: cardNodeTopLodOverlay
                         anchors.fill: parent
                         z: 400
-                        opacity: commandCenterWindow.isOverview ? 0.92 : 0.0
+                        opacity: viewport.isOverview ? 1.0 : 0.0
                         visible: opacity > 0.01
+                        enabled: viewport.isOverview
                         Behavior on opacity {
-                            NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
+                            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
                         }
 
                         Rectangle {
@@ -2147,7 +2727,7 @@ PanelWindow {
                                 text: cardNodeTop.lodIcon
                                 font.family: Theme.fontIcon
                                 font.pixelSize: Theme.fontPx(64)
-                                color: cardNodeTop.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255, 255, 255, 0.90)
+                                color: cardNodeTop.isCurrentTarget ? Theme.primary : Qt.rgba(255, 255, 255, 0.90)
                             }
 
                             Text {
@@ -2156,7 +2736,7 @@ PanelWindow {
                                 font.family: Theme.fontMono || "monospace"
                                 font.pixelSize: Theme.fontPx(20)
                                 font.bold: true
-                                color: cardNodeTop.isCurrentTarget ? "#8ee8a8" : Theme.fg
+                                color: cardNodeTop.isCurrentTarget ? Theme.primary : Theme.fg
                             }
 
                             Text {
@@ -2170,51 +2750,89 @@ PanelWindow {
                     }
 
                     // Corner brackets (+)
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeTop.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeTop.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeTop.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeTop.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeTop.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.left: parent.left; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeTop.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.right: parent.right; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeTop.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeTop.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
 
-                    // Card Header Bar
+                    // Modern Card Header Bar
                     RowLayout {
                         anchors.top: parent.top
                         anchors.left: parent.left
                         anchors.right: parent.right
-                        anchors.topMargin: Theme.px(10)
+                        anchors.topMargin: Theme.px(12)
                         anchors.leftMargin: Theme.px(20)
                         anchors.rightMargin: Theme.px(20)
-                        height: Theme.px(24)
-                        spacing: Theme.px(8)
+                        height: Theme.px(26)
+                        spacing: Theme.px(10)
                         z: 10
 
+                        // Glowing Matugen Accent Dot
+                        Rectangle {
+                            Layout.preferredWidth: Theme.px(7)
+                            Layout.preferredHeight: Theme.px(7)
+                            radius: Theme.px(3.5)
+                            color: cardNodeTop.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.50)
+
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: Theme.px(13)
+                                height: Theme.px(13)
+                                radius: Theme.px(6.5)
+                                color: cardNodeTop.isCurrentTarget ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : "transparent"
+                                z: -1
+                            }
+                        }
+
+                        // Bold Title
                         Text {
-                            text: "// NODE [" + cardNodeTop.nodeX + ", " + cardNodeTop.nodeY + "] :: " + cardNodeTop.cardTitle
-                            font.family: Theme.fontMono || "monospace"
-                            font.pixelSize: Theme.fontPx(11)
+                            text: cardNodeTop.cardTitle
+                            font.family: Theme.font
+                            font.pixelSize: Theme.fontPx(13)
                             font.weight: Font.Bold
-                            color: cardNodeTop.isCurrentTarget ? "#8ee8a8" : Theme.fg
+                            color: cardNodeTop.isCurrentTarget ? Theme.fg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.75)
+                        }
+
+                        // Muted Subtitle Pill
+                        Rectangle {
+                            Layout.preferredHeight: Theme.px(18)
+                            Layout.preferredWidth: cardNodeTopSubtitleText.implicitWidth + Theme.px(12)
+                            radius: Theme.px(9)
+                            color: Qt.rgba(255, 255, 255, 0.05)
+                            border.color: Qt.rgba(255, 255, 255, 0.08)
+                            border.width: 1
+
+                            Text {
+                                id: cardNodeTopSubtitleText
+                                anchors.centerIn: parent
+                                text: cardNodeTop.cardSubtitle
+                                font.family: Theme.fontMono || "monospace"
+                                font.pixelSize: Theme.fontPx(8.5)
+                                color: Theme.fgDim
+                            }
                         }
 
                         Item { Layout.fillWidth: true }
 
+                        // Sleek rounded pill button for Overview [ESC]
                         Rectangle {
                             visible: cardNodeTop.isCurrentTarget && !commandCenterWindow.isOverview
-                            Layout.preferredHeight: Theme.px(18)
-                            Layout.preferredWidth: cardNodeTopHintText.implicitWidth + Theme.px(12)
-                            radius: Theme.px(4)
-                            color: cardNodeTopHintHover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.12) : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.05)
-                            border.color: Qt.rgba(255, 255, 255, 0.15)
+                            Layout.preferredHeight: Theme.px(22)
+                            Layout.preferredWidth: cardNodeTopOverviewBtnText.implicitWidth + Theme.px(16)
+                            radius: Theme.px(11)
+                            color: cardNodeTopOverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(255, 255, 255, 0.06)
+                            border.color: cardNodeTopOverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : Qt.rgba(255, 255, 255, 0.12)
                             border.width: 1
 
-                            HoverHandler { id: cardNodeTopHintHover }
+                            HoverHandler { id: cardNodeTopOverviewHover }
                             Text {
-                                id: cardNodeTopHintText
+                                id: cardNodeTopOverviewBtnText
                                 anchors.centerIn: parent
-                                text: "OVERVIEW (ESC)"
+                                text: "Overview [ESC]"
                                 font.family: Theme.fontMono || "monospace"
-                                font.pixelSize: Theme.fontPx(8.5)
+                                font.pixelSize: Theme.fontPx(9)
                                 font.bold: true
-                                color: Theme.fgDim
+                                color: cardNodeTopOverviewHover.hovered ? Theme.primary : Theme.fgDim
                             }
                             MouseArea {
                                 anchors.fill: parent
@@ -2224,11 +2842,17 @@ PanelWindow {
                         }
                     }
 
+                    // Detailed Inner Content Container (Dimmed in overview)
                     Item {
+                        id: cardNodeTopInner
                         anchors.fill: parent
                         anchors.margins: Theme.px(16)
-                        anchors.topMargin: Theme.px(44)
+                        anchors.topMargin: Theme.px(48)
                         clip: true
+                        opacity: viewport.isOverview ? 0.35 : 1.0
+                        Behavior on opacity {
+                            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+                        }
 
                                     Flickable {
                 id: githubUplinkView
@@ -2655,7 +3279,7 @@ PanelWindow {
                                                     if (!commandCenterWindow.githubPayload || !commandCenterWindow.githubPayload.workspace) return Theme.fgDim
                                                     if (commandCenterWindow.githubPayload.workspace.dirty) return "#f5b86e"
                                                     if (commandCenterWindow.githubPayload.workspace.ahead > 0) return Theme.accent
-                                                    return "#8ee8a8"
+                                                    return Theme.primary
                                                 }
                                             }
                                         }
@@ -2686,7 +3310,7 @@ PanelWindow {
                                             text: "call_merge"
                                             font.family: Theme.fontIcon
                                             font.pixelSize: Theme.fontPx(14)
-                                            color: "#8ee8a8"
+                                            color: Theme.primary
                                         }
 
                                         Text {
@@ -2749,7 +3373,7 @@ PanelWindow {
                                                             font.family: Theme.font
                                                             font.pixelSize: Theme.fontPx(10)
                                                             font.weight: Font.Bold
-                                                            color: "#8ee8a8"
+                                                            color: Theme.primary
                                                         }
 
                                                         Text {
@@ -2778,8 +3402,8 @@ PanelWindow {
                                                     height: Theme.px(24)
                                                     width: mergeText.implicitWidth + Theme.px(14)
                                                     radius: Theme.px(4)
-                                                    color: mergeHover.hovered ? "#8ee8a8" : Qt.rgba(0.557, 0.910, 0.659, 0.15)
-                                                    border.color: "#8ee8a8"
+                                                    color: mergeHover.hovered ? Theme.primary : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                                                    border.color: Theme.primary
                                                     border.width: 1
 
                                                     Text {
@@ -2789,7 +3413,7 @@ PanelWindow {
                                                         font.family: Theme.font
                                                         font.pixelSize: Theme.fontPx(9)
                                                         font.weight: Font.Bold
-                                                        color: mergeHover.hovered ? "#000000" : "#8ee8a8"
+                                                        color: mergeHover.hovered ? Theme.onPrimary : Theme.primary
                                                     }
 
                                                     HoverHandler { id: mergeHover }
@@ -2887,7 +3511,7 @@ PanelWindow {
                                     Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: Qt.rgba(1, 1, 1, 0.04); border.color: Qt.rgba(1, 1, 1, 0.1); border.width: 1 }
                                     Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: Qt.rgba(0.557, 0.910, 0.659, 0.28) }
                                     Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: Qt.rgba(0.557, 0.910, 0.659, 0.58) }
-                                    Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: "#8ee8a8" }
+                                    Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: Theme.primary }
                                     Rectangle { width: Theme.px(10); height: Theme.px(10); radius: Theme.px(2); color: "#39d353" }
                                     Text {
                                         text: "More"
@@ -2992,7 +3616,7 @@ PanelWindow {
                                                             if (!modelData || modelData.is_future) return "transparent"
                                                             var lvl = modelData.level || 0
                                                             if (lvl === 4) return "#39d353"
-                                                            if (lvl === 3) return "#8ee8a8"
+                                                            if (lvl === 3) return Theme.primary
                                                             if (lvl === 2) return Qt.rgba(0.557, 0.910, 0.659, 0.58)
                                                             if (lvl === 1) return Qt.rgba(0.557, 0.910, 0.659, 0.28)
                                                             return Qt.rgba(1, 1, 1, 0.04)
@@ -3061,10 +3685,9 @@ PanelWindow {
                 }
         }
 
+
                     }
-
                 }
-
                 // ══════════════════════════════════════════════════════════
                 // NODE (0, 1) :: SYSTEM TELEMETRY
                 // ══════════════════════════════════════════════════════════
@@ -3073,7 +3696,8 @@ PanelWindow {
                     readonly property int nodeX: 0
                     readonly property int nodeY: 1
                     readonly property bool isCurrentTarget: (commandCenterWindow.activeGridX === cardNodeBottom.nodeX && commandCenterWindow.activeGridY === cardNodeBottom.nodeY)
-                    readonly property string cardTitle: "SYSTEM TELEMETRY (HARDWARE KERNEL & PERFORMANCE GAUGES)"
+                    readonly property string cardTitle: "System Telemetry"
+                    readonly property string cardSubtitle: "Hardware & Kernel"
                     readonly property string lodIcon: "monitoring"
                     readonly property string lodTitle: "SYSTEM TELEMETRY"
                     readonly property string lodSubtitle: "Kernel Stream, Hardware Wave & Network"
@@ -3084,14 +3708,42 @@ PanelWindow {
                     y: Math.round((viewport.height - height) / 2 + (cardNodeBottom.nodeY * viewport.stepY))
                     radius: 16
                     color: Qt.rgba(0.047, 0.055, 0.07, 0.82)
-                    border.color: cardNodeBottom.isCurrentTarget ? "#8ee8a8" : ((commandCenterWindow.isOverview && cardNodeBottomClickArea.containsMouse) ? Qt.rgba(0.557, 0.91, 0.659, 0.6) : Qt.rgba(1, 1, 1, 0.12))
+                    border.color: cardNodeBottom.isCurrentTarget ? Theme.primary : ((commandCenterWindow.isOverview && cardNodeBottomClickArea.containsMouse) ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.60) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.16))
                     border.width: cardNodeBottom.isCurrentTarget ? 2 : 1
                     scale: (commandCenterWindow.isOverview && cardNodeBottomClickArea.containsMouse) ? 1.03 : 1.0
                     transformOrigin: Item.Center
                     Behavior on scale {
                         NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
                     }
+                    Behavior on border.color {
+                        ColorAnimation { duration: 300; easing.type: Easing.OutCubic }
+                    }
                     clip: true
+
+                    // Inner Matugen Glass Gradient Tint
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 16
+                        z: 1
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.06) }
+                            GradientStop { position: 0.35; color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.02) }
+                            GradientStop { position: 1.0; color: "transparent" }
+                        }
+                    }
+
+                    // Top-Edge Specular Highlight (1px)
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.topMargin: 1
+                        anchors.leftMargin: Theme.px(16)
+                        anchors.rightMargin: Theme.px(16)
+                        height: 1
+                        color: Qt.rgba(255, 255, 255, 0.18)
+                        z: 2
+                    }
 
                     // Click interception for overview or peeking neighbor cards
                     MouseArea {
@@ -3111,10 +3763,11 @@ PanelWindow {
                         id: cardNodeBottomLodOverlay
                         anchors.fill: parent
                         z: 400
-                        opacity: commandCenterWindow.isOverview ? 0.92 : 0.0
+                        opacity: viewport.isOverview ? 1.0 : 0.0
                         visible: opacity > 0.01
+                        enabled: viewport.isOverview
                         Behavior on opacity {
-                            NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
+                            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
                         }
 
                         Rectangle {
@@ -3132,7 +3785,7 @@ PanelWindow {
                                 text: cardNodeBottom.lodIcon
                                 font.family: Theme.fontIcon
                                 font.pixelSize: Theme.fontPx(64)
-                                color: cardNodeBottom.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255, 255, 255, 0.90)
+                                color: cardNodeBottom.isCurrentTarget ? Theme.primary : Qt.rgba(255, 255, 255, 0.90)
                             }
 
                             Text {
@@ -3141,7 +3794,7 @@ PanelWindow {
                                 font.family: Theme.fontMono || "monospace"
                                 font.pixelSize: Theme.fontPx(20)
                                 font.bold: true
-                                color: cardNodeBottom.isCurrentTarget ? "#8ee8a8" : Theme.fg
+                                color: cardNodeBottom.isCurrentTarget ? Theme.primary : Theme.fg
                             }
 
                             Text {
@@ -3155,51 +3808,89 @@ PanelWindow {
                     }
 
                     // Corner brackets (+)
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeBottom.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeBottom.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeBottom.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeBottom.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeBottom.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.left: parent.left; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeBottom.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.right: parent.right; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeBottom.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeBottom.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
 
-                    // Card Header Bar
+                    // Modern Card Header Bar
                     RowLayout {
                         anchors.top: parent.top
                         anchors.left: parent.left
                         anchors.right: parent.right
-                        anchors.topMargin: Theme.px(10)
+                        anchors.topMargin: Theme.px(12)
                         anchors.leftMargin: Theme.px(20)
                         anchors.rightMargin: Theme.px(20)
-                        height: Theme.px(24)
-                        spacing: Theme.px(8)
+                        height: Theme.px(26)
+                        spacing: Theme.px(10)
                         z: 10
 
+                        // Glowing Matugen Accent Dot
+                        Rectangle {
+                            Layout.preferredWidth: Theme.px(7)
+                            Layout.preferredHeight: Theme.px(7)
+                            radius: Theme.px(3.5)
+                            color: cardNodeBottom.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.50)
+
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: Theme.px(13)
+                                height: Theme.px(13)
+                                radius: Theme.px(6.5)
+                                color: cardNodeBottom.isCurrentTarget ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : "transparent"
+                                z: -1
+                            }
+                        }
+
+                        // Bold Title
                         Text {
-                            text: "// NODE [" + cardNodeBottom.nodeX + ", " + cardNodeBottom.nodeY + "] :: " + cardNodeBottom.cardTitle
-                            font.family: Theme.fontMono || "monospace"
-                            font.pixelSize: Theme.fontPx(11)
+                            text: cardNodeBottom.cardTitle
+                            font.family: Theme.font
+                            font.pixelSize: Theme.fontPx(13)
                             font.weight: Font.Bold
-                            color: cardNodeBottom.isCurrentTarget ? "#8ee8a8" : Theme.fg
+                            color: cardNodeBottom.isCurrentTarget ? Theme.fg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.75)
+                        }
+
+                        // Muted Subtitle Pill
+                        Rectangle {
+                            Layout.preferredHeight: Theme.px(18)
+                            Layout.preferredWidth: cardNodeBottomSubtitleText.implicitWidth + Theme.px(12)
+                            radius: Theme.px(9)
+                            color: Qt.rgba(255, 255, 255, 0.05)
+                            border.color: Qt.rgba(255, 255, 255, 0.08)
+                            border.width: 1
+
+                            Text {
+                                id: cardNodeBottomSubtitleText
+                                anchors.centerIn: parent
+                                text: cardNodeBottom.cardSubtitle
+                                font.family: Theme.fontMono || "monospace"
+                                font.pixelSize: Theme.fontPx(8.5)
+                                color: Theme.fgDim
+                            }
                         }
 
                         Item { Layout.fillWidth: true }
 
+                        // Sleek rounded pill button for Overview [ESC]
                         Rectangle {
                             visible: cardNodeBottom.isCurrentTarget && !commandCenterWindow.isOverview
-                            Layout.preferredHeight: Theme.px(18)
-                            Layout.preferredWidth: cardNodeBottomHintText.implicitWidth + Theme.px(12)
-                            radius: Theme.px(4)
-                            color: cardNodeBottomHintHover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.12) : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.05)
-                            border.color: Qt.rgba(255, 255, 255, 0.15)
+                            Layout.preferredHeight: Theme.px(22)
+                            Layout.preferredWidth: cardNodeBottomOverviewBtnText.implicitWidth + Theme.px(16)
+                            radius: Theme.px(11)
+                            color: cardNodeBottomOverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(255, 255, 255, 0.06)
+                            border.color: cardNodeBottomOverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : Qt.rgba(255, 255, 255, 0.12)
                             border.width: 1
 
-                            HoverHandler { id: cardNodeBottomHintHover }
+                            HoverHandler { id: cardNodeBottomOverviewHover }
                             Text {
-                                id: cardNodeBottomHintText
+                                id: cardNodeBottomOverviewBtnText
                                 anchors.centerIn: parent
-                                text: "OVERVIEW (ESC)"
+                                text: "Overview [ESC]"
                                 font.family: Theme.fontMono || "monospace"
-                                font.pixelSize: Theme.fontPx(8.5)
+                                font.pixelSize: Theme.fontPx(9)
                                 font.bold: true
-                                color: Theme.fgDim
+                                color: cardNodeBottomOverviewHover.hovered ? Theme.primary : Theme.fgDim
                             }
                             MouseArea {
                                 anchors.fill: parent
@@ -3209,11 +3900,17 @@ PanelWindow {
                         }
                     }
 
+                    // Detailed Inner Content Container (Dimmed in overview)
                     Item {
+                        id: cardNodeBottomInner
                         anchors.fill: parent
                         anchors.margins: Theme.px(16)
-                        anchors.topMargin: Theme.px(44)
+                        anchors.topMargin: Theme.px(48)
                         clip: true
+                        opacity: viewport.isOverview ? 0.35 : 1.0
+                        Behavior on opacity {
+                            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+                        }
 
                                     Item {
                 id: systemTelemetryView
@@ -4018,9 +4715,10 @@ PanelWindow {
                                         }
 
                                         // Compute dynamic active colors (CPU accent -> RAM vibrant accent)
-                                        var cpuR = Math.round((Theme.accent.r || 0.3) * 255)
-                                        var cpuG = Math.round((Theme.accent.g || 0.8) * 255)
-                                        var cpuB = Math.round((Theme.accent.b || 0.9) * 255)
+                                        var cpuColor = Theme.primary || Theme.accent
+                                        var cpuR = Math.round((cpuColor.r !== undefined ? cpuColor.r : 0.88) * 255)
+                                        var cpuG = Math.round((cpuColor.g !== undefined ? cpuColor.g : 0.88) * 255)
+                                        var cpuB = Math.round((cpuColor.b !== undefined ? cpuColor.b : 0.91) * 255)
 
                                         var ramR = 56
                                         var ramG = 189
@@ -4059,8 +4757,8 @@ PanelWindow {
                                         ctx.closePath()
 
                                         var grad = ctx.createLinearGradient(0, topPad, 0, topPad + plotH)
-                                        grad.addColorStop(0.0, "rgba(" + curR + "," + curG + "," + curB + ", 0.32)")
-                                        grad.addColorStop(0.65, "rgba(" + curR + "," + curG + "," + curB + ", 0.08)")
+                                        grad.addColorStop(0.0, "rgba(" + curR + "," + curG + "," + curB + ", 0.22)")
+                                        grad.addColorStop(0.50, "rgba(" + curR + "," + curG + "," + curB + ", 0.08)")
                                         grad.addColorStop(1.0, "rgba(" + curR + "," + curG + "," + curB + ", 0.00)")
                                         ctx.fillStyle = grad
                                         ctx.fill()
@@ -4128,9 +4826,9 @@ PanelWindow {
                 }
             }
 
+
                     }
                 }
-
                 // ══════════════════════════════════════════════════════════
                 // NODE (1, 0) :: CARBON ENGINE
                 // ══════════════════════════════════════════════════════════
@@ -4139,7 +4837,8 @@ PanelWindow {
                     readonly property int nodeX: 1
                     readonly property int nodeY: 0
                     readonly property bool isCurrentTarget: (commandCenterWindow.activeGridX === cardNodeRight.nodeX && commandCenterWindow.activeGridY === cardNodeRight.nodeY)
-                    readonly property string cardTitle: "CARBON ENGINE & SHELL CONTROLS"
+                    readonly property string cardTitle: "Carbon Engine"
+                    readonly property string cardSubtitle: "Shell Modes & Controls"
                     readonly property string lodIcon: "tune"
                     readonly property string lodTitle: "CARBON ENGINE"
                     readonly property string lodSubtitle: "Shell Modes, Wallpaper Engine & Visuals"
@@ -4150,14 +4849,42 @@ PanelWindow {
                     y: Math.round((viewport.height - height) / 2 + (cardNodeRight.nodeY * viewport.stepY))
                     radius: 16
                     color: Qt.rgba(0.047, 0.055, 0.07, 0.82)
-                    border.color: cardNodeRight.isCurrentTarget ? "#8ee8a8" : ((commandCenterWindow.isOverview && cardNodeRightClickArea.containsMouse) ? Qt.rgba(0.557, 0.91, 0.659, 0.6) : Qt.rgba(1, 1, 1, 0.12))
+                    border.color: cardNodeRight.isCurrentTarget ? Theme.primary : ((commandCenterWindow.isOverview && cardNodeRightClickArea.containsMouse) ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.60) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.16))
                     border.width: cardNodeRight.isCurrentTarget ? 2 : 1
                     scale: (commandCenterWindow.isOverview && cardNodeRightClickArea.containsMouse) ? 1.03 : 1.0
                     transformOrigin: Item.Center
                     Behavior on scale {
                         NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
                     }
+                    Behavior on border.color {
+                        ColorAnimation { duration: 300; easing.type: Easing.OutCubic }
+                    }
                     clip: true
+
+                    // Inner Matugen Glass Gradient Tint
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 16
+                        z: 1
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.06) }
+                            GradientStop { position: 0.35; color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.02) }
+                            GradientStop { position: 1.0; color: "transparent" }
+                        }
+                    }
+
+                    // Top-Edge Specular Highlight (1px)
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.topMargin: 1
+                        anchors.leftMargin: Theme.px(16)
+                        anchors.rightMargin: Theme.px(16)
+                        height: 1
+                        color: Qt.rgba(255, 255, 255, 0.18)
+                        z: 2
+                    }
 
                     // Click interception for overview or peeking neighbor cards
                     MouseArea {
@@ -4177,10 +4904,11 @@ PanelWindow {
                         id: cardNodeRightLodOverlay
                         anchors.fill: parent
                         z: 400
-                        opacity: commandCenterWindow.isOverview ? 0.92 : 0.0
+                        opacity: viewport.isOverview ? 1.0 : 0.0
                         visible: opacity > 0.01
+                        enabled: viewport.isOverview
                         Behavior on opacity {
-                            NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
+                            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
                         }
 
                         Rectangle {
@@ -4198,7 +4926,7 @@ PanelWindow {
                                 text: cardNodeRight.lodIcon
                                 font.family: Theme.fontIcon
                                 font.pixelSize: Theme.fontPx(64)
-                                color: cardNodeRight.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255, 255, 255, 0.90)
+                                color: cardNodeRight.isCurrentTarget ? Theme.primary : Qt.rgba(255, 255, 255, 0.90)
                             }
 
                             Text {
@@ -4207,7 +4935,7 @@ PanelWindow {
                                 font.family: Theme.fontMono || "monospace"
                                 font.pixelSize: Theme.fontPx(20)
                                 font.bold: true
-                                color: cardNodeRight.isCurrentTarget ? "#8ee8a8" : Theme.fg
+                                color: cardNodeRight.isCurrentTarget ? Theme.primary : Theme.fg
                             }
 
                             Text {
@@ -4221,51 +4949,89 @@ PanelWindow {
                     }
 
                     // Corner brackets (+)
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeRight.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeRight.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeRight.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
-                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeRight.isCurrentTarget ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeRight.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.left: parent.left; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeRight.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.right: parent.right; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeRight.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: cardNodeRight.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.35); anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
 
-                    // Card Header Bar
+                    // Modern Card Header Bar
                     RowLayout {
                         anchors.top: parent.top
                         anchors.left: parent.left
                         anchors.right: parent.right
-                        anchors.topMargin: Theme.px(10)
+                        anchors.topMargin: Theme.px(12)
                         anchors.leftMargin: Theme.px(20)
                         anchors.rightMargin: Theme.px(20)
-                        height: Theme.px(24)
-                        spacing: Theme.px(8)
+                        height: Theme.px(26)
+                        spacing: Theme.px(10)
                         z: 10
 
+                        // Glowing Matugen Accent Dot
+                        Rectangle {
+                            Layout.preferredWidth: Theme.px(7)
+                            Layout.preferredHeight: Theme.px(7)
+                            radius: Theme.px(3.5)
+                            color: cardNodeRight.isCurrentTarget ? Theme.primary : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.50)
+
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: Theme.px(13)
+                                height: Theme.px(13)
+                                radius: Theme.px(6.5)
+                                color: cardNodeRight.isCurrentTarget ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : "transparent"
+                                z: -1
+                            }
+                        }
+
+                        // Bold Title
                         Text {
-                            text: "// NODE [" + cardNodeRight.nodeX + ", " + cardNodeRight.nodeY + "] :: " + cardNodeRight.cardTitle
-                            font.family: Theme.fontMono || "monospace"
-                            font.pixelSize: Theme.fontPx(11)
+                            text: cardNodeRight.cardTitle
+                            font.family: Theme.font
+                            font.pixelSize: Theme.fontPx(13)
                             font.weight: Font.Bold
-                            color: cardNodeRight.isCurrentTarget ? "#8ee8a8" : Theme.fg
+                            color: cardNodeRight.isCurrentTarget ? Theme.fg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.75)
+                        }
+
+                        // Muted Subtitle Pill
+                        Rectangle {
+                            Layout.preferredHeight: Theme.px(18)
+                            Layout.preferredWidth: cardNodeRightSubtitleText.implicitWidth + Theme.px(12)
+                            radius: Theme.px(9)
+                            color: Qt.rgba(255, 255, 255, 0.05)
+                            border.color: Qt.rgba(255, 255, 255, 0.08)
+                            border.width: 1
+
+                            Text {
+                                id: cardNodeRightSubtitleText
+                                anchors.centerIn: parent
+                                text: cardNodeRight.cardSubtitle
+                                font.family: Theme.fontMono || "monospace"
+                                font.pixelSize: Theme.fontPx(8.5)
+                                color: Theme.fgDim
+                            }
                         }
 
                         Item { Layout.fillWidth: true }
 
+                        // Sleek rounded pill button for Overview [ESC]
                         Rectangle {
                             visible: cardNodeRight.isCurrentTarget && !commandCenterWindow.isOverview
-                            Layout.preferredHeight: Theme.px(18)
-                            Layout.preferredWidth: cardNodeRightHintText.implicitWidth + Theme.px(12)
-                            radius: Theme.px(4)
-                            color: cardNodeRightHintHover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.12) : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.05)
-                            border.color: Qt.rgba(255, 255, 255, 0.15)
+                            Layout.preferredHeight: Theme.px(22)
+                            Layout.preferredWidth: cardNodeRightOverviewBtnText.implicitWidth + Theme.px(16)
+                            radius: Theme.px(11)
+                            color: cardNodeRightOverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(255, 255, 255, 0.06)
+                            border.color: cardNodeRightOverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : Qt.rgba(255, 255, 255, 0.12)
                             border.width: 1
 
-                            HoverHandler { id: cardNodeRightHintHover }
+                            HoverHandler { id: cardNodeRightOverviewHover }
                             Text {
-                                id: cardNodeRightHintText
+                                id: cardNodeRightOverviewBtnText
                                 anchors.centerIn: parent
-                                text: "OVERVIEW (ESC)"
+                                text: "Overview [ESC]"
                                 font.family: Theme.fontMono || "monospace"
-                                font.pixelSize: Theme.fontPx(8.5)
+                                font.pixelSize: Theme.fontPx(9)
                                 font.bold: true
-                                color: Theme.fgDim
+                                color: cardNodeRightOverviewHover.hovered ? Theme.primary : Theme.fgDim
                             }
                             MouseArea {
                                 anchors.fill: parent
@@ -4275,10 +5041,17 @@ PanelWindow {
                         }
                     }
 
-                Item {
-                    anchors.fill: parent
-                    anchors.margins: Theme.px(16)
-                    anchors.topMargin: Theme.px(44)
+                    // Detailed Inner Content Container (Dimmed in overview)
+                    Item {
+                        id: cardNodeRightInner
+                        anchors.fill: parent
+                        anchors.margins: Theme.px(16)
+                        anchors.topMargin: Theme.px(48)
+                        clip: true
+                        opacity: viewport.isOverview ? 0.35 : 1.0
+                        Behavior on opacity {
+                            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+                        }
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -4294,7 +5067,7 @@ PanelWindow {
                                 font.family: Theme.fontMono || "monospace"
                                 font.pixelSize: Theme.fontPx(10)
                                 font.weight: Font.Bold
-                                color: "#8ee8a8"
+                                color: Theme.primary
                             }
 
                             RowLayout {
@@ -4306,8 +5079,8 @@ PanelWindow {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: Theme.px(76)
                                     radius: Theme.px(8)
-                                    color: commandCenterWindow.barMode === "notch" ? Qt.rgba(0.55, 0.91, 0.66, 0.12) : Qt.rgba(0.08, 0.10, 0.14, 0.7)
-                                    border.color: commandCenterWindow.barMode === "notch" ? "#8ee8a8" : (m1Hover.hovered ? Qt.rgba(0.55, 0.91, 0.66, 0.4) : Qt.rgba(255, 255, 255, 0.12))
+                                    color: commandCenterWindow.barMode === "notch" ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12) : Qt.rgba(0.08, 0.10, 0.14, 0.7)
+                                    border.color: commandCenterWindow.barMode === "notch" ? Theme.primary : (m1Hover.hovered ? Qt.rgba(0.55, 0.91, 0.66, 0.4) : Qt.rgba(255, 255, 255, 0.12))
                                     border.width: commandCenterWindow.barMode === "notch" ? 1.5 : 1
 
                                     HoverHandler { id: m1Hover }
@@ -4325,16 +5098,16 @@ PanelWindow {
                                         RowLayout {
                                             Layout.fillWidth: true
                                             spacing: Theme.px(6)
-                                            Text { text: "dock_to_bottom"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(16); color: commandCenterWindow.barMode === "notch" ? "#8ee8a8" : Theme.fg }
-                                            Text { text: "Notch Dynamic Island"; font.family: Theme.font; font.pixelSize: Theme.fontPx(12.5); font.bold: true; color: commandCenterWindow.barMode === "notch" ? "#8ee8a8" : Theme.fg }
+                                            Text { text: "dock_to_bottom"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(16); color: commandCenterWindow.barMode === "notch" ? Theme.primary : Theme.fg }
+                                            Text { text: "Notch Dynamic Island"; font.family: Theme.font; font.pixelSize: Theme.fontPx(12.5); font.bold: true; color: commandCenterWindow.barMode === "notch" ? Theme.primary : Theme.fg }
                                             Item { Layout.fillWidth: true }
                                             Rectangle {
                                                 visible: commandCenterWindow.barMode === "notch"
                                                 Layout.preferredHeight: Theme.px(16)
                                                 Layout.preferredWidth: a1Text.implicitWidth + Theme.px(8)
                                                 radius: Theme.px(3)
-                                                color: Qt.rgba(0.55, 0.91, 0.66, 0.25)
-                                                Text { id: a1Text; anchors.centerIn: parent; text: "ACTIVE"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(8); font.bold: true; color: "#8ee8a8" }
+                                                color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25)
+                                                Text { id: a1Text; anchors.centerIn: parent; text: "ACTIVE"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(8); font.bold: true; color: Theme.primary }
                                             }
                                         }
                                         Text {
@@ -4353,8 +5126,8 @@ PanelWindow {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: Theme.px(76)
                                     radius: Theme.px(8)
-                                    color: commandCenterWindow.barMode === "vanish" ? Qt.rgba(0.55, 0.91, 0.66, 0.12) : Qt.rgba(0.08, 0.10, 0.14, 0.7)
-                                    border.color: commandCenterWindow.barMode === "vanish" ? "#8ee8a8" : (m2Hover.hovered ? Qt.rgba(0.55, 0.91, 0.66, 0.4) : Qt.rgba(255, 255, 255, 0.12))
+                                    color: commandCenterWindow.barMode === "vanish" ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12) : Qt.rgba(0.08, 0.10, 0.14, 0.7)
+                                    border.color: commandCenterWindow.barMode === "vanish" ? Theme.primary : (m2Hover.hovered ? Qt.rgba(0.55, 0.91, 0.66, 0.4) : Qt.rgba(255, 255, 255, 0.12))
                                     border.width: commandCenterWindow.barMode === "vanish" ? 1.5 : 1
 
                                     HoverHandler { id: m2Hover }
@@ -4372,16 +5145,16 @@ PanelWindow {
                                         RowLayout {
                                             Layout.fillWidth: true
                                             spacing: Theme.px(6)
-                                            Text { text: "visibility_off"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(16); color: commandCenterWindow.barMode === "vanish" ? "#8ee8a8" : Theme.fg }
-                                            Text { text: "Vanish"; font.family: Theme.font; font.pixelSize: Theme.fontPx(12.5); font.bold: true; color: commandCenterWindow.barMode === "vanish" ? "#8ee8a8" : Theme.fg }
+                                            Text { text: "visibility_off"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(16); color: commandCenterWindow.barMode === "vanish" ? Theme.primary : Theme.fg }
+                                            Text { text: "Vanish"; font.family: Theme.font; font.pixelSize: Theme.fontPx(12.5); font.bold: true; color: commandCenterWindow.barMode === "vanish" ? Theme.primary : Theme.fg }
                                             Item { Layout.fillWidth: true }
                                             Rectangle {
                                                 visible: commandCenterWindow.barMode === "vanish"
                                                 Layout.preferredHeight: Theme.px(16)
                                                 Layout.preferredWidth: a2Text.implicitWidth + Theme.px(8)
                                                 radius: Theme.px(3)
-                                                color: Qt.rgba(0.55, 0.91, 0.66, 0.25)
-                                                Text { id: a2Text; anchors.centerIn: parent; text: "ACTIVE"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(8); font.bold: true; color: "#8ee8a8" }
+                                                color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25)
+                                                Text { id: a2Text; anchors.centerIn: parent; text: "ACTIVE"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(8); font.bold: true; color: Theme.primary }
                                             }
                                         }
                                         Text {
@@ -4400,8 +5173,8 @@ PanelWindow {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: Theme.px(76)
                                     radius: Theme.px(8)
-                                    color: commandCenterWindow.barMode === "minimal" ? Qt.rgba(0.55, 0.91, 0.66, 0.12) : Qt.rgba(0.08, 0.10, 0.14, 0.7)
-                                    border.color: commandCenterWindow.barMode === "minimal" ? "#8ee8a8" : (m3Hover.hovered ? Qt.rgba(0.55, 0.91, 0.66, 0.4) : Qt.rgba(255, 255, 255, 0.12))
+                                    color: commandCenterWindow.barMode === "minimal" ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12) : Qt.rgba(0.08, 0.10, 0.14, 0.7)
+                                    border.color: commandCenterWindow.barMode === "minimal" ? Theme.primary : (m3Hover.hovered ? Qt.rgba(0.55, 0.91, 0.66, 0.4) : Qt.rgba(255, 255, 255, 0.12))
                                     border.width: commandCenterWindow.barMode === "minimal" ? 1.5 : 1
 
                                     HoverHandler { id: m3Hover }
@@ -4419,16 +5192,16 @@ PanelWindow {
                                         RowLayout {
                                             Layout.fillWidth: true
                                             spacing: Theme.px(6)
-                                            Text { text: "horizontal_distribute"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(16); color: commandCenterWindow.barMode === "minimal" ? "#8ee8a8" : Theme.fg }
-                                            Text { text: "Minimal Monoline"; font.family: Theme.font; font.pixelSize: Theme.fontPx(12.5); font.bold: true; color: commandCenterWindow.barMode === "minimal" ? "#8ee8a8" : Theme.fg }
+                                            Text { text: "horizontal_distribute"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(16); color: commandCenterWindow.barMode === "minimal" ? Theme.primary : Theme.fg }
+                                            Text { text: "Minimal Monoline"; font.family: Theme.font; font.pixelSize: Theme.fontPx(12.5); font.bold: true; color: commandCenterWindow.barMode === "minimal" ? Theme.primary : Theme.fg }
                                             Item { Layout.fillWidth: true }
                                             Rectangle {
                                                 visible: commandCenterWindow.barMode === "minimal"
                                                 Layout.preferredHeight: Theme.px(16)
                                                 Layout.preferredWidth: a3Text.implicitWidth + Theme.px(8)
                                                 radius: Theme.px(3)
-                                                color: Qt.rgba(0.55, 0.91, 0.66, 0.25)
-                                                Text { id: a3Text; anchors.centerIn: parent; text: "ACTIVE"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(8); font.bold: true; color: "#8ee8a8" }
+                                                color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25)
+                                                Text { id: a3Text; anchors.centerIn: parent; text: "ACTIVE"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(8); font.bold: true; color: Theme.primary }
                                             }
                                         }
                                         Text {
@@ -4470,7 +5243,7 @@ PanelWindow {
                                         font.family: Theme.fontMono || "monospace"
                                         font.pixelSize: Theme.fontPx(9.5)
                                         font.bold: true
-                                        color: "#8ee8a8"
+                                        color: Theme.primary
                                     }
 
                                     Rectangle {
@@ -4492,8 +5265,8 @@ PanelWindow {
                                         Layout.fillWidth: true
                                         Layout.preferredHeight: Theme.px(28)
                                         radius: Theme.px(4)
-                                        color: wpBtnHover.hovered ? Qt.rgba(0.55, 0.91, 0.66, 0.25) : Qt.rgba(0.55, 0.91, 0.66, 0.12)
-                                        border.color: "#8ee8a8"
+                                        color: wpBtnHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12)
+                                        border.color: Theme.primary
                                         border.width: 1
 
                                         HoverHandler { id: wpBtnHover }
@@ -4509,8 +5282,8 @@ PanelWindow {
                                         RowLayout {
                                             anchors.centerIn: parent
                                             spacing: Theme.px(6)
-                                            Text { text: "wallpaper"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(14); color: "#8ee8a8" }
-                                            Text { text: "OPEN WALLPAPER PICKER"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(9.5); font.bold: true; color: "#8ee8a8" }
+                                            Text { text: "wallpaper"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(14); color: Theme.primary }
+                                            Text { text: "OPEN WALLPAPER PICKER"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(9.5); font.bold: true; color: Theme.primary }
                                         }
                                     }
                                 }
@@ -4536,7 +5309,7 @@ PanelWindow {
                                         font.family: Theme.fontMono || "monospace"
                                         font.pixelSize: Theme.fontPx(10)
                                         font.bold: true
-                                        color: "#8ee8a8"
+                                        color: Theme.primary
                                     }
 
                                     GridLayout {
@@ -4561,14 +5334,14 @@ PanelWindow {
                                                 cursorShape: Qt.PointingHandCursor
                                                 onClicked: {
                                                     commandCenterWindow.execCommand("python3 ~/.config/hypr/scripts/theme-mk.py ~/.config/hypr/current_wallpaper")
-                                                    commandCenterWindow.showFeedback("Regenerating theme palette (Matugen)...")
+                                                    commandCenterWindow.showFeedback("Regenerating theme palette (Matugen)..."); commandCenterWindow.triggerThemeReload();
                                                 }
                                             }
 
                                             ColumnLayout {
                                                 anchors.centerIn: parent
                                                 spacing: Theme.px(4)
-                                                Text { Layout.alignment: Qt.AlignHCenter; text: "palette"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(20); color: "#8ee8a8" }
+                                                Text { Layout.alignment: Qt.AlignHCenter; text: "palette"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(20); color: Theme.primary }
                                                 Text { Layout.alignment: Qt.AlignHCenter; text: "Regenerate Palette"; font.family: Theme.font; font.pixelSize: Theme.fontPx(11.5); font.bold: true; color: Theme.fg }
                                                 Text { Layout.alignment: Qt.AlignHCenter; text: "Matugen M3 extraction"; font.family: Theme.font; font.pixelSize: Theme.fontPx(8.5); color: Theme.fgDim }
                                             }
@@ -4596,7 +5369,7 @@ PanelWindow {
                                             ColumnLayout {
                                                 anchors.centerIn: parent
                                                 spacing: Theme.px(4)
-                                                Text { Layout.alignment: Qt.AlignHCenter; text: "smart_display"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(20); color: "#8ee8a8" }
+                                                Text { Layout.alignment: Qt.AlignHCenter; text: "smart_display"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(20); color: Theme.primary }
                                                 Text { Layout.alignment: Qt.AlignHCenter; text: "Live Video Wallpaper"; font.family: Theme.font; font.pixelSize: Theme.fontPx(11.5); font.bold: true; color: Theme.fg }
                                                 Text { Layout.alignment: Qt.AlignHCenter; text: "mpvpaper engine"; font.family: Theme.font; font.pixelSize: Theme.fontPx(8.5); color: Theme.fgDim }
                                             }
@@ -4624,7 +5397,7 @@ PanelWindow {
                                             ColumnLayout {
                                                 anchors.centerIn: parent
                                                 spacing: Theme.px(4)
-                                                Text { Layout.alignment: Qt.AlignHCenter; text: "nightlight"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(20); color: "#8ee8a8" }
+                                                Text { Layout.alignment: Qt.AlignHCenter; text: "nightlight"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(20); color: Theme.primary }
                                                 Text { Layout.alignment: Qt.AlignHCenter; text: "Night Light"; font.family: Theme.font; font.pixelSize: Theme.fontPx(11.5); font.bold: true; color: Theme.fg }
                                                 Text { Layout.alignment: Qt.AlignHCenter; text: "Warm temperature filter"; font.family: Theme.font; font.pixelSize: Theme.fontPx(8.5); color: Theme.fgDim }
                                             }
@@ -4652,7 +5425,7 @@ PanelWindow {
                                             ColumnLayout {
                                                 anchors.centerIn: parent
                                                 spacing: Theme.px(4)
-                                                Text { Layout.alignment: Qt.AlignHCenter; text: "refresh"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(20); color: "#8ee8a8" }
+                                                Text { Layout.alignment: Qt.AlignHCenter; text: "refresh"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(20); color: Theme.primary }
                                                 Text { Layout.alignment: Qt.AlignHCenter; text: "Reload Compositor"; font.family: Theme.font; font.pixelSize: Theme.fontPx(11.5); font.bold: true; color: Theme.fg }
                                                 Text { Layout.alignment: Qt.AlignHCenter; text: "hyprctl reload"; font.family: Theme.font; font.pixelSize: Theme.fontPx(8.5); color: Theme.fgDim }
                                             }
@@ -4663,9 +5436,9 @@ PanelWindow {
                         }
                     }
 
-                }
-            } // cardNodeRight
 
+                    }
+                }
         } // spatialWorld
     } // cameraZoomRig
 } // viewport
