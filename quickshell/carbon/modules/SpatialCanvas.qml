@@ -1528,19 +1528,18 @@ PanelWindow {
                             Rectangle {
                                 Layout.preferredHeight: Theme.px(18); Layout.preferredWidth: cardNodeMinus1_0SubText.implicitWidth + Theme.px(12); radius: Theme.px(9)
                                 color: Qt.rgba(255, 255, 255, 0.05); border.color: Qt.rgba(255, 255, 255, 0.08); border.width: 1
-                                Text { id: cardNodeMinus1_0SubText; anchors.centerIn: parent; text: cardNodeMinus1_0.cardSubtitle; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(8.5); color: Theme.fgDim }
+                                Text { id: cardNodeMinus1_0SubText; anchors.centerIn: parent; text: cardNodeMinus1_0.cardSubtitle; font.family: Theme.font; font.pixelSize: Theme.fontPx(9); font.weight: Font.Medium; color: Theme.fgDim }
                             }
                             Item { Layout.fillWidth: true }
 
                             Rectangle {
                                 visible: cardNodeMinus1_0.isCurrentTarget && !spatialCanvasWindow.isOverview
                                 Layout.preferredHeight: Theme.px(22); Layout.preferredWidth: cardNodeMinus1_0OverviewBtnText.implicitWidth + Theme.px(16); radius: Theme.px(11)
-                                color: cardNodeMinus1_0OverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(255, 255, 255, 0.06)
-                                border.color: cardNodeMinus1_0OverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : Qt.rgba(255, 255, 255, 0.12)
+                                color: cardNodeMinus1_0OverviewArea.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(255, 255, 255, 0.06)
+                                border.color: cardNodeMinus1_0OverviewArea.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : Qt.rgba(255, 255, 255, 0.12)
                                 border.width: 1
-                                HoverHandler { id: cardNodeMinus1_0OverviewHover }
-                                Text { id: cardNodeMinus1_0OverviewBtnText; anchors.centerIn: parent; text: "Overview [ESC]"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(9); font.bold: true; color: cardNodeMinus1_0OverviewHover.hovered ? Theme.primary : Theme.fgDim }
-                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: spatialCanvasWindow.zoomToOverview() }
+                                Text { id: cardNodeMinus1_0OverviewBtnText; anchors.centerIn: parent; text: "Overview [ESC]"; font.family: Theme.font; font.pixelSize: Theme.fontPx(9.5); font.bold: true; color: cardNodeMinus1_0OverviewArea.containsMouse ? Theme.primary : Theme.fgDim }
+                                MouseArea { id: cardNodeMinus1_0OverviewArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: spatialCanvasWindow.zoomToOverview() }
                             }
                         }
 
@@ -1847,19 +1846,18 @@ PanelWindow {
                             Rectangle {
                                 Layout.preferredHeight: Theme.px(18); Layout.preferredWidth: cardNode1_0SubText.implicitWidth + Theme.px(12); radius: Theme.px(9)
                                 color: Qt.rgba(255, 255, 255, 0.05); border.color: Qt.rgba(255, 255, 255, 0.08); border.width: 1
-                                Text { id: cardNode1_0SubText; anchors.centerIn: parent; text: cardNode1_0.cardSubtitle; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(8.5); color: Theme.fgDim }
+                                Text { id: cardNode1_0SubText; anchors.centerIn: parent; text: cardNode1_0.cardSubtitle; font.family: Theme.font; font.pixelSize: Theme.fontPx(9); font.weight: Font.Medium; color: Theme.fgDim }
                             }
                             Item { Layout.fillWidth: true }
 
                             Rectangle {
                                 visible: cardNode1_0.isCurrentTarget && !spatialCanvasWindow.isOverview
                                 Layout.preferredHeight: Theme.px(22); Layout.preferredWidth: cardNode1_0OverviewBtnText.implicitWidth + Theme.px(16); radius: Theme.px(11)
-                                color: cardNode1_0OverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(255, 255, 255, 0.06)
-                                border.color: cardNode1_0OverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : Qt.rgba(255, 255, 255, 0.12)
+                                color: cardNode1_0OverviewArea.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(255, 255, 255, 0.06)
+                                border.color: cardNode1_0OverviewArea.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : Qt.rgba(255, 255, 255, 0.12)
                                 border.width: 1
-                                HoverHandler { id: cardNode1_0OverviewHover }
-                                Text { id: cardNode1_0OverviewBtnText; anchors.centerIn: parent; text: "Overview [ESC]"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(9); font.bold: true; color: cardNode1_0OverviewHover.hovered ? Theme.primary : Theme.fgDim }
-                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: spatialCanvasWindow.zoomToOverview() }
+                                Text { id: cardNode1_0OverviewBtnText; anchors.centerIn: parent; text: "Overview [ESC]"; font.family: Theme.font; font.pixelSize: Theme.fontPx(9.5); font.bold: true; color: cardNode1_0OverviewArea.containsMouse ? Theme.primary : Theme.fgDim }
+                                MouseArea { id: cardNode1_0OverviewArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: spatialCanvasWindow.zoomToOverview() }
                             }
                         }
 
@@ -2143,19 +2141,18 @@ PanelWindow {
                             Rectangle {
                                 Layout.preferredHeight: Theme.px(18); Layout.preferredWidth: cardNode0_Minus1SubText.implicitWidth + Theme.px(12); radius: Theme.px(9)
                                 color: Qt.rgba(255, 255, 255, 0.05); border.color: Qt.rgba(255, 255, 255, 0.08); border.width: 1
-                                Text { id: cardNode0_Minus1SubText; anchors.centerIn: parent; text: cardNode0_Minus1.cardSubtitle; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(8.5); color: Theme.fgDim }
+                                Text { id: cardNode0_Minus1SubText; anchors.centerIn: parent; text: cardNode0_Minus1.cardSubtitle; font.family: Theme.font; font.pixelSize: Theme.fontPx(9); font.weight: Font.Medium; color: Theme.fgDim }
                             }
                             Item { Layout.fillWidth: true }
 
                             Rectangle {
                                 visible: cardNode0_Minus1.isCurrentTarget && !spatialCanvasWindow.isOverview
                                 Layout.preferredHeight: Theme.px(22); Layout.preferredWidth: cardNode0_Minus1OverviewBtnText.implicitWidth + Theme.px(16); radius: Theme.px(11)
-                                color: cardNode0_Minus1OverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(255, 255, 255, 0.06)
-                                border.color: cardNode0_Minus1OverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : Qt.rgba(255, 255, 255, 0.12)
+                                color: cardNode0_Minus1OverviewArea.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(255, 255, 255, 0.06)
+                                border.color: cardNode0_Minus1OverviewArea.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : Qt.rgba(255, 255, 255, 0.12)
                                 border.width: 1
-                                HoverHandler { id: cardNode0_Minus1OverviewHover }
-                                Text { id: cardNode0_Minus1OverviewBtnText; anchors.centerIn: parent; text: "Overview [ESC]"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(9); font.bold: true; color: cardNode0_Minus1OverviewHover.hovered ? Theme.primary : Theme.fgDim }
-                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: spatialCanvasWindow.zoomToOverview() }
+                                Text { id: cardNode0_Minus1OverviewBtnText; anchors.centerIn: parent; text: "Overview [ESC]"; font.family: Theme.font; font.pixelSize: Theme.fontPx(9.5); font.bold: true; color: cardNode0_Minus1OverviewArea.containsMouse ? Theme.primary : Theme.fgDim }
+                                MouseArea { id: cardNode0_Minus1OverviewArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: spatialCanvasWindow.zoomToOverview() }
                             }
                         }
 
@@ -2439,19 +2436,18 @@ PanelWindow {
                             Rectangle {
                                 Layout.preferredHeight: Theme.px(18); Layout.preferredWidth: cardNode0_1SubText.implicitWidth + Theme.px(12); radius: Theme.px(9)
                                 color: Qt.rgba(255, 255, 255, 0.05); border.color: Qt.rgba(255, 255, 255, 0.08); border.width: 1
-                                Text { id: cardNode0_1SubText; anchors.centerIn: parent; text: cardNode0_1.cardSubtitle; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(8.5); color: Theme.fgDim }
+                                Text { id: cardNode0_1SubText; anchors.centerIn: parent; text: cardNode0_1.cardSubtitle; font.family: Theme.font; font.pixelSize: Theme.fontPx(9); font.weight: Font.Medium; color: Theme.fgDim }
                             }
                             Item { Layout.fillWidth: true }
 
                             Rectangle {
                                 visible: cardNode0_1.isCurrentTarget && !spatialCanvasWindow.isOverview
                                 Layout.preferredHeight: Theme.px(22); Layout.preferredWidth: cardNode0_1OverviewBtnText.implicitWidth + Theme.px(16); radius: Theme.px(11)
-                                color: cardNode0_1OverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(255, 255, 255, 0.06)
-                                border.color: cardNode0_1OverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : Qt.rgba(255, 255, 255, 0.12)
+                                color: cardNode0_1OverviewArea.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(255, 255, 255, 0.06)
+                                border.color: cardNode0_1OverviewArea.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : Qt.rgba(255, 255, 255, 0.12)
                                 border.width: 1
-                                HoverHandler { id: cardNode0_1OverviewHover }
-                                Text { id: cardNode0_1OverviewBtnText; anchors.centerIn: parent; text: "Overview [ESC]"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(9); font.bold: true; color: cardNode0_1OverviewHover.hovered ? Theme.primary : Theme.fgDim }
-                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: spatialCanvasWindow.zoomToOverview() }
+                                Text { id: cardNode0_1OverviewBtnText; anchors.centerIn: parent; text: "Overview [ESC]"; font.family: Theme.font; font.pixelSize: Theme.fontPx(9.5); font.bold: true; color: cardNode0_1OverviewArea.containsMouse ? Theme.primary : Theme.fgDim }
+                                MouseArea { id: cardNode0_1OverviewArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: spatialCanvasWindow.zoomToOverview() }
                             }
                         }
 
@@ -2817,24 +2813,42 @@ PanelWindow {
                 // Mode / Focus Title
                 Text {
                     text: spatialCanvasWindow.isOverview ? "5-NODE OVERVIEW" : spatialCanvasWindow.getNodeTitle(spatialCanvasWindow.activeGridX, spatialCanvasWindow.activeGridY)
-                    font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(9.5); font.bold: true
+                    font.family: Theme.font
+                    font.pixelSize: Theme.fontPx(10.5)
+                    font.bold: true
+                    font.letterSpacing: 0.8
                     color: Theme.primary
                 }
 
                 // Overview Toggle Button
                 Rectangle {
-                    Layout.preferredHeight: Theme.px(22); Layout.preferredWidth: hudToggleText.implicitWidth + Theme.px(14); radius: Theme.px(11)
-                    color: hudTogHov.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20) : Qt.rgba(255, 255, 255, 0.06)
-                    border.color: hudTogHov.hovered ? Theme.primary : Qt.rgba(255, 255, 255, 0.12); border.width: 1
-                    HoverHandler { id: hudTogHov }
+                    id: hudTogBtn
+                    Layout.preferredHeight: Theme.px(22); Layout.preferredWidth: hudToggleText.implicitWidth + Theme.px(16); radius: Theme.px(11)
+                    color: hudTogArea.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20) : Qt.rgba(255, 255, 255, 0.06)
+                    border.color: hudTogArea.containsMouse ? Theme.primary : Qt.rgba(255, 255, 255, 0.12); border.width: 1
+                    Behavior on color { ColorAnimation { duration: 150 } }
+                    Behavior on border.color { ColorAnimation { duration: 150 } }
+
                     MouseArea {
-                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                        id: hudTogArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             if (spatialCanvasWindow.isOverview) spatialCanvasWindow.zoomToNode(spatialCanvasWindow.activeGridX, spatialCanvasWindow.activeGridY);
                             else spatialCanvasWindow.zoomToOverview();
                         }
                     }
-                    Text { id: hudToggleText; anchors.centerIn: parent; text: spatialCanvasWindow.isOverview ? "Zoom Focus" : "Overview"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(8.5); font.bold: true; color: hudTogHov.hovered ? Theme.primary : Theme.fgDim }
+                    Text {
+                        id: hudToggleText
+                        anchors.centerIn: parent
+                        text: spatialCanvasWindow.isOverview ? "Zoom Focus" : "Overview"
+                        font.family: Theme.font
+                        font.pixelSize: Theme.fontPx(9)
+                        font.bold: true
+                        color: hudTogArea.containsMouse ? Theme.primary : Theme.fgDim
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                    }
                 }
             }
         }
