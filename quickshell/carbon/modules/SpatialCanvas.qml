@@ -128,6 +128,14 @@ PanelWindow {
     }
 
     Timer {
+        id: clientPollTimer
+        interval: 1500
+        repeat: true
+        running: spatialCanvasWindow.visible
+        onTriggered: spatialCanvasWindow.refreshClients()
+    }
+
+    Timer {
         id: entranceTimer
         interval: 16
         onTriggered: {
@@ -212,7 +220,16 @@ PanelWindow {
 
     Process {
         id: clientsFetcherProc
-        command: ["sh", "-c", "hyprctl clients -j"]
+        command: [
+            "python3", "-c",
+            "import subprocess, json\n" +
+            "try:\n" +
+            "    c = json.loads(subprocess.check_output(['hyprctl', '-j', 'clients']).decode())\n" +
+            "    a = json.loads(subprocess.check_output(['hyprctl', '-j', 'activeworkspace']).decode())\n" +
+            "    print(json.dumps({'clients': c, 'active_ws': a.get('id', 1)}))\n" +
+            "except Exception:\n" +
+            "    print('{}')\n"
+        ]
         running: false
         stdout: StdioCollector {
             waitForEnd: true
@@ -220,8 +237,11 @@ PanelWindow {
                 if (text && text.trim().length > 0) {
                     try {
                         var parsed = JSON.parse(text.trim());
-                        if (Array.isArray(parsed)) {
-                            spatialCanvasWindow.liveClients = parsed.filter(function(c) {
+                        if (parsed.active_ws !== undefined) {
+                            spatialCanvasWindow.activeWorkspaceId = parsed.active_ws;
+                        }
+                        if (Array.isArray(parsed.clients)) {
+                            spatialCanvasWindow.liveClients = parsed.clients.filter(function(c) {
                                 return c.mapped && !c.hidden && c.workspace && c.workspace.id > 0 && c.class && c.class.length > 0;
                             });
                         }
@@ -235,29 +255,7 @@ PanelWindow {
         if (!clientsFetcherProc.running) clientsFetcherProc.running = true;
     }
 
-    readonly property var allOpenWindows: {
-        if (liveClients && liveClients.length > 0) return liveClients;
-        var res = [];
-        var raw = workspacesData || [];
-        for (var i = 0; i < raw.length; i++) {
-            var ws = raw[i];
-            if (ws && ws.windows && Array.isArray(ws.windows)) {
-                for (var j = 0; j < ws.windows.length; j++) {
-                    var w = ws.windows[j];
-                    res.push({
-                        address: w.address,
-                        class: w.class,
-                        title: w.title,
-                        workspace: { id: ws.id, name: ws.name || String(ws.id) },
-                        is_focused: w.is_focused === true,
-                        at: w.at,
-                        size: w.size
-                    });
-                }
-            }
-        }
-        return res;
-    }
+    readonly property var allOpenWindows: liveClients || []
 
     readonly property var filteredWindows: {
         var list = allOpenWindows;
@@ -273,26 +271,31 @@ PanelWindow {
 
     function getWorkspaces() {
         var res = [];
-        var raw = workspacesData || [];
+        var clients = liveClients || [];
+        var activeId = activeWorkspaceId || 1;
+
         for (var i = 1; i <= 9; i++) {
-            var match = null;
-            for (var j = 0; j < raw.length; j++) {
-                if (raw[j].id === i) {
-                    match = raw[j];
-                    break;
+            var wsWins = [];
+            for (var j = 0; j < clients.length; j++) {
+                var c = clients[j];
+                if (c.workspace && c.workspace.id === i) {
+                    wsWins.push({
+                        address: c.address,
+                        class: c.class,
+                        title: c.title,
+                        at: c.at,
+                        size: c.size,
+                        is_focused: (c.focusHistoryID === 0)
+                    });
                 }
             }
-            if (match) {
-                res.push(match);
-            } else {
-                res.push({
-                    id: i,
-                    name: String(i),
-                    is_active: (i === activeWorkspaceId),
-                    has_windows: false,
-                    windows: []
-                });
-            }
+            res.push({
+                id: i,
+                name: String(i),
+                is_active: (i === activeId),
+                has_windows: (wsWins.length > 0),
+                windows: wsWins
+            });
         }
         return res;
     }
@@ -1050,12 +1053,10 @@ PanelWindow {
 
                         color: cardNode0_0.isCurrentTarget ? Qt.rgba(16/255, 18/255, 26/255, 0.96) : Qt.rgba(13/255, 15/255, 22/255, 0.90)
                         border.width: cardNode0_0.isCurrentTarget && !viewport.isOverview ? 1.5 : 1
-                        border.color: (cardNode0_0Hover.hovered || cardNode0_0.isCurrentTarget) ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.60) : Qt.rgba(255, 255, 255, 0.12)
+                        border.color: (cardNode0_0ClickArea.containsMouse || cardNode0_0.isCurrentTarget) ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.60) : Qt.rgba(255, 255, 255, 0.12)
                         clip: true
 
-                        HoverHandler { id: cardNode0_0Hover }
-
-                        // Specular Highlight
+                        // Specular Highlight Line
                         Rectangle {
                             anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right
                             anchors.leftMargin: Theme.px(22); anchors.rightMargin: Theme.px(22)
@@ -1080,19 +1081,18 @@ PanelWindow {
                             Rectangle {
                                 Layout.preferredHeight: Theme.px(18); Layout.preferredWidth: cardNode0_0SubText.implicitWidth + Theme.px(12); radius: Theme.px(9)
                                 color: Qt.rgba(255, 255, 255, 0.05); border.color: Qt.rgba(255, 255, 255, 0.08); border.width: 1
-                                Text { id: cardNode0_0SubText; anchors.centerIn: parent; text: cardNode0_0.cardSubtitle; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(8.5); color: Theme.fgDim }
+                                Text { id: cardNode0_0SubText; anchors.centerIn: parent; text: cardNode0_0.cardSubtitle; font.family: Theme.font; font.pixelSize: Theme.fontPx(9); font.weight: Font.Medium; color: Theme.fgDim }
                             }
                             Item { Layout.fillWidth: true }
 
                             Rectangle {
                                 visible: cardNode0_0.isCurrentTarget && !spatialCanvasWindow.isOverview
                                 Layout.preferredHeight: Theme.px(22); Layout.preferredWidth: cardNode0_0OverviewBtnText.implicitWidth + Theme.px(16); radius: Theme.px(11)
-                                color: cardNode0_0OverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(255, 255, 255, 0.06)
-                                border.color: cardNode0_0OverviewHover.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : Qt.rgba(255, 255, 255, 0.12)
+                                color: cardNode0_0OverviewArea.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(255, 255, 255, 0.06)
+                                border.color: cardNode0_0OverviewArea.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40) : Qt.rgba(255, 255, 255, 0.12)
                                 border.width: 1
-                                HoverHandler { id: cardNode0_0OverviewHover }
-                                Text { id: cardNode0_0OverviewBtnText; anchors.centerIn: parent; text: "Overview [ESC]"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(9); font.bold: true; color: cardNode0_0OverviewHover.hovered ? Theme.primary : Theme.fgDim }
-                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: spatialCanvasWindow.zoomToOverview() }
+                                Text { id: cardNode0_0OverviewBtnText; anchors.centerIn: parent; text: "Overview [ESC]"; font.family: Theme.font; font.pixelSize: Theme.fontPx(9.5); font.bold: true; color: cardNode0_0OverviewArea.containsMouse ? Theme.primary : Theme.fgDim }
+                                MouseArea { id: cardNode0_0OverviewArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: spatialCanvasWindow.zoomToOverview() }
                             }
                         }
 
@@ -1113,56 +1113,197 @@ PanelWindow {
                                         Repeater {
                                             model: spatialCanvasWindow.getWorkspaces()
                                             Rectangle {
-                                                Layout.fillWidth: true; Layout.fillHeight: true; radius: Theme.px(8)
-                                                opacity: (modelData.windows && modelData.windows.length > 0) || modelData.is_active ? 1.0 : 0.35
-                                                color: modelData.is_active ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12) : Qt.rgba(0.06, 0.08, 0.11, 0.85)
-                                                border.color: modelData.is_active ? Theme.primary : (wsHov.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.50) : Qt.rgba(255, 255, 255, 0.12))
-                                                border.width: modelData.is_active ? 1.5 : 1
+                                                id: wsTile
+                                                Layout.fillWidth: true; Layout.fillHeight: true; radius: Theme.px(12)
                                                 clip: true
-                                                HoverHandler { id: wsHov }
-                                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: spatialCanvasWindow.switchToWorkspace(modelData.id) }
 
-                                                RowLayout {
+                                                readonly property bool isActive: modelData.is_active
+                                                readonly property bool hasWindows: modelData.windows && modelData.windows.length > 0
+                                                readonly property bool isHovered: wsMouseArea.containsMouse
+
+                                                color: isActive
+                                                    ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.14)
+                                                    : (isHovered
+                                                        ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.08)
+                                                        : (hasWindows ? Qt.rgba(22/255, 25/255, 34/255, 0.88) : Qt.rgba(14/255, 16/255, 23/255, 0.55)))
+
+                                                border.color: isActive
+                                                    ? Theme.primary
+                                                    : (isHovered
+                                                        ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.65)
+                                                        : (hasWindows ? Qt.rgba(255, 255, 255, 0.15) : Qt.rgba(255, 255, 255, 0.07)))
+
+                                                border.width: isActive ? 1.5 : (isHovered ? 1.2 : 1)
+
+                                                Behavior on color { ColorAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                                                Behavior on border.color { ColorAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                                                Behavior on border.width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+
+                                                // Top Specular Highlight on Tile
+                                                Rectangle {
                                                     anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right
-                                                    anchors.topMargin: Theme.px(6); anchors.leftMargin: Theme.px(8); anchors.rightMargin: Theme.px(8)
-                                                    height: Theme.px(18); spacing: Theme.px(6)
-                                                    Text {
-                                                        text: "WS " + (modelData.id < 10 ? "0" + modelData.id : modelData.id)
-                                                        font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true
-                                                        color: modelData.is_active ? Theme.primary : (wsHov.hovered ? Theme.primary : Theme.fg)
-                                                    }
-                                                    Rectangle {
-                                                        visible: modelData.is_active; width: Theme.px(6); height: Theme.px(6); radius: Theme.px(3); color: Theme.primary
-                                                    }
-                                                    Item { Layout.fillWidth: true }
-                                                    Text {
-                                                        text: (modelData.windows ? modelData.windows.length : 0) + " win"
-                                                        font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(8.5); color: Theme.fgDim
-                                                    }
+                                                    anchors.leftMargin: Theme.px(8); anchors.rightMargin: Theme.px(8)
+                                                    height: 1
+                                                    color: wsTile.isActive
+                                                        ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40)
+                                                        : (wsTile.isHovered ? Qt.rgba(255, 255, 255, 0.20) : Qt.rgba(255, 255, 255, 0.08))
+                                                    Behavior on color { ColorAnimation { duration: 160 } }
                                                 }
 
-                                                // Window miniatures
-                                                Item {
-                                                    anchors.fill: parent; anchors.topMargin: Theme.px(26); anchors.margins: Theme.px(6)
-                                                    Repeater {
-                                                        model: modelData.windows || []
-                                                        Rectangle {
-                                                            x: Math.round((modelData.at ? modelData.at[0] / 1920.0 : 0.1) * parent.width)
-                                                            y: Math.round((modelData.at ? modelData.at[1] / 1080.0 : 0.1) * parent.height)
-                                                            width: Math.max(Theme.px(20), Math.round((modelData.size ? modelData.size[0] / 1920.0 : 0.4) * parent.width))
-                                                            height: Math.max(Theme.px(16), Math.round((modelData.size ? modelData.size[1] / 1080.0 : 0.4) * parent.height))
-                                                            radius: Theme.px(3)
-                                                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20)
-                                                            border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40)
-                                                            border.width: 1
-                                                            Image {
-                                                                anchors.centerIn: parent
-                                                                width: Math.min(parent.width - 2, Theme.px(14)); height: Math.min(parent.height - 2, Theme.px(14))
-                                                                source: spatialCanvasWindow.resolveAppIcon(modelData.class)
-                                                                sourceSize: Qt.size(16, 16); fillMode: Image.PreserveAspectFit
+                                                // Workspace Tile Header
+                                                RowLayout {
+                                                    anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right
+                                                    anchors.topMargin: Theme.px(7); anchors.leftMargin: Theme.px(9); anchors.rightMargin: Theme.px(9)
+                                                    height: Theme.px(18); spacing: Theme.px(5)
+
+                                                    Text {
+                                                        text: "WS " + (modelData.id < 10 ? "0" + modelData.id : modelData.id)
+                                                        font.family: Theme.font
+                                                        font.pixelSize: Theme.fontPx(11.5)
+                                                        font.bold: true
+                                                        font.letterSpacing: 0.5
+                                                        color: wsTile.isActive ? Theme.primary : (wsTile.isHovered ? Theme.primary : Theme.fg)
+                                                        Behavior on color { ColorAnimation { duration: 160 } }
+                                                    }
+
+                                                    // Active status pill
+                                                    Rectangle {
+                                                        visible: wsTile.isActive
+                                                        Layout.preferredHeight: Theme.px(13)
+                                                        Layout.preferredWidth: activeTagText.implicitWidth + Theme.px(8)
+                                                        radius: Theme.px(6.5)
+                                                        color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.25)
+                                                        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.55)
+                                                        border.width: 1
+
+                                                        RowLayout {
+                                                            anchors.centerIn: parent; spacing: Theme.px(3)
+                                                            Rectangle { width: Theme.px(3.5); height: Theme.px(3.5); radius: Theme.px(2); color: Theme.primary }
+                                                            Text {
+                                                                id: activeTagText
+                                                                text: "ACTIVE"
+                                                                font.family: Theme.font
+                                                                font.pixelSize: Theme.fontPx(7)
+                                                                font.bold: true
+                                                                color: Theme.primary
                                                             }
                                                         }
                                                     }
+
+                                                    Item { Layout.fillWidth: true }
+
+                                                    // Window count pill
+                                                    Rectangle {
+                                                        visible: wsTile.hasWindows
+                                                        Layout.preferredHeight: Theme.px(15)
+                                                        Layout.preferredWidth: winCountText.implicitWidth + Theme.px(9)
+                                                        radius: Theme.px(7.5)
+                                                        color: wsTile.isActive
+                                                            ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20)
+                                                            : Qt.rgba(255, 255, 255, 0.08)
+                                                        border.color: wsTile.isActive
+                                                            ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.35)
+                                                            : Qt.rgba(255, 255, 255, 0.12)
+                                                        border.width: 1
+
+                                                        Text {
+                                                            id: winCountText
+                                                            anchors.centerIn: parent
+                                                            text: modelData.windows.length + (modelData.windows.length === 1 ? " win" : " wins")
+                                                            font.family: Theme.font
+                                                            font.pixelSize: Theme.fontPx(8)
+                                                            font.bold: true
+                                                            color: wsTile.isActive ? Theme.primary : Theme.fgDim
+                                                        }
+                                                    }
+                                                }
+
+                                                // Miniature window container
+                                                Item {
+                                                    id: miniArea
+                                                    anchors.fill: parent
+                                                    anchors.topMargin: Theme.px(28)
+                                                    anchors.bottomMargin: Theme.px(6)
+                                                    anchors.leftMargin: Theme.px(6)
+                                                    anchors.rightMargin: Theme.px(6)
+                                                    clip: true
+
+                                                    // Soft empty workspace watermark
+                                                    RowLayout {
+                                                        anchors.centerIn: parent
+                                                        visible: !wsTile.hasWindows
+                                                        spacing: Theme.px(4)
+                                                        opacity: wsTile.isHovered ? 0.65 : 0.28
+                                                        Behavior on opacity { NumberAnimation { duration: 160 } }
+
+                                                        Text {
+                                                            text: "desktop_windows"
+                                                            font.family: Theme.fontIcon
+                                                            font.pixelSize: Theme.fontPx(13)
+                                                            color: wsTile.isActive ? Theme.primary : Theme.fgDim
+                                                        }
+                                                        Text {
+                                                            text: "Empty"
+                                                            font.family: Theme.font
+                                                            font.pixelSize: Theme.fontPx(9)
+                                                            font.weight: Font.Medium
+                                                            color: wsTile.isActive ? Theme.primary : Theme.fgDim
+                                                        }
+                                                    }
+
+                                                    // Live window representations
+                                                    Repeater {
+                                                        model: modelData.windows || []
+                                                        Rectangle {
+                                                            id: winMini
+                                                            readonly property real screenW: Screen.desktopAvailableWidth || Screen.width || 1366
+                                                            readonly property real screenH: Screen.desktopAvailableHeight || Screen.height || 768
+                                                            readonly property real normX: modelData.at ? Math.max(0, Math.min(0.9, modelData.at[0] / screenW)) : 0.05
+                                                            readonly property real normY: modelData.at ? Math.max(0, Math.min(0.9, modelData.at[1] / screenH)) : 0.05
+                                                            readonly property real normW: modelData.size ? Math.max(0.18, Math.min(0.95, modelData.size[0] / screenW)) : 0.45
+                                                            readonly property real normH: modelData.size ? Math.max(0.18, Math.min(0.95, modelData.size[1] / screenH)) : 0.45
+
+                                                            x: Math.round(normX * (miniArea.width - width))
+                                                            y: Math.round(normY * (miniArea.height - height))
+                                                            width: Math.max(Theme.px(22), Math.min(miniArea.width * 0.92, Math.round(normW * miniArea.width)))
+                                                            height: Math.max(Theme.px(16), Math.min(miniArea.height * 0.92, Math.round(normH * miniArea.height)))
+                                                            radius: Theme.px(4)
+
+                                                            color: modelData.is_focused
+                                                                ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.32)
+                                                                : (wsTile.isHovered
+                                                                    ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.18)
+                                                                    : Qt.rgba(255, 255, 255, 0.08))
+
+                                                            border.color: modelData.is_focused
+                                                                ? Theme.primary
+                                                                : (wsTile.isHovered
+                                                                    ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.45)
+                                                                    : Qt.rgba(255, 255, 255, 0.15))
+                                                            border.width: modelData.is_focused ? 1.5 : 1
+
+                                                            Behavior on color { ColorAnimation { duration: 150 } }
+                                                            Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                                                            Image {
+                                                                anchors.centerIn: parent
+                                                                width: Math.min(parent.width - Theme.px(4), Theme.px(13))
+                                                                height: Math.min(parent.height - Theme.px(4), Theme.px(13))
+                                                                source: spatialCanvasWindow.resolveAppIcon(modelData.class)
+                                                                sourceSize: Qt.size(20, 20)
+                                                                fillMode: Image.PreserveAspectFit
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                // Seamless workspace interaction
+                                                MouseArea {
+                                                    id: wsMouseArea
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: spatialCanvasWindow.switchToWorkspace(modelData.id)
                                                 }
                                             }
                                         }
@@ -1171,47 +1312,156 @@ PanelWindow {
 
                                 // Right: Opened Windows List (32% width)
                                 ColumnLayout {
-                                    Layout.preferredWidth: Math.round(parent.width * 0.32); Layout.fillHeight: true; spacing: Theme.px(6)
+                                    Layout.preferredWidth: Math.round(parent.width * 0.32); Layout.fillHeight: true; spacing: Theme.px(8)
 
                                     RowLayout {
-                                        Layout.fillWidth: true
-                                        Text { text: "OPENED APPLICATIONS"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(10); font.bold: true; color: Theme.primary }
+                                        Layout.fillWidth: true; height: Theme.px(22)
+                                        Text {
+                                            text: "OPENED APPLICATIONS"
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(10)
+                                            font.bold: true
+                                            font.letterSpacing: 0.8
+                                            color: Theme.primary
+                                        }
                                         Item { Layout.fillWidth: true }
-                                        Text { text: spatialCanvasWindow.allOpenWindows.length + " ACTIVE"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(8.5); color: Theme.fgDim }
+                                        Rectangle {
+                                            Layout.preferredHeight: Theme.px(18)
+                                            Layout.preferredWidth: activeWinCountText.implicitWidth + Theme.px(12)
+                                            radius: Theme.px(9)
+                                            color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                                            border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.35)
+                                            border.width: 1
+
+                                            Text {
+                                                id: activeWinCountText
+                                                anchors.centerIn: parent
+                                                text: spatialCanvasWindow.allOpenWindows.length + " ACTIVE"
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(8.5)
+                                                font.bold: true
+                                                color: Theme.primary
+                                            }
+                                        }
+                                    }
+
+                                    // Empty state when no windows are open
+                                    Rectangle {
+                                        visible: spatialCanvasWindow.allOpenWindows.length === 0
+                                        Layout.fillWidth: true; Layout.fillHeight: true; radius: Theme.px(10)
+                                        color: Qt.rgba(255, 255, 255, 0.03); border.color: Qt.rgba(255, 255, 255, 0.06); border.width: 1
+
+                                        ColumnLayout {
+                                            anchors.centerIn: parent; spacing: Theme.px(6)
+                                            Text {
+                                                Layout.alignment: Qt.AlignHCenter
+                                                text: "grid_off"
+                                                font.family: Theme.fontIcon
+                                                font.pixelSize: Theme.fontPx(28)
+                                                color: Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.40)
+                                            }
+                                            Text {
+                                                Layout.alignment: Qt.AlignHCenter
+                                                text: "No Windows Open"
+                                                font.family: Theme.font
+                                                font.pixelSize: Theme.fontPx(10.5)
+                                                font.bold: true
+                                                color: Theme.fgDim
+                                            }
+                                        }
                                     }
 
                                     ListView {
                                         id: openedWinList
-                                        Layout.fillWidth: true; Layout.fillHeight: true; clip: true; spacing: Theme.px(4)
+                                        visible: spatialCanvasWindow.allOpenWindows.length > 0
+                                        Layout.fillWidth: true; Layout.fillHeight: true; clip: true; spacing: Theme.px(5)
                                         model: spatialCanvasWindow.filteredWindows
 
                                         delegate: Rectangle {
-                                            width: openedWinList.width; height: Theme.px(38); radius: Theme.px(6)
-                                            color: winHov.hovered ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.14) : Qt.rgba(255, 255, 255, 0.04)
-                                            border.color: winHov.hovered ? Theme.primary : Qt.rgba(255, 255, 255, 0.08); border.width: 1
-                                            HoverHandler { id: winHov }
+                                            id: appRowCard
+                                            width: openedWinList.width; height: Theme.px(42); radius: Theme.px(8)
+
+                                            readonly property bool isHovered: appRowArea.containsMouse
+
+                                            color: isHovered
+                                                ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.16)
+                                                : Qt.rgba(255, 255, 255, 0.04)
+                                            border.color: isHovered
+                                                ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.60)
+                                                : Qt.rgba(255, 255, 255, 0.08)
+                                            border.width: isHovered ? 1.5 : 1
+
+                                            Behavior on color { ColorAnimation { duration: 150 } }
+                                            Behavior on border.color { ColorAnimation { duration: 150 } }
+
                                             MouseArea {
-                                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                                id: appRowArea
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
                                                 onClicked: {
                                                     if (modelData.address) spatialCanvasWindow.execCommand("hyprctl dispatch focuswindow address:" + modelData.address);
                                                     spatialCanvasWindow.closeRequested();
                                                 }
                                             }
+
                                             RowLayout {
-                                                anchors.fill: parent; anchors.leftMargin: Theme.px(8); anchors.rightMargin: Theme.px(8); spacing: Theme.px(8)
-                                                Image {
-                                                    Layout.preferredWidth: Theme.px(20); Layout.preferredHeight: Theme.px(20)
-                                                    source: spatialCanvasWindow.resolveAppIcon(modelData.class); sourceSize: Qt.size(24, 24); fillMode: Image.PreserveAspectFit
+                                                anchors.fill: parent; anchors.leftMargin: Theme.px(9); anchors.rightMargin: Theme.px(9); spacing: Theme.px(9)
+
+                                                // Icon container
+                                                Rectangle {
+                                                    Layout.preferredWidth: Theme.px(26); Layout.preferredHeight: Theme.px(26); radius: Theme.px(6)
+                                                    color: appRowCard.isHovered ? Qt.rgba(255, 255, 255, 0.12) : Qt.rgba(255, 255, 255, 0.06)
+                                                    border.color: Qt.rgba(255, 255, 255, 0.10); border.width: 1
+                                                    Behavior on color { ColorAnimation { duration: 150 } }
+
+                                                    Image {
+                                                        anchors.centerIn: parent
+                                                        width: Theme.px(17); height: Theme.px(17)
+                                                        source: spatialCanvasWindow.resolveAppIcon(modelData.class)
+                                                        sourceSize: Qt.size(24, 24)
+                                                        fillMode: Image.PreserveAspectFit
+                                                    }
                                                 }
+
                                                 ColumnLayout {
                                                     Layout.fillWidth: true; spacing: Theme.px(1)
-                                                    Text { text: modelData.class || "App"; font.family: Theme.font; font.pixelSize: Theme.fontPx(10.5); font.bold: true; color: Theme.fg; elide: Text.ElideRight }
-                                                    Text { text: modelData.title || ""; font.family: Theme.font; font.pixelSize: Theme.fontPx(9); color: Theme.fgDim; elide: Text.ElideRight; Layout.fillWidth: true }
+                                                    Text {
+                                                        text: modelData.class ? (modelData.class.charAt(0).toUpperCase() + modelData.class.slice(1)) : "App"
+                                                        font.family: Theme.font
+                                                        font.pixelSize: Theme.fontPx(11)
+                                                        font.bold: true
+                                                        color: appRowCard.isHovered ? Theme.fg : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.88)
+                                                        elide: Text.ElideRight
+                                                        Layout.fillWidth: true
+                                                    }
+                                                    Text {
+                                                        text: modelData.title || ""
+                                                        font.family: Theme.font
+                                                        font.pixelSize: Theme.fontPx(9)
+                                                        color: Theme.fgDim
+                                                        elide: Text.ElideRight
+                                                        Layout.fillWidth: true
+                                                    }
                                                 }
+
                                                 Rectangle {
-                                                    Layout.preferredHeight: Theme.px(18); Layout.preferredWidth: Theme.px(26); radius: Theme.px(4)
-                                                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20)
-                                                    Text { anchors.centerIn: parent; text: "WS " + (modelData.workspace ? (modelData.workspace.id || 1) : 1); font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(7.5); font.bold: true; color: Theme.primary }
+                                                    Layout.preferredHeight: Theme.px(19); Layout.preferredWidth: wsTagText.implicitWidth + Theme.px(12); radius: Theme.px(5)
+                                                    color: appRowCard.isHovered
+                                                        ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.30)
+                                                        : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.16)
+                                                    border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.40)
+                                                    border.width: 1
+
+                                                    Text {
+                                                        id: wsTagText
+                                                        anchors.centerIn: parent
+                                                        text: "WS " + (modelData.workspace ? (modelData.workspace.id || 1) : 1)
+                                                        font.family: Theme.font
+                                                        font.pixelSize: Theme.fontPx(8)
+                                                        font.bold: true
+                                                        color: Theme.primary
+                                                    }
                                                 }
                                             }
                                         }
@@ -1221,9 +1471,11 @@ PanelWindow {
                         }
 
                         MouseArea {
+                            id: cardNode0_0ClickArea
                             anchors.fill: parent; z: 90; enabled: viewport.isOverview || (!cardNode0_0.isCurrentTarget)
-                            cursorShape: Qt.PointingHandCursor; onClicked: spatialCanvasWindow.zoomToNode(cardNode0_0.nodeX, cardNode0_0.nodeY)
+                            hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: spatialCanvasWindow.zoomToNode(cardNode0_0.nodeX, cardNode0_0.nodeY)
                         }
+
                     }
 
                     // ══════════════════════════════════════════════════════════
