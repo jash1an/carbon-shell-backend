@@ -1644,43 +1644,41 @@ ShellRoot {
                     else if (cmd === "open-command-center" || cmd === "open-radar") {
                         root.openCommandCenter()
                     }
-                    else if (cmd === "github-uplink" || cmd === "github") {
+                    else if (cmd === "github-uplink" || cmd === "github" || cmd === "spatial-github") {
                         root.openCommandCenter()
-                        if (root.commandCenterItem) root.commandCenterItem.currentChannel = "github"
+                        if (root.commandCenterItem) root.commandCenterItem.zoomToNode(0, -1)
                     }
-                    else if (cmd === "github-down" || cmd === "github-bottom") {
+                    else if (cmd === "command-center-overview" || cmd === "overview" || cmd === "spatial-overview") {
                         root.openCommandCenter()
-                        if (root.commandCenterItem) {
-                            root.commandCenterItem.currentChannel = "github"
-                            root.commandCenterItem.scrollGithubBottom()
-                        }
+                        if (root.commandCenterItem) root.commandCenterItem.zoomToOverview()
                     }
-                    else if (cmd === "github-up" || cmd === "github-top") {
+                    else if (cmd === "command-center-telemetry" || cmd === "telemetry" || cmd === "system-telemetry" || cmd === "spatial-telemetry") {
                         root.openCommandCenter()
-                        if (root.commandCenterItem) {
-                            root.commandCenterItem.currentChannel = "github"
-                            root.commandCenterItem.scrollGithubTop()
-                        }
+                        if (root.commandCenterItem) root.commandCenterItem.zoomToNode(0, 1)
                     }
-                    else if (cmd === "command-center-overview" || cmd === "overview") {
+                    else if (cmd === "spatial-workspace" || cmd === "workspaces" || cmd === "workspace-blueprint") {
                         root.openCommandCenter()
-                        if (root.commandCenterItem) root.commandCenterItem.currentChannel = "overview"
+                        if (root.commandCenterItem) root.commandCenterItem.zoomToNode(0, 0)
                     }
-                    else if (cmd === "command-center-telemetry" || cmd === "telemetry" || cmd === "system-telemetry") {
+                    else if (cmd === "spatial-radar" || cmd === "local-radar") {
                         root.openCommandCenter()
-                        if (root.commandCenterItem) root.commandCenterItem.currentChannel = "telemetry"
+                        if (root.commandCenterItem) root.commandCenterItem.zoomToNode(-1, 0)
+                    }
+                    else if (cmd === "spatial-settings" || cmd === "settings-node") {
+                        root.openCommandCenter()
+                        if (root.commandCenterItem) root.commandCenterItem.zoomToNode(1, 0)
                     }
                     else if (cmd === "telemetry-ram" || cmd === "telemetry-swap") {
                         root.openCommandCenter()
                         if (root.commandCenterItem) {
-                            root.commandCenterItem.currentChannel = "telemetry"
+                            root.commandCenterItem.zoomToNode(0, 1)
                             root.commandCenterItem.telemetrySubMode = "ram"
                         }
                     }
                     else if (cmd === "telemetry-cpu") {
                         root.openCommandCenter()
                         if (root.commandCenterItem) {
-                            root.commandCenterItem.currentChannel = "telemetry"
+                            root.commandCenterItem.zoomToNode(0, 1)
                             root.commandCenterItem.telemetrySubMode = "cpu"
                         }
                     }

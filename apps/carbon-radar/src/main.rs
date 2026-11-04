@@ -129,6 +129,25 @@ pub struct SystemTelemetryPayload {
     pub uptime_formatted: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct BlueprintWindow {
+    pub address: String,
+    pub class: String,
+    pub title: String,
+    pub at: [f32; 2],
+    pub size: [f32; 2],
+    pub is_focused: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct BlueprintWorkspace {
+    pub id: i32,
+    pub name: String,
+    pub is_active: bool,
+    pub has_windows: bool,
+    pub windows: Vec<BlueprintWindow>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RadarPayload {
     pub vault: Vec<NoteItem>,
@@ -137,6 +156,10 @@ pub struct RadarPayload {
     pub agenda: Vec<AgendaItem>,
     pub github: GitHubPayload,
     pub telemetry: SystemTelemetryPayload,
+    #[serde(default)]
+    pub workspaces: Vec<BlueprintWorkspace>,
+    #[serde(default)]
+    pub active_workspace_id: i32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -571,9 +594,127 @@ fn find_socket2_path() -> Option<PathBuf> {
     None
 }
 
+#[derive(Deserialize, Debug, Default)]
+struct HyprMonitorInfo {
+    #[serde(default)]
+    width: i32,
+    #[serde(default)]
+    height: i32,
+    #[serde(default)]
+    focused: bool,
+}
+
+#[derive(Deserialize, Debug, Default)]
+struct HyprWsRef {
+    #[serde(default)]
+    id: i32,
+}
+
+#[derive(Deserialize, Debug, Default)]
+struct HyprClientInfo {
+    #[serde(default)]
+    address: String,
+    #[serde(default)]
+    at: [i32; 2],
+    #[serde(default)]
+    size: [i32; 2],
+    #[serde(default)]
+    workspace: Option<HyprWsRef>,
+    #[serde(default)]
+    class: String,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    mapped: bool,
+    #[serde(default)]
+    hidden: bool,
+    #[serde(default, rename = "focusHistoryID")]
+    focus_history_id: Option<i32>,
+}
+
+#[derive(Deserialize, Debug, Default)]
+struct HyprActiveWsInfo {
+    #[serde(default)]
+    id: i32,
+}
+
+pub fn fetch_blueprint_workspaces() -> (Vec<BlueprintWorkspace>, i32) {
+    let mut mon_width = 1366.0f32;
+    let mut mon_height = 768.0f32;
+
+    if let Ok(out) = Command::new("hyprctl").args(["monitors", "-j"]).output() {
+        if let Ok(mons) = serde_json::from_slice::<Vec<HyprMonitorInfo>>(&out.stdout) {
+            if let Some(m) = mons.iter().find(|m| m.focused).or_else(|| mons.first()) {
+                if m.width > 0 && m.height > 0 {
+                    mon_width = m.width as f32;
+                    mon_height = m.height as f32;
+                }
+            }
+        }
+    }
+
+    let mut active_id = 1;
+    if let Ok(out) = Command::new("hyprctl").args(["activeworkspace", "-j"]).output() {
+        if let Ok(ws) = serde_json::from_slice::<HyprActiveWsInfo>(&out.stdout) {
+            if ws.id > 0 {
+                active_id = ws.id;
+            }
+        }
+    }
+
+    let mut clients: Vec<HyprClientInfo> = Vec::new();
+    if let Ok(out) = Command::new("hyprctl").args(["clients", "-j"]).output() {
+        if let Ok(parsed) = serde_json::from_slice::<Vec<HyprClientInfo>>(&out.stdout) {
+            clients = parsed;
+        }
+    }
+
+    let mut workspaces = Vec::with_capacity(9);
+    for id in 1..=9 {
+        let is_active = id == active_id;
+        let mut ws_windows = Vec::new();
+
+        for c in &clients {
+            if !c.mapped || c.hidden {
+                continue;
+            }
+            if let Some(ref wref) = c.workspace {
+                if wref.id == id {
+                    let nx = (c.at[0] as f32 / mon_width).clamp(0.0, 1.0);
+                    let ny = (c.at[1] as f32 / mon_height).clamp(0.0, 1.0);
+                    let nw = (c.size[0] as f32 / mon_width).clamp(0.02, 1.0);
+                    let nh = (c.size[1] as f32 / mon_height).clamp(0.02, 1.0);
+                    let is_focused = c.focus_history_id == Some(0);
+
+                    ws_windows.push(BlueprintWindow {
+                        address: c.address.clone(),
+                        class: c.class.clone(),
+                        title: c.title.clone(),
+                        at: [nx, ny],
+                        size: [nw, nh],
+                        is_focused,
+                    });
+                }
+            }
+        }
+
+        let has_windows = !ws_windows.is_empty();
+        workspaces.push(BlueprintWorkspace {
+            id,
+            name: id.to_string(),
+            is_active,
+            has_windows,
+            windows: ws_windows,
+        });
+    }
+
+    (workspaces, active_id)
+}
+
 async fn start_ipc_listener(
     tally: Arc<Mutex<HashMap<String, u32>>>,
     usage_path: PathBuf,
+    blueprint_state: Arc<Mutex<(Vec<BlueprintWorkspace>, i32)>>,
 ) {
     let mut last_active = String::new();
 
@@ -584,6 +725,7 @@ async fn start_ipc_listener(
                 while let Ok(Some(line)) = reader.next_line().await {
                     let trimmed = line.trim();
                     let mut class_to_record = None;
+                    let mut update_blueprint = false;
 
                     if let Some(payload) = trimmed.strip_prefix("activewindow>>") {
                         let class = payload.split(',').next().unwrap_or("").trim();
@@ -593,6 +735,7 @@ async fn start_ipc_listener(
                             last_active = class.to_string();
                             class_to_record = Some(class.to_string());
                         }
+                        update_blueprint = true;
                     } else if let Some(payload) = trimmed.strip_prefix("openwindow>>") {
                         let parts: Vec<&str> = payload.splitn(4, ',').collect();
                         if parts.len() >= 3 {
@@ -601,6 +744,15 @@ async fn start_ipc_listener(
                                 class_to_record = Some(class.to_string());
                             }
                         }
+                        update_blueprint = true;
+                    } else if trimmed.starts_with("closewindow>>")
+                        || trimmed.starts_with("movewindow>>")
+                        || trimmed.starts_with("workspace>>")
+                        || trimmed.starts_with("focusedmon>>")
+                        || trimmed.starts_with("changefloatingmode>>")
+                        || trimmed.starts_with("urgent>>")
+                    {
+                        update_blueprint = true;
                     }
 
                     if let Some(cls) = class_to_record {
@@ -608,6 +760,12 @@ async fn start_ipc_listener(
                         let count = map.entry(cls).or_insert(0);
                         *count += 1;
                         save_app_usage(&usage_path, &map);
+                    }
+
+                    if update_blueprint {
+                        let bp = fetch_blueprint_workspaces();
+                        let mut state = blueprint_state.lock().await;
+                        *state = bp;
                     }
                 }
             }
@@ -1609,6 +1767,7 @@ async fn build_payload(
     tally: &Arc<Mutex<HashMap<String, u32>>>,
     gh_state: &Arc<Mutex<GitHubState>>,
     hw_monitor: &Arc<Mutex<HardwareMonitor>>,
+    blueprint_state: &Arc<Mutex<(Vec<BlueprintWorkspace>, i32)>>,
 ) -> RadarPayload {
     let apps = {
         let map = tally.lock().await;
@@ -1661,6 +1820,11 @@ async fn build_payload(
         hw.poll()
     };
 
+    let (workspaces, active_workspace_id) = {
+        let bp = blueprint_state.lock().await;
+        bp.clone()
+    };
+
     RadarPayload {
         vault: fetch_obsidian_notes(),
         clipboard: fetch_clipboard(),
@@ -1668,6 +1832,8 @@ async fn build_payload(
         agenda: fetch_agenda(),
         github,
         telemetry,
+        workspaces,
+        active_workspace_id,
     }
 }
 
@@ -1831,12 +1997,15 @@ async fn main() {
     }
 
     let tally = Arc::new(Mutex::new(initial_tally));
+    let initial_bp = fetch_blueprint_workspaces();
+    let blueprint_state = Arc::new(Mutex::new(initial_bp));
 
     // Spawn Hyprland socket2 IPC listener
     let listener_tally = Arc::clone(&tally);
     let listener_path = usage_path.clone();
+    let listener_bp = Arc::clone(&blueprint_state);
     tokio::spawn(async move {
-        start_ipc_listener(listener_tally, listener_path).await;
+        start_ipc_listener(listener_tally, listener_path, listener_bp).await;
     });
 
     // Spawn background GitHub and repository synchronizer
@@ -1884,20 +2053,20 @@ async fn main() {
     let mut ticker = tokio::time::interval(Duration::from_secs(2));
 
     // Emit initial payload immediately
-    let initial = build_payload(&tally, &gh_state, &hw_monitor).await;
+    let initial = build_payload(&tally, &gh_state, &hw_monitor, &blueprint_state).await;
     emit_payload(&initial);
 
     loop {
         tokio::select! {
             _ = ticker.tick() => {
-                let payload = build_payload(&tally, &gh_state, &hw_monitor).await;
+                let payload = build_payload(&tally, &gh_state, &hw_monitor, &blueprint_state).await;
                 emit_payload(&payload);
             }
             line = stdin_reader.next_line() => {
                 match line {
                     Ok(Some(raw_line)) => {
                         handle_action_command(&raw_line, &gh_state, &client).await;
-                        let payload = build_payload(&tally, &gh_state, &hw_monitor).await;
+                        let payload = build_payload(&tally, &gh_state, &hw_monitor, &blueprint_state).await;
                         emit_payload(&payload);
                     }
                     Ok(None) => {

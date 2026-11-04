@@ -98,13 +98,16 @@ PanelWindow {
         } else {
             animatingOut = false
             closeAnimTimer.stop()
+            activeGridX = 0
+            activeGridY = 0
+            isOverview = true
             commandCenterWindow.refreshWeather()
-            commandCenterWindow.currentChannel = "overview"
             calSyncProc.running = true
             centerKeyHandler.forceActiveFocus()
-            if (currentChannel === "telemetry") {
-                streamAnim.restart()
+            if (radarEngineProc.running) {
+                radarEngineProc.write("refresh\n")
             }
+            streamAnim.restart()
         }
     }
 
@@ -395,6 +398,8 @@ PanelWindow {
                 try {
                     var payload = JSON.parse(raw)
                     if (!payload) return
+                    if (payload.workspaces !== undefined) commandCenterWindow.workspacesData = payload.workspaces
+                    if (payload.active_workspace_id !== undefined) commandCenterWindow.activeWorkspaceId = payload.active_workspace_id
                     if (payload.vault !== undefined) commandCenterWindow.vaultItems = payload.vault
                     if (payload.clipboard !== undefined) commandCenterWindow.clipboardItems = payload.clipboard
                     if (payload.apps !== undefined) commandCenterWindow.appsItems = payload.apps
@@ -536,6 +541,130 @@ PanelWindow {
         commandCenterWindow.refreshWeather()
     }
 
+
+    // ── 2D Spatial Zoom State ──
+    property int activeGridX: 0
+    property int activeGridY: 0
+    property bool isOverview: true
+
+    property var workspacesData: []
+    property int activeWorkspaceId: 1
+
+    function getNodeTitle(gx, gy) {
+        if (gx === 0 && gy === 0) return "WORKSPACE BLUEPRINT";
+        if (gx === -1 && gy === 0) return "LOCAL RADAR";
+        if (gx === 0 && gy === -1) return "GITHUB UPLINK";
+        if (gx === 0 && gy === 1) return "SYSTEM TELEMETRY";
+        if (gx === 1 && gy === 0) return "CARBON ENGINE";
+        return "NODE [" + gx + ", " + gy + "]";
+    }
+
+    function getNodeDesc(gx, gy) {
+        if (gx === 0 && gy === 0) return "Live 3x3 Workspace Blueprint & Zero-VRAM Wireframe Monitor";
+        if (gx === -1 && gy === 0) return "Obsidian Vault, Agenda, Dock & System Clipboard History";
+        if (gx === 0 && gy === -1) return "52-Week Contributions, Git Sync & PR Gatekeeper";
+        if (gx === 0 && gy === 1) return "Kernel Stream, Hardware CPU/RAM Wave & Network Telemetry";
+        if (gx === 1 && gy === 0) return "Shell Mode Switcher, Wallpaper Engine & Visual Tuner";
+        return "";
+    }
+
+    function zoomToNode(gx, gy) {
+        activeGridX = gx;
+        activeGridY = gy;
+        isOverview = false;
+    }
+
+    function zoomToOverview() {
+        isOverview = true;
+    }
+
+    function focusNode(gx, gy) {
+        activeGridX = gx;
+        activeGridY = gy;
+        isOverview = false;
+    }
+
+    function toggleNodeZoom(gx, gy) {
+        if (!isOverview && activeGridX === gx && activeGridY === gy) {
+            isOverview = true;
+        } else {
+            zoomToNode(gx, gy);
+        }
+    }
+
+    function switchToWorkspace(wsId) {
+        execCommand("hyprctl dispatch workspace " + wsId);
+        commandCenterWindow.closeRequested();
+    }
+
+    function moveGrid(dx, dy) {
+        if (isOverview) {
+            if (dx !== 0) {
+                if (activeGridX === 0) activeGridX = dx;
+                else if (activeGridX === -dx) activeGridX = 0;
+                else if (activeGridX === dx) activeGridX = 0;
+            }
+            if (dy !== 0) {
+                if (activeGridY === 0) activeGridY = dy;
+                else if (activeGridY === -dy) activeGridY = 0;
+                else if (activeGridY === dy) activeGridY = 0;
+            }
+        } else {
+            var nx = activeGridX + dx;
+            var ny = activeGridY + dy;
+            if (isValidNode(nx, ny)) {
+                activeGridX = nx;
+                activeGridY = ny;
+            } else if (isValidNode(nx, 0)) {
+                activeGridX = nx;
+                activeGridY = 0;
+            } else if (isValidNode(0, ny)) {
+                activeGridX = 0;
+                activeGridY = ny;
+            }
+        }
+    }
+
+    function isValidNode(gx, gy) {
+        if (gx === 0 && gy === 0) return true;
+        if (gx === -1 && gy === 0) return true;
+        if (gx === 1 && gy === 0) return true;
+        if (gx === 0 && gy === -1) return true;
+        if (gx === 0 && gy === 1) return true;
+        return false;
+    }
+
+    function applyBarMode(mode) {
+        execCommand("sh ~/.config/hypr/scripts/carbon-mode-keybinds.sh " + mode);
+        commandCenterWindow.showFeedback("Switched to " + mode + " mode");
+    }
+
+    function getWorkspaces() {
+        var res = [];
+        var raw = workspacesData || [];
+        for (var i = 1; i <= 9; i++) {
+            var match = null;
+            for (var j = 0; j < raw.length; j++) {
+                if (raw[j].id === i) {
+                    match = raw[j];
+                    break;
+                }
+            }
+            if (match) {
+                res.push(match);
+            } else {
+                res.push({
+                    id: i,
+                    name: String(i),
+                    is_active: (i === activeWorkspaceId),
+                    has_windows: false,
+                    windows: []
+                });
+            }
+        }
+        return res;
+    }
+
     function resolveAppIcon(cls) {
         if (!cls) return ""
         var raw = cls.trim()
@@ -597,217 +726,266 @@ PanelWindow {
         return Quickshell.iconPath(c, "application-x-executable")
     }
 
+
     Item {
         id: container
         anchors.fill: parent
         width: commandCenterWindow.width
         height: commandCenterWindow.height
 
-        // Full-surface keyboard handler for immediate arrow and escape keys
+        // ── Full-surface Keyboard Handler for Instant Navigation ──
         Item {
             id: centerKeyHandler
             anchors.fill: parent
             focus: commandCenterWindow.isOpen
             Keys.enabled: commandCenterWindow.isOpen
+            Keys.priority: Keys.BeforeItem
+
             Keys.onPressed: (event) => {
+                // Direct workspace switch via 1-9
+                if (event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
+                    var num = event.key - Qt.Key_0;
+                    commandCenterWindow.switchToWorkspace(num);
+                    event.accepted = true;
+                    return;
+                }
+
                 if (event.key === Qt.Key_Escape) {
-                    commandCenterWindow.closeRequested()
-                    event.accepted = true
-                } else if (event.key === Qt.Key_Right) {
-                    commandCenterWindow.nextChannel()
-                    event.accepted = true
-                } else if (event.key === Qt.Key_Left) {
-                    commandCenterWindow.prevChannel()
-                    event.accepted = true
-                } else if (event.key === Qt.Key_Down) {
-                    if (commandCenterWindow.currentChannel === "github") {
-                        commandCenterWindow.scrollGithubBottom()
-                        event.accepted = true
+                    if (!commandCenterWindow.isOverview) {
+                        commandCenterWindow.zoomToOverview();
+                    } else {
+                        commandCenterWindow.closeRequested();
                     }
-                } else if (event.key === Qt.Key_Up) {
-                    if (commandCenterWindow.currentChannel === "github") {
-                        commandCenterWindow.scrollGithubTop()
-                        event.accepted = true
+                    event.accepted = true;
+                    return;
+                }
+
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                    if (commandCenterWindow.isOverview) {
+                        commandCenterWindow.zoomToNode(commandCenterWindow.activeGridX, commandCenterWindow.activeGridY);
+                        event.accepted = true;
+                        return;
                     }
+                }
+
+                if (event.key === Qt.Key_Up || event.key === Qt.Key_W) {
+                    commandCenterWindow.moveGrid(0, -1);
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Down || event.key === Qt.Key_S) {
+                    commandCenterWindow.moveGrid(0, 1);
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Left || event.key === Qt.Key_A) {
+                    commandCenterWindow.moveGrid(-1, 0);
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Right || event.key === Qt.Key_D) {
+                    commandCenterWindow.moveGrid(1, 0);
+                    event.accepted = true;
                 }
             }
         }
 
-        // Transparent dismiss surface (zero screen dimming, matching notch center panel)
-        MouseArea {
-            anchors.fill: parent
-            enabled: commandCenterWindow.isOpen
-            onClicked: commandCenterWindow.closeRequested()
-        }
-
-        // ── Main Compact Floating Card ──
+        // ── Fullscreen Backdrop & CAD Grid Pattern ──
         Rectangle {
-            id: mainPanel
-            focus: true
-            Keys.onEscapePressed: function(event) {
-                commandCenterWindow.closeRequested()
-                if (event) event.accepted = true
-            }
-            Keys.onRightPressed: function(event) {
-                commandCenterWindow.nextChannel()
-                if (event) event.accepted = true
-            }
-            Keys.onLeftPressed: function(event) {
-                commandCenterWindow.prevChannel()
-                if (event) event.accepted = true
-            }
-            Keys.onDownPressed: function(event) {
-                if (commandCenterWindow.currentChannel === "github") {
-                    commandCenterWindow.scrollGithubBottom()
-                    if (event) event.accepted = true
-                }
-            }
-            Keys.onUpPressed: function(event) {
-                if (commandCenterWindow.currentChannel === "github") {
-                    commandCenterWindow.scrollGithubTop()
-                    if (event) event.accepted = true
-                }
-            }
-            width: Math.min(Theme.px(640), container.width - Theme.px(32))
-            height: Theme.px(360)
-            x: Math.round((container.width - width) / 2)
-
-            // THE DYNAMIC POSITIONING ENGINE
-            y: {
-                if (!commandCenterWindow.isOpen || commandCenterWindow.animatingOut) {
-                    // Off-screen positions: completely clear screen boundaries (extra 40px buffer)
-                    return commandCenterWindow.isTopBarUp ? (container.height + 40) : (-height - 40);
-                } else {
-                    // On-screen resting positions (floating 20px from edge)
-                    return commandCenterWindow.isTopBarUp ? (container.height - height - 20) : 20;
-                }
-            }
-
-            opacity: 1.0
-
-            Behavior on y {
-                NumberAnimation {
-                    duration: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? 380 : 300
-                    easing.type: (commandCenterWindow.isOpen && !commandCenterWindow.animatingOut) ? Easing.OutCubic : Easing.InCubic
-                }
-            }
-
-            // Carbon Shell Modern Frosted Glass Aesthetic
-            color: Theme.isDark ? Qt.rgba(0.06, 0.07, 0.09, 0.90) : Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.90)
-            border.color: Qt.rgba(Theme.outline.r, Theme.outline.g, Theme.outline.b, 0.16)
-            border.width: 1
-            radius: Theme.px(16)
-            clip: true
-
-        // Absorb clicks inside card so they don't dismiss
-        MouseArea {
             anchors.fill: parent
-            hoverEnabled: true
-            preventStealing: true
-            onClicked: {}
+            color: Qt.rgba(0.025, 0.03, 0.045, 0.92)
+
+            Canvas {
+                anchors.fill: parent
+                opacity: 0.65
+                onPaint: {
+                    var ctx = getContext("2d");
+                    ctx.reset();
+                    ctx.strokeStyle = "rgba(255, 255, 255, 0.025)";
+                    ctx.lineWidth = 1;
+                    var step = 32;
+                    ctx.beginPath();
+                    for (var x = 0; x < width; x += step) {
+                        ctx.moveTo(x + 0.5, 0);
+                        ctx.lineTo(x + 0.5, height);
+                    }
+                    for (var y = 0; y < height; y += step) {
+                        ctx.moveTo(0, y + 0.5);
+                        ctx.lineTo(width, y + 0.5);
+                    }
+                    ctx.stroke();
+                }
+            }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.leftMargin: Theme.px(14)
-            anchors.rightMargin: Theme.px(14)
-            anchors.topMargin: Theme.px(12)
-            anchors.bottomMargin: Theme.px(14)
-            spacing: Theme.px(8)
+        // ── Top HUD Header Bar (Fixed, z: 200) ──
+        Rectangle {
+            id: topHudBar
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: Theme.px(14)
+            height: Theme.px(34)
+            radius: Theme.px(8)
+            color: Qt.rgba(0.05, 0.06, 0.09, 0.88)
+            border.color: Qt.rgba(255, 255, 255, 0.12)
+            border.width: 1
+            z: 200
 
-            // ── Minimal Sleek Header ──
             RowLayout {
-                Layout.fillWidth: true
-                Layout.preferredHeight: Theme.px(24)
-                Layout.maximumHeight: Theme.px(24)
-                spacing: Theme.px(8)
+                anchors.fill: parent
+                anchors.leftMargin: Theme.px(12)
+                anchors.rightMargin: Theme.px(12)
+                spacing: Theme.px(10)
 
-                CarbonLogoIcon {
-                    width: Theme.px(18)
-                    height: Theme.px(18)
-                    Layout.alignment: Qt.AlignVCenter
-                    color: commandCenterWindow.engineConnected ? Theme.accent : Theme.fgDim
+                Text {
+                    text: "[ CARBON // SPATIAL CANVAS v2.4 ]"
+                    font.family: Theme.fontMono || "monospace"
+                    font.pixelSize: Theme.fontPx(11)
+                    font.bold: true
+                    color: "#8ee8a8"
                 }
 
-                // Channel Navigator (< Mode Title > + 3 Dots)
+                Text { text: "::"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); color: Qt.rgba(255, 255, 255, 0.25) }
+
+                Text {
+                    text: "GRID: [" + commandCenterWindow.activeGridX + ", " + commandCenterWindow.activeGridY + "]"
+                    font.family: Theme.fontMono || "monospace"
+                    font.pixelSize: Theme.fontPx(11)
+                    color: Theme.fg
+                }
+
+                Text { text: "::"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); color: Qt.rgba(255, 255, 255, 0.25) }
+
+                Text {
+                    text: "MODE: " + (commandCenterWindow.isOverview ? "0.36x [OVERVIEW]" : "1.00x [" + commandCenterWindow.getNodeTitle(commandCenterWindow.activeGridX, commandCenterWindow.activeGridY) + "]")
+                    font.family: Theme.fontMono || "monospace"
+                    font.pixelSize: Theme.fontPx(11)
+                    color: "#8ee8a8"
+                }
+
+                Item { Layout.fillWidth: true }
+
+                // Direct Node Tabs
                 RowLayout {
-                    Layout.alignment: Qt.AlignVCenter
-                    spacing: Theme.px(6)
+                    spacing: Theme.px(4)
 
-                    // Active Channel Title Text
-                    Text {
-                        id: channelTitleText
-                        text: {
-                            if (commandCenterWindow.currentChannel === "overview") return "View Point"
-                            if (commandCenterWindow.currentChannel === "github") return "GitHub Uplink"
-                            return "System Telemetry"
+                    Rectangle {
+                        height: Theme.px(22)
+                        width: btnWsText.implicitWidth + Theme.px(14)
+                        radius: Theme.px(4)
+                        color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 0) ? Qt.rgba(0.55, 0.91, 0.66, 0.20) : "transparent"
+                        border.color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Qt.rgba(255, 255, 255, 0.12)
+                        border.width: 1
+
+                        Text {
+                            id: btnWsText
+                            anchors.centerIn: parent
+                            text: "WS BLUEPRINT"
+                            font.family: Theme.fontMono || "monospace"
+                            font.pixelSize: Theme.fontPx(9.5)
+                            font.bold: true
+                            color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Theme.fgDim
                         }
-                        Layout.alignment: Qt.AlignVCenter
-                        font.family: Theme.font
-                        font.pixelSize: Theme.fontPx(12.5)
-                        font.weight: Font.DemiBold
-                        color: tHover.hovered ? Theme.accent : Theme.fg
-
-                        HoverHandler { id: tHover }
 
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: commandCenterWindow.nextChannel()
+                            onClicked: commandCenterWindow.toggleNodeZoom(0, 0)
                         }
                     }
 
-                    // 3 Animated Channel Indicator Dots
-                    RowLayout {
-                        Layout.alignment: Qt.AlignVCenter
-                        spacing: Theme.px(4)
+                    Rectangle {
+                        height: Theme.px(22)
+                        width: btnRadarText.implicitWidth + Theme.px(14)
+                        radius: Theme.px(4)
+                        color: (commandCenterWindow.activeGridX === -1 && commandCenterWindow.activeGridY === 0) ? Qt.rgba(0.55, 0.91, 0.66, 0.20) : "transparent"
+                        border.color: (commandCenterWindow.activeGridX === -1 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Qt.rgba(255, 255, 255, 0.12)
+                        border.width: 1
 
-                        // 1. View Point
-                        Rectangle {
-                            width: commandCenterWindow.currentChannel === "overview" ? Theme.px(12) : Theme.px(5)
-                            height: Theme.px(5)
-                            radius: Theme.px(2.5)
-                            color: commandCenterWindow.currentChannel === "overview" ? Theme.accent : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.3)
-                            Behavior on width { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-                            Behavior on color { ColorAnimation { duration: 200 } }
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: commandCenterWindow.currentChannel = "overview"
-                            }
+                        Text {
+                            id: btnRadarText
+                            anchors.centerIn: parent
+                            text: "LOCAL RADAR"
+                            font.family: Theme.fontMono || "monospace"
+                            font.pixelSize: Theme.fontPx(9.5)
+                            font.bold: true
+                            color: (commandCenterWindow.activeGridX === -1 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Theme.fgDim
                         }
 
-                        // 2. GitHub Uplink
-                        Rectangle {
-                            width: commandCenterWindow.currentChannel === "github" ? Theme.px(12) : Theme.px(5)
-                            height: Theme.px(5)
-                            radius: Theme.px(2.5)
-                            color: commandCenterWindow.currentChannel === "github" ? Theme.accent : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.3)
-                            Behavior on width { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-                            Behavior on color { ColorAnimation { duration: 200 } }
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    commandCenterWindow.currentChannel = "github"
-                                    githubUplinkView.contentY = 0
-                                }
-                            }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: commandCenterWindow.toggleNodeZoom(-1, 0)
+                        }
+                    }
+
+                    Rectangle {
+                        height: Theme.px(22)
+                        width: btnGhText.implicitWidth + Theme.px(14)
+                        radius: Theme.px(4)
+                        color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === -1) ? Qt.rgba(0.55, 0.91, 0.66, 0.20) : "transparent"
+                        border.color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === -1) ? "#8ee8a8" : Qt.rgba(255, 255, 255, 0.12)
+                        border.width: 1
+
+                        Text {
+                            id: btnGhText
+                            anchors.centerIn: parent
+                            text: "GITHUB"
+                            font.family: Theme.fontMono || "monospace"
+                            font.pixelSize: Theme.fontPx(9.5)
+                            font.bold: true
+                            color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === -1) ? "#8ee8a8" : Theme.fgDim
                         }
 
-                        // 3. System Telemetry
-                        Rectangle {
-                            width: commandCenterWindow.currentChannel === "telemetry" ? Theme.px(12) : Theme.px(5)
-                            height: Theme.px(5)
-                            radius: Theme.px(2.5)
-                            color: commandCenterWindow.currentChannel === "telemetry" ? Theme.accent : Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.3)
-                            Behavior on width { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-                            Behavior on color { ColorAnimation { duration: 200 } }
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: commandCenterWindow.currentChannel = "telemetry"
-                            }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: commandCenterWindow.toggleNodeZoom(0, -1)
+                        }
+                    }
+
+                    Rectangle {
+                        height: Theme.px(22)
+                        width: btnTelemText.implicitWidth + Theme.px(14)
+                        radius: Theme.px(4)
+                        color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 1) ? Qt.rgba(0.55, 0.91, 0.66, 0.20) : "transparent"
+                        border.color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 1) ? "#8ee8a8" : Qt.rgba(255, 255, 255, 0.12)
+                        border.width: 1
+
+                        Text {
+                            id: btnTelemText
+                            anchors.centerIn: parent
+                            text: "TELEMETRY"
+                            font.family: Theme.fontMono || "monospace"
+                            font.pixelSize: Theme.fontPx(9.5)
+                            font.bold: true
+                            color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 1) ? "#8ee8a8" : Theme.fgDim
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: commandCenterWindow.toggleNodeZoom(0, 1)
+                        }
+                    }
+
+                    Rectangle {
+                        height: Theme.px(22)
+                        width: btnSetText.implicitWidth + Theme.px(14)
+                        radius: Theme.px(4)
+                        color: (commandCenterWindow.activeGridX === 1 && commandCenterWindow.activeGridY === 0) ? Qt.rgba(0.55, 0.91, 0.66, 0.20) : "transparent"
+                        border.color: (commandCenterWindow.activeGridX === 1 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Qt.rgba(255, 255, 255, 0.12)
+                        border.width: 1
+
+                        Text {
+                            id: btnSetText
+                            anchors.centerIn: parent
+                            text: "SETTINGS"
+                            font.family: Theme.fontMono || "monospace"
+                            font.pixelSize: Theme.fontPx(9.5)
+                            font.bold: true
+                            color: (commandCenterWindow.activeGridX === 1 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Theme.fgDim
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: commandCenterWindow.toggleNodeZoom(1, 0)
                         }
                     }
                 }
@@ -819,52 +997,73 @@ PanelWindow {
                     visible: commandCenterWindow.feedbackMessage !== ""
                     Layout.preferredHeight: Theme.px(20)
                     Layout.preferredWidth: fbText.implicitWidth + Theme.px(14)
-                    radius: Theme.px(10)
-                    color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.15)
-                    border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.3)
+                    radius: Theme.px(4)
+                    color: Qt.rgba(0.55, 0.91, 0.66, 0.18)
+                    border.color: "#8ee8a8"
                     border.width: 1
 
                     Text {
                         id: fbText
                         anchors.centerIn: parent
                         text: commandCenterWindow.feedbackMessage
-                        font.family: Theme.font
-                        font.pixelSize: Theme.fontPx(10)
+                        font.family: Theme.fontMono || "monospace"
+                        font.pixelSize: Theme.fontPx(9.5)
                         font.weight: Font.Medium
-                        color: Theme.accent
+                        color: "#8ee8a8"
                     }
                 }
 
-                // Refresh Button
+                // Overview Toggle Pill
                 Rectangle {
-                    width: Theme.px(24)
-                    height: Theme.px(24)
-                    radius: Theme.px(12)
-                    color: rHover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08) : "transparent"
+                    height: Theme.px(22)
+                    width: ovText.implicitWidth + Theme.px(16)
+                    radius: Theme.px(4)
+                    color: commandCenterWindow.isOverview ? Qt.rgba(0.55, 0.91, 0.66, 0.18) : "transparent"
+                    border.color: commandCenterWindow.isOverview ? "#8ee8a8" : Qt.rgba(255, 255, 255, 0.2)
+                    border.width: 1
 
-                    Text {
+                    RowLayout {
                         anchors.centerIn: parent
-                        text: "refresh"
-                        font.family: Theme.fontIcon
-                        font.pixelSize: Theme.fontPx(14)
-                        color: rHover.hovered ? Theme.accent : Theme.fgDim
-                    }
+                        spacing: Theme.px(4)
 
-                    HoverHandler { id: rHover }
+                        Text {
+                            text: commandCenterWindow.isOverview ? "zoom_in" : "zoom_out"
+                            font.family: Theme.fontIcon
+                            font.pixelSize: Theme.fontPx(13)
+                            color: commandCenterWindow.isOverview ? "#8ee8a8" : Theme.fgDim
+                        }
+
+                        Text {
+                            id: ovText
+                            text: commandCenterWindow.isOverview ? "0.36x OVERVIEW" : "ZOOM OUT"
+                            font.family: Theme.fontMono || "monospace"
+                            font.pixelSize: Theme.fontPx(9)
+                            font.bold: true
+                            color: commandCenterWindow.isOverview ? "#8ee8a8" : Theme.fgDim
+                        }
+                    }
 
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: commandCenterWindow.triggerManualRefresh()
+                        onClicked: {
+                            if (commandCenterWindow.isOverview) {
+                                commandCenterWindow.zoomToNode(commandCenterWindow.activeGridX, commandCenterWindow.activeGridY);
+                            } else {
+                                commandCenterWindow.zoomToOverview();
+                            }
+                        }
                     }
                 }
 
                 // Close Button
                 Rectangle {
-                    width: Theme.px(24)
-                    height: Theme.px(24)
-                    radius: Theme.px(12)
-                    color: cBtnHover.hovered ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.15) : "transparent"
+                    width: Theme.px(22)
+                    height: Theme.px(22)
+                    radius: Theme.px(4)
+                    color: cBtnHover.hovered ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.2) : "transparent"
+                    border.color: cBtnHover.hovered ? Theme.error : Qt.rgba(255, 255, 255, 0.2)
+                    border.width: 1
 
                     Text {
                         anchors.centerIn: parent
@@ -883,42 +1082,491 @@ PanelWindow {
                     }
                 }
             }
+        }
 
-            // ── Channel Content Viewport ──
-            Item {
-                id: channelViewport
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
+        // ── Bottom HUD Footer (Fixed, z: 200) ──
+        Rectangle {
+            id: bottomHudBar
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: Theme.px(14)
+            height: Theme.px(30)
+            radius: Theme.px(6)
+            color: Qt.rgba(0.05, 0.06, 0.09, 0.88)
+            border.color: Qt.rgba(255, 255, 255, 0.12)
+            border.width: 1
+            z: 200
 
-                // ── CHANNEL 1: OVERVIEW ──
-                ColumnLayout {
-                    id: overviewChannelView
-                    width: parent.width
-                    height: parent.height
-                    x: commandCenterWindow.currentChannel === "overview" ? 0 : -channelViewport.width
-                    opacity: commandCenterWindow.currentChannel === "overview" ? 1.0 : 0.0
-                    visible: opacity > 0.01
-                    spacing: Theme.px(8)
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: Theme.px(12)
+                anchors.rightMargin: Theme.px(12)
+                spacing: Theme.px(10)
 
-                    Behavior on x {
-                        NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
+                Text {
+                    text: "// " + commandCenterWindow.getNodeDesc(commandCenterWindow.activeGridX, commandCenterWindow.activeGridY)
+                    font.family: Theme.fontMono || "monospace"
+                    font.pixelSize: Theme.fontPx(9.5)
+                    color: Theme.fgDim
+                }
+
+                Item { Layout.fillWidth: true }
+
+                // 5-Node Radar Mini-Map (Diamond Cross)
+                Item {
+                    width: Theme.px(42)
+                    height: Theme.px(20)
+                    Layout.alignment: Qt.AlignVCenter
+
+                    Rectangle {
+                        x: Math.round(parent.width / 2 - 3)
+                        y: 1
+                        width: 6; height: 6; radius: 3
+                        color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === -1) ? "#8ee8a8" : Qt.rgba(255,255,255,0.3)
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: commandCenterWindow.toggleNodeZoom(0, -1) }
                     }
-                    Behavior on opacity {
-                        NumberAnimation { duration: 200 }
+                    Rectangle {
+                        x: Math.round(parent.width / 2 - 14)
+                        y: Math.round(parent.height / 2 - 3)
+                        width: 6; height: 6; radius: 3
+                        color: (commandCenterWindow.activeGridX === -1 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Qt.rgba(255,255,255,0.3)
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: commandCenterWindow.toggleNodeZoom(-1, 0) }
                     }
+                    Rectangle {
+                        x: Math.round(parent.width / 2 - 3)
+                        y: Math.round(parent.height / 2 - 3)
+                        width: 6; height: 6; radius: 3
+                        color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Qt.rgba(255,255,255,0.3)
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: commandCenterWindow.toggleNodeZoom(0, 0) }
+                    }
+                    Rectangle {
+                        x: Math.round(parent.width / 2 + 8)
+                        y: Math.round(parent.height / 2 - 3)
+                        width: 6; height: 6; radius: 3
+                        color: (commandCenterWindow.activeGridX === 1 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Qt.rgba(255,255,255,0.3)
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: commandCenterWindow.toggleNodeZoom(1, 0) }
+                    }
+                    Rectangle {
+                        x: Math.round(parent.width / 2 - 3)
+                        y: parent.height - 7
+                        width: 6; height: 6; radius: 3
+                        color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 1) ? "#8ee8a8" : Qt.rgba(255,255,255,0.3)
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: commandCenterWindow.toggleNodeZoom(0, 1) }
+                    }
+                }
 
-                // ── ROW 1: Obsidian Notes (Left) + Events / Schedule (Right) ──
+                Item { Layout.fillWidth: true }
+
+                Text {
+                    text: "WS " + commandCenterWindow.activeWorkspaceId + " ACTIVE"
+                    font.family: Theme.fontMono || "monospace"
+                    font.pixelSize: Theme.fontPx(9.5)
+                    color: "#8ee8a8"
+                }
+
+                Rectangle { width: 1; height: Theme.px(12); color: Qt.rgba(255,255,255,0.2) }
+
+                Text {
+                    text: Qt.formatDateTime(sysClock.date, "HH:mm:ss")
+                    font.family: Theme.fontMono || "monospace"
+                    font.pixelSize: Theme.fontPx(9.5)
+                    color: Theme.fgDim
+                }
+
+                Rectangle { width: 1; height: Theme.px(12); color: Qt.rgba(255,255,255,0.2) }
+
                 RowLayout {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: Theme.px(134)
-                    Layout.maximumHeight: Theme.px(134)
-                    spacing: Theme.px(8)
+                    spacing: Theme.px(4)
+                    Rectangle {
+                        width: 6; height: 6; radius: 3
+                        color: commandCenterWindow.engineConnected ? "#8ee8a8" : Theme.error
+                    }
+                    Text {
+                        text: commandCenterWindow.engineConnected ? "ENGINE ONLINE" : "DISCONNECTED"
+                        font.family: Theme.fontMono || "monospace"
+                        font.pixelSize: Theme.fontPx(9)
+                        color: commandCenterWindow.engineConnected ? "#8ee8a8" : Theme.error
+                    }
+                }
+            }
+        }
 
-                // ══════════════════════════════════════════════════
-                // TILE 1: OBSIDIAN NOTES
-                // ══════════════════════════════════════════════════
+        // ── 2D Spatial Viewport ──
+        Item {
+            id: spatialViewport
+            anchors.fill: parent
+            clip: true
+
+            readonly property real nodeWidth: Math.min(Math.round(spatialViewport.width * 0.84), 1140)
+            readonly property real nodeHeight: Math.min(Math.round(spatialViewport.height * 0.82), 650)
+            readonly property real spacingX: nodeWidth + Theme.px(80)
+            readonly property real spacingY: nodeHeight + Theme.px(80)
+
+            readonly property real fitScaleX: (spatialViewport.width * 0.94) / (spacingX * 2 + nodeWidth)
+            readonly property real fitScaleY: (spatialViewport.height * 0.92) / (spacingY * 2 + nodeHeight)
+            readonly property real overviewScale: Math.max(0.24, Math.min(fitScaleX, fitScaleY, 0.36))
+
+            readonly property real targetScale: commandCenterWindow.isOverview ? overviewScale : 1.0
+            readonly property real targetPanX: commandCenterWindow.isOverview ? 0 : (-commandCenterWindow.activeGridX * spacingX)
+            readonly property real targetPanY: commandCenterWindow.isOverview ? 0 : (-commandCenterWindow.activeGridY * spacingY)
+
+            // Click backdrop in overview closes; in focus zooms out
+            MouseArea {
+                anchors.fill: parent
+                z: 0
+                onClicked: {
+                    if (!commandCenterWindow.isOverview) {
+                        commandCenterWindow.zoomToOverview();
+                    } else {
+                        commandCenterWindow.closeRequested();
+                    }
+                }
+            }
+
+            // ── Camera Rig (Virtual Coordinate Plane) ──
+            Item {
+                id: cameraRig
+                width: spatialViewport.width * 3
+                height: spatialViewport.height * 3
+                z: 1
+
+                property real animPanX: spatialViewport.targetPanX
+                property real animPanY: spatialViewport.targetPanY
+                property real animScale: spatialViewport.targetScale
+
+                x: Math.round((spatialViewport.width - width) / 2 + animPanX)
+                y: Math.round((spatialViewport.height - height) / 2 + animPanY)
+                scale: animScale
+                transformOrigin: Item.Center
+
+                Behavior on animPanX {
+                    NumberAnimation { duration: 450; easing.type: Easing.OutExpo }
+                }
+                Behavior on animPanY {
+                    NumberAnimation { duration: 450; easing.type: Easing.OutExpo }
+                }
+                Behavior on animScale {
+                    NumberAnimation { duration: 400; easing.type: Easing.OutExpo }
+                }
+
+                // ══════════════════════════════════════════════════════════
+                // 1. CENTER NODE CARD (0, 0) :: WORKSPACE BLUEPRINT
+                // ══════════════════════════════════════════════════════════
                 Rectangle {
+                    id: cardNodeCenter
+                    width: spatialViewport.nodeWidth
+                    height: spatialViewport.nodeHeight
+                    x: Math.round((cameraRig.width / 2) + 0 * spatialViewport.spacingX - (width / 2))
+                    y: Math.round((cameraRig.height / 2) + 0 * spatialViewport.spacingY - (height / 2))
+                    radius: Theme.px(14)
+                    color: Qt.rgba(0.04, 0.05, 0.07, 0.92)
+                    border.color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 0)
+                        ? "#8ee8a8"
+                        : (centerCardHover.hovered ? Qt.rgba(0.55, 0.91, 0.66, 0.45) : Qt.rgba(255, 255, 255, 0.14))
+                    border.width: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 0) ? 1.5 : 1
+                    clip: true
+
+                    HoverHandler { id: centerCardHover }
+
+                    // Corner brackets (+)
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+
+                    // Card Header Bar
+                    RowLayout {
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.topMargin: Theme.px(10)
+                        anchors.leftMargin: Theme.px(20)
+                        anchors.rightMargin: Theme.px(20)
+                        height: Theme.px(24)
+                        spacing: Theme.px(8)
+                        z: 10
+
+                        Text {
+                            text: "// NODE [0, 0] :: WORKSPACE BLUEPRINT SWITCHER"
+                            font.family: Theme.fontMono || "monospace"
+                            font.pixelSize: Theme.fontPx(11)
+                            font.weight: Font.Bold
+                            color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Theme.fg
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        Rectangle {
+                            visible: commandCenterWindow.isOverview
+                            Layout.preferredHeight: Theme.px(18)
+                            Layout.preferredWidth: cHint.implicitWidth + Theme.px(12)
+                            radius: Theme.px(4)
+                            color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08)
+                            border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.15)
+                            border.width: 1
+
+                            Text {
+                                id: cHint
+                                anchors.centerIn: parent
+                                text: "CLICK WORKSPACE TO JUMP"
+                                font.family: Theme.fontMono || "monospace"
+                                font.pixelSize: Theme.fontPx(8.5)
+                                color: Theme.fgDim
+                            }
+                        }
+                    }
+
+                    // Node Content
+                    
+                // ══════════════════════════════════════════════════════════
+                // CENTER NODE (0, 0) :: BLUEPRINT WORKSPACE SWITCHER
+                // ══════════════════════════════════════════════════════════
+                Item {
+                    anchors.fill: parent
+                    anchors.margins: Theme.px(16)
+                    anchors.topMargin: Theme.px(44)
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: Theme.px(10)
+
+                        // 3x3 Grid of 9 Workspaces
+                        GridLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            columns: 3
+                            rows: 3
+                            columnSpacing: Theme.px(10)
+                            rowSpacing: Theme.px(10)
+
+                            Repeater {
+                                model: commandCenterWindow.getWorkspaces()
+
+                                Rectangle {
+                                    id: wsCard
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    radius: Theme.px(8)
+                                    color: modelData.is_active ? Qt.rgba(0.55, 0.91, 0.66, 0.10) : Qt.rgba(0.06, 0.08, 0.11, 0.85)
+                                    border.color: modelData.is_active ? "#8ee8a8" : (tileHover.hovered ? Qt.rgba(0.55, 0.91, 0.66, 0.5) : Qt.rgba(255, 255, 255, 0.12))
+                                    border.width: modelData.is_active ? 1.5 : 1
+                                    clip: true
+
+                                    HoverHandler { id: tileHover }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: commandCenterWindow.switchToWorkspace(modelData.id)
+                                    }
+
+                                    // Tile Header Row
+                                    RowLayout {
+                                        anchors.top: parent.top
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.topMargin: Theme.px(6)
+                                        anchors.leftMargin: Theme.px(8)
+                                        anchors.rightMargin: Theme.px(8)
+                                        height: Theme.px(18)
+                                        spacing: Theme.px(6)
+
+                                        Text {
+                                            text: "WS " + (modelData.id < 10 ? "0" + modelData.id : modelData.id)
+                                            font.family: Theme.fontMono || "monospace"
+                                            font.pixelSize: Theme.fontPx(11)
+                                            font.weight: Font.Bold
+                                            color: modelData.is_active ? "#8ee8a8" : (tileHover.hovered ? "#8ee8a8" : Theme.fg)
+                                        }
+
+                                        Rectangle {
+                                            visible: modelData.is_active
+                                            width: Theme.px(6)
+                                            height: Theme.px(6)
+                                            radius: Theme.px(3)
+                                            color: "#8ee8a8"
+                                        }
+
+                                        Item { Layout.fillWidth: true }
+
+                                        Text {
+                                            text: (modelData.windows ? modelData.windows.length : 0) + " WND"
+                                            font.family: Theme.fontMono || "monospace"
+                                            font.pixelSize: Theme.fontPx(9)
+                                            color: Qt.rgba(Theme.fgDim.r, Theme.fgDim.g, Theme.fgDim.b, 0.6)
+                                        }
+                                    }
+
+                                    // Blueprint Wireframe Canvas
+                                    Item {
+                                        anchors.top: parent.top
+                                        anchors.topMargin: Theme.px(26)
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: Theme.px(6)
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: Theme.px(6)
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: Theme.px(6)
+                                        clip: true
+
+                                        Rectangle {
+                                            anchors.fill: parent
+                                            color: "transparent"
+                                            border.color: Qt.rgba(255, 255, 255, 0.05)
+                                            border.width: 1
+                                            radius: Theme.px(4)
+                                        }
+
+                                        // Windows Wireframe Boxes
+                                        Repeater {
+                                            model: modelData.windows || []
+
+                                            Rectangle {
+                                                x: Math.round(modelData.at[0] * parent.width)
+                                                y: Math.round(modelData.at[1] * parent.height)
+                                                width: Math.max(Theme.px(22), Math.round(modelData.size[0] * parent.width))
+                                                height: Math.max(Theme.px(14), Math.round(modelData.size[1] * parent.height))
+                                                radius: Theme.px(3)
+                                                color: modelData.is_focused ? Qt.rgba(0.55, 0.91, 0.66, 0.22) : Qt.rgba(255, 255, 255, 0.06)
+                                                border.color: modelData.is_focused ? "#8ee8a8" : Qt.rgba(255, 255, 255, 0.35)
+                                                border.width: 1
+                                                clip: true
+
+                                                RowLayout {
+                                                    anchors.centerIn: parent
+                                                    width: Math.min(implicitWidth, parent.width - Theme.px(4))
+                                                    spacing: Theme.px(3)
+
+                                                    Image {
+                                                        visible: parent.parent.width > Theme.px(36) && parent.parent.height > Theme.px(22)
+                                                        Layout.preferredWidth: Theme.px(12)
+                                                        Layout.preferredHeight: Theme.px(12)
+                                                        source: commandCenterWindow.resolveAppIcon(modelData.class)
+                                                        sourceSize: Qt.size(24, 24)
+                                                        fillMode: Image.PreserveAspectFit
+                                                    }
+
+                                                    Text {
+                                                        text: modelData.class || modelData.title || ""
+                                                        font.family: Theme.font
+                                                        font.pixelSize: Theme.fontPx(8.5)
+                                                        font.weight: Font.Medium
+                                                        color: modelData.is_focused ? "#8ee8a8" : Qt.rgba(255, 255, 255, 0.85)
+                                                        elide: Text.ElideRight
+                                                        Layout.maximumWidth: parent.parent.width - (parent.parent.width > Theme.px(36) ? Theme.px(18) : Theme.px(4))
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            visible: !modelData.windows || modelData.windows.length === 0
+                                            text: "[ ∅ EMPTY BUFFER ]"
+                                            font.family: Theme.fontMono || "monospace"
+                                            font.pixelSize: Theme.fontPx(9.5)
+                                            color: Qt.rgba(255, 255, 255, 0.16)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                }
+
+                // ══════════════════════════════════════════════════════════
+                // 2. LEFT NODE CARD (-1, 0) :: LOCAL RADAR
+                // ══════════════════════════════════════════════════════════
+                Rectangle {
+                    id: cardNodeLeft
+                    width: spatialViewport.nodeWidth
+                    height: spatialViewport.nodeHeight
+                    x: Math.round((cameraRig.width / 2) + (-1) * spatialViewport.spacingX - (width / 2))
+                    y: Math.round((cameraRig.height / 2) + 0 * spatialViewport.spacingY - (height / 2))
+                    radius: Theme.px(14)
+                    color: Qt.rgba(0.04, 0.05, 0.07, 0.92)
+                    border.color: (commandCenterWindow.activeGridX === -1 && commandCenterWindow.activeGridY === 0)
+                        ? "#8ee8a8"
+                        : (leftCardHover.hovered ? Qt.rgba(0.55, 0.91, 0.66, 0.45) : Qt.rgba(255, 255, 255, 0.14))
+                    border.width: (commandCenterWindow.activeGridX === -1 && commandCenterWindow.activeGridY === 0) ? 1.5 : 1
+                    clip: true
+
+                    HoverHandler { id: leftCardHover }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: commandCenterWindow.isOverview
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: commandCenterWindow.zoomToNode(-1, 0)
+                        z: 99
+                    }
+
+                    // Corner brackets (+)
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === -1 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === -1 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === -1 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === -1 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+
+                    // Card Header Bar
+                    RowLayout {
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.topMargin: Theme.px(10)
+                        anchors.leftMargin: Theme.px(20)
+                        anchors.rightMargin: Theme.px(20)
+                        height: Theme.px(24)
+                        spacing: Theme.px(8)
+                        z: 10
+
+                        Text {
+                            text: "// NODE [-1, 0] :: LOCAL RADAR (VAULT / AGENDA / APPS / CLIPBOARD)"
+                            font.family: Theme.fontMono || "monospace"
+                            font.pixelSize: Theme.fontPx(11)
+                            font.weight: Font.Bold
+                            color: (commandCenterWindow.activeGridX === -1 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Theme.fg
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        Rectangle {
+                            visible: commandCenterWindow.isOverview
+                            Layout.preferredHeight: Theme.px(18)
+                            Layout.preferredWidth: lHint.implicitWidth + Theme.px(12)
+                            radius: Theme.px(4)
+                            color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08)
+                            border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.15)
+                            border.width: 1
+
+                            Text {
+                                id: lHint
+                                anchors.centerIn: parent
+                                text: "CLICK TO FOCUS"
+                                font.family: Theme.fontMono || "monospace"
+                                font.pixelSize: Theme.fontPx(8.5)
+                                color: Theme.fgDim
+                            }
+                        }
+                    }
+
+                    // Node Content: 2x2 Grid of Local Radar Tiles
+                    Item {
+                        anchors.fill: parent
+                        anchors.margins: Theme.px(16)
+                        anchors.topMargin: Theme.px(44)
+
+                        GridLayout {
+                            anchors.fill: parent
+                            columns: 2
+                            rows: 2
+                            columnSpacing: Theme.px(10)
+                            rowSpacing: Theme.px(10)
+
+                            // Tile 1: Obsidian Notes
+                                            Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.03)
@@ -1054,10 +1702,10 @@ PanelWindow {
                     }
                 }
 
-                // ══════════════════════════════════════════════════
-                // TILE 2: EVENTS / SCHEDULE (Beside Obsidian Notes)
-                // ══════════════════════════════════════════════════
-                Rectangle {
+
+
+                            // Tile 2: Events / Schedule
+                                            Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.03)
@@ -1195,19 +1843,10 @@ PanelWindow {
                         }
                     }
                 }
-            }
 
-            // ── ROW 2: Recent Apps Tile (Left, Compact Landscape Dock) + Clipboard Tile (Right) ──
-            RowLayout {
-                Layout.fillWidth: true
-                Layout.preferredHeight: Theme.px(134)
-                Layout.maximumHeight: Theme.px(134)
-                spacing: Theme.px(8)
 
-                // ══════════════════════════════════════════════════
-                // TILE 3: RECENT APPS & AESTHETIC CLOCK + WEATHER
-                // ══════════════════════════════════════════════════
-                Item {
+                            // Tile 3: Recent Apps Dock & Clock/Weather
+                                            Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
 
@@ -1497,10 +2136,10 @@ PanelWindow {
                     }
                 }
 
-                // ══════════════════════════════════════════════════
-                // TILE 4: CLIPBOARD HISTORY (Beside Recent Apps)
-                // ══════════════════════════════════════════════════
-                Rectangle {
+
+
+                            // Tile 4: Clipboard History
+                                            Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     color: Theme.isDark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.03)
@@ -1640,17 +2279,100 @@ PanelWindow {
                         }
                     }
                 }
-            }
-        } // end overviewChannelView
 
-            // ── CHANNEL 2: GITHUB UPLINK (Scrollable to fit 360px height) ──
-            Flickable {
+                        }
+                    }
+                }
+
+                // ══════════════════════════════════════════════════════════
+                // 3. TOP NODE CARD (0, -1) :: GITHUB UPLINK
+                // ══════════════════════════════════════════════════════════
+                Rectangle {
+                    id: cardNodeTop
+                    width: spatialViewport.nodeWidth
+                    height: spatialViewport.nodeHeight
+                    x: Math.round((cameraRig.width / 2) + 0 * spatialViewport.spacingX - (width / 2))
+                    y: Math.round((cameraRig.height / 2) + (-1) * spatialViewport.spacingY - (height / 2))
+                    radius: Theme.px(14)
+                    color: Qt.rgba(0.04, 0.05, 0.07, 0.92)
+                    border.color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === -1)
+                        ? "#8ee8a8"
+                        : (topCardHover.hovered ? Qt.rgba(0.55, 0.91, 0.66, 0.45) : Qt.rgba(255, 255, 255, 0.14))
+                    border.width: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === -1) ? 1.5 : 1
+                    clip: true
+
+                    HoverHandler { id: topCardHover }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: commandCenterWindow.isOverview
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: commandCenterWindow.zoomToNode(0, -1)
+                        z: 99
+                    }
+
+                    // Corner brackets (+)
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === -1) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === -1) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === -1) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === -1) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+
+                    // Card Header Bar
+                    RowLayout {
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.topMargin: Theme.px(10)
+                        anchors.leftMargin: Theme.px(20)
+                        anchors.rightMargin: Theme.px(20)
+                        height: Theme.px(24)
+                        spacing: Theme.px(8)
+                        z: 10
+
+                        Text {
+                            text: "// NODE [0, -1] :: GITHUB UPLINK (HEATMAP / COMMITS / PR GATEKEEPER)"
+                            font.family: Theme.fontMono || "monospace"
+                            font.pixelSize: Theme.fontPx(11)
+                            font.weight: Font.Bold
+                            color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === -1) ? "#8ee8a8" : Theme.fg
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        Rectangle {
+                            visible: commandCenterWindow.isOverview
+                            Layout.preferredHeight: Theme.px(18)
+                            Layout.preferredWidth: tHint.implicitWidth + Theme.px(12)
+                            radius: Theme.px(4)
+                            color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08)
+                            border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.15)
+                            border.width: 1
+
+                            Text {
+                                id: tHint
+                                anchors.centerIn: parent
+                                text: "CLICK TO FOCUS"
+                                font.family: Theme.fontMono || "monospace"
+                                font.pixelSize: Theme.fontPx(8.5)
+                                color: Theme.fgDim
+                            }
+                        }
+                    }
+
+                    // Node Content: GitHub Uplink
+                    Item {
+                        anchors.fill: parent
+                        anchors.margins: Theme.px(16)
+                        anchors.topMargin: Theme.px(44)
+                        clip: true
+
+                                    Flickable {
                 id: githubUplinkView
                 width: parent.width
                 height: parent.height
-                x: commandCenterWindow.currentChannel === "github" ? 0 : (commandCenterWindow.currentChannel === "overview" ? channelViewport.width : -channelViewport.width)
-                opacity: commandCenterWindow.currentChannel === "github" ? 1.0 : 0.0
-                visible: opacity > 0.01
+                x: 0
+                opacity: 1.0
+                visible: true
                 clip: true
                 contentWidth: width
                 contentHeight: githubScrollCol.implicitHeight
@@ -2474,16 +3196,99 @@ PanelWindow {
                     }
                 }
         }
-    }
 
-            // ── CHANNEL 3: SYSTEM TELEMETRY (Hardware Performance) ──
-            Item {
+                    }
+                }
+
+                // ══════════════════════════════════════════════════════════
+                // 4. BOTTOM NODE CARD (0, 1) :: SYSTEM TELEMETRY
+                // ══════════════════════════════════════════════════════════
+                Rectangle {
+                    id: cardNodeBottom
+                    width: spatialViewport.nodeWidth
+                    height: spatialViewport.nodeHeight
+                    x: Math.round((cameraRig.width / 2) + 0 * spatialViewport.spacingX - (width / 2))
+                    y: Math.round((cameraRig.height / 2) + 1 * spatialViewport.spacingY - (height / 2))
+                    radius: Theme.px(14)
+                    color: Qt.rgba(0.04, 0.05, 0.07, 0.92)
+                    border.color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 1)
+                        ? "#8ee8a8"
+                        : (bottomCardHover.hovered ? Qt.rgba(0.55, 0.91, 0.66, 0.45) : Qt.rgba(255, 255, 255, 0.14))
+                    border.width: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 1) ? 1.5 : 1
+                    clip: true
+
+                    HoverHandler { id: bottomCardHover }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: commandCenterWindow.isOverview
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: commandCenterWindow.zoomToNode(0, 1)
+                        z: 99
+                    }
+
+                    // Corner brackets (+)
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 1) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 1) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 1) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 1) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+
+                    // Card Header Bar
+                    RowLayout {
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.topMargin: Theme.px(10)
+                        anchors.leftMargin: Theme.px(20)
+                        anchors.rightMargin: Theme.px(20)
+                        height: Theme.px(24)
+                        spacing: Theme.px(8)
+                        z: 10
+
+                        Text {
+                            text: "// NODE [0, 1] :: SYSTEM TELEMETRY (HARDWARE KERNEL & PERFORMANCE GAUGES)"
+                            font.family: Theme.fontMono || "monospace"
+                            font.pixelSize: Theme.fontPx(11)
+                            font.weight: Font.Bold
+                            color: (commandCenterWindow.activeGridX === 0 && commandCenterWindow.activeGridY === 1) ? "#8ee8a8" : Theme.fg
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        Rectangle {
+                            visible: commandCenterWindow.isOverview
+                            Layout.preferredHeight: Theme.px(18)
+                            Layout.preferredWidth: bHint.implicitWidth + Theme.px(12)
+                            radius: Theme.px(4)
+                            color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08)
+                            border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.15)
+                            border.width: 1
+
+                            Text {
+                                id: bHint
+                                anchors.centerIn: parent
+                                text: "CLICK TO FOCUS"
+                                font.family: Theme.fontMono || "monospace"
+                                font.pixelSize: Theme.fontPx(8.5)
+                                color: Theme.fgDim
+                            }
+                        }
+                    }
+
+                    // Node Content: System Telemetry
+                    Item {
+                        anchors.fill: parent
+                        anchors.margins: Theme.px(16)
+                        anchors.topMargin: Theme.px(44)
+                        clip: true
+
+                                    Item {
                 id: systemTelemetryView
                 width: parent.width
                 height: parent.height
-                x: commandCenterWindow.currentChannel === "telemetry" ? 0 : channelViewport.width
-                opacity: commandCenterWindow.currentChannel === "telemetry" ? 1.0 : 0.0
-                visible: opacity > 0.01
+                x: 0
+                opacity: 1.0
+                visible: true
 
                 Behavior on x {
                     NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
@@ -2635,7 +3440,7 @@ PanelWindow {
                                     id: cpuSubView
                                     anchors.fill: parent
                                     opacity: commandCenterWindow.telemetrySubMode === "cpu" ? 1.0 : 0.0
-                                    visible: opacity > 0.01
+                visible: true
 
                                     Behavior on opacity {
                                         NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
@@ -2852,7 +3657,7 @@ PanelWindow {
                                     id: ramSubView
                                     anchors.fill: parent
                                     opacity: commandCenterWindow.telemetrySubMode === "ram" ? 1.0 : 0.0
-                                    visible: opacity > 0.01
+                visible: true
 
                                     property real ramUsed: commandCenterWindow.telemetryPayload ? (commandCenterWindow.telemetryPayload.ram_used_bytes / 1073741824) : 0
                                     property real ramTotal: commandCenterWindow.telemetryPayload ? (commandCenterWindow.telemetryPayload.ram_total_bytes / 1073741824) : 0
@@ -3389,9 +4194,481 @@ PanelWindow {
                     }
                 }
             }
-        } // closes ColumnLayout of mainPanel
+
+                    }
+                }
+
+                // ══════════════════════════════════════════════════════════
+                // 5. RIGHT NODE CARD (1, 0) :: CARBON ENGINE & SETTINGS
+                // ══════════════════════════════════════════════════════════
+                Rectangle {
+                    id: cardNodeRight
+                    width: spatialViewport.nodeWidth
+                    height: spatialViewport.nodeHeight
+                    x: Math.round((cameraRig.width / 2) + 1 * spatialViewport.spacingX - (width / 2))
+                    y: Math.round((cameraRig.height / 2) + 0 * spatialViewport.spacingY - (height / 2))
+                    radius: Theme.px(14)
+                    color: Qt.rgba(0.04, 0.05, 0.07, 0.92)
+                    border.color: (commandCenterWindow.activeGridX === 1 && commandCenterWindow.activeGridY === 0)
+                        ? "#8ee8a8"
+                        : (rightCardHover.hovered ? Qt.rgba(0.55, 0.91, 0.66, 0.45) : Qt.rgba(255, 255, 255, 0.14))
+                    border.width: (commandCenterWindow.activeGridX === 1 && commandCenterWindow.activeGridY === 0) ? 1.5 : 1
+                    clip: true
+
+                    HoverHandler { id: rightCardHover }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: commandCenterWindow.isOverview
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: commandCenterWindow.zoomToNode(1, 0)
+                        z: 99
+                    }
+
+                    // Corner brackets (+)
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === 1 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === 1 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.top: parent.top; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === 1 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+                    Text { text: "+"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(11); font.bold: true; color: (commandCenterWindow.activeGridX === 1 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Qt.rgba(255,255,255,0.4); anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: Theme.px(8); z: 10 }
+
+                    // Card Header Bar
+                    RowLayout {
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.topMargin: Theme.px(10)
+                        anchors.leftMargin: Theme.px(20)
+                        anchors.rightMargin: Theme.px(20)
+                        height: Theme.px(24)
+                        spacing: Theme.px(8)
+                        z: 10
+
+                        Text {
+                            text: "// NODE [1, 0] :: CARBON ENGINE & SHELL CONTROLS"
+                            font.family: Theme.fontMono || "monospace"
+                            font.pixelSize: Theme.fontPx(11)
+                            font.weight: Font.Bold
+                            color: (commandCenterWindow.activeGridX === 1 && commandCenterWindow.activeGridY === 0) ? "#8ee8a8" : Theme.fg
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        Rectangle {
+                            visible: commandCenterWindow.isOverview
+                            Layout.preferredHeight: Theme.px(18)
+                            Layout.preferredWidth: rHint.implicitWidth + Theme.px(12)
+                            radius: Theme.px(4)
+                            color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08)
+                            border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.15)
+                            border.width: 1
+
+                            Text {
+                                id: rHint
+                                anchors.centerIn: parent
+                                text: "CLICK TO FOCUS"
+                                font.family: Theme.fontMono || "monospace"
+                                font.pixelSize: Theme.fontPx(8.5)
+                                color: Theme.fgDim
+                            }
+                        }
+                    }
+
+                    // Node Content: Carbon Engine & Settings
+                    
+                // ══════════════════════════════════════════════════════════
+                // RIGHT NODE (1, 0) :: CARBON ENGINE & SETTINGS
+                // ══════════════════════════════════════════════════════════
+                Item {
+                    anchors.fill: parent
+                    anchors.margins: Theme.px(16)
+                    anchors.topMargin: Theme.px(44)
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: Theme.px(12)
+
+                        // Section 1: Shell Mode Switcher
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.px(6)
+
+                            Text {
+                                text: "SHELL ARCHITECTURE & BAR MODES"
+                                font.family: Theme.fontMono || "monospace"
+                                font.pixelSize: Theme.fontPx(10)
+                                font.weight: Font.Bold
+                                color: "#8ee8a8"
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.px(10)
+
+                                // Mode 1: Notch
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: Theme.px(76)
+                                    radius: Theme.px(8)
+                                    color: commandCenterWindow.barMode === "notch" ? Qt.rgba(0.55, 0.91, 0.66, 0.12) : Qt.rgba(0.08, 0.10, 0.14, 0.7)
+                                    border.color: commandCenterWindow.barMode === "notch" ? "#8ee8a8" : (m1Hover.hovered ? Qt.rgba(0.55, 0.91, 0.66, 0.4) : Qt.rgba(255, 255, 255, 0.12))
+                                    border.width: commandCenterWindow.barMode === "notch" ? 1.5 : 1
+
+                                    HoverHandler { id: m1Hover }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: commandCenterWindow.applyBarMode("notch")
+                                    }
+
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: Theme.px(10)
+                                        spacing: Theme.px(4)
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: Theme.px(6)
+                                            Text { text: "dock_to_bottom"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(16); color: commandCenterWindow.barMode === "notch" ? "#8ee8a8" : Theme.fg }
+                                            Text { text: "Notch Dynamic Island"; font.family: Theme.font; font.pixelSize: Theme.fontPx(12.5); font.bold: true; color: commandCenterWindow.barMode === "notch" ? "#8ee8a8" : Theme.fg }
+                                            Item { Layout.fillWidth: true }
+                                            Rectangle {
+                                                visible: commandCenterWindow.barMode === "notch"
+                                                Layout.preferredHeight: Theme.px(16)
+                                                Layout.preferredWidth: a1Text.implicitWidth + Theme.px(8)
+                                                radius: Theme.px(3)
+                                                color: Qt.rgba(0.55, 0.91, 0.66, 0.25)
+                                                Text { id: a1Text; anchors.centerIn: parent; text: "ACTIVE"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(8); font.bold: true; color: "#8ee8a8" }
+                                            }
+                                        }
+                                        Text {
+                                            text: "Dynamic adaptive top notch with fluid organic spring physics"
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(9.5)
+                                            color: Theme.fgDim
+                                            wrapMode: Text.WordWrap
+                                            Layout.fillWidth: true
+                                        }
+                                    }
+                                }
+
+                                // Mode 2: Vanish
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: Theme.px(76)
+                                    radius: Theme.px(8)
+                                    color: commandCenterWindow.barMode === "vanish" ? Qt.rgba(0.55, 0.91, 0.66, 0.12) : Qt.rgba(0.08, 0.10, 0.14, 0.7)
+                                    border.color: commandCenterWindow.barMode === "vanish" ? "#8ee8a8" : (m2Hover.hovered ? Qt.rgba(0.55, 0.91, 0.66, 0.4) : Qt.rgba(255, 255, 255, 0.12))
+                                    border.width: commandCenterWindow.barMode === "vanish" ? 1.5 : 1
+
+                                    HoverHandler { id: m2Hover }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: commandCenterWindow.applyBarMode("vanish")
+                                    }
+
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: Theme.px(10)
+                                        spacing: Theme.px(4)
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: Theme.px(6)
+                                            Text { text: "visibility_off"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(16); color: commandCenterWindow.barMode === "vanish" ? "#8ee8a8" : Theme.fg }
+                                            Text { text: "Vanish"; font.family: Theme.font; font.pixelSize: Theme.fontPx(12.5); font.bold: true; color: commandCenterWindow.barMode === "vanish" ? "#8ee8a8" : Theme.fg }
+                                            Item { Layout.fillWidth: true }
+                                            Rectangle {
+                                                visible: commandCenterWindow.barMode === "vanish"
+                                                Layout.preferredHeight: Theme.px(16)
+                                                Layout.preferredWidth: a2Text.implicitWidth + Theme.px(8)
+                                                radius: Theme.px(3)
+                                                color: Qt.rgba(0.55, 0.91, 0.66, 0.25)
+                                                Text { id: a2Text; anchors.centerIn: parent; text: "ACTIVE"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(8); font.bold: true; color: "#8ee8a8" }
+                                            }
+                                        }
+                                        Text {
+                                            text: "Zero desktop clutter with smart gesture reveal and border glow"
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(9.5)
+                                            color: Theme.fgDim
+                                            wrapMode: Text.WordWrap
+                                            Layout.fillWidth: true
+                                        }
+                                    }
+                                }
+
+                                // Mode 3: Minimal
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: Theme.px(76)
+                                    radius: Theme.px(8)
+                                    color: commandCenterWindow.barMode === "minimal" ? Qt.rgba(0.55, 0.91, 0.66, 0.12) : Qt.rgba(0.08, 0.10, 0.14, 0.7)
+                                    border.color: commandCenterWindow.barMode === "minimal" ? "#8ee8a8" : (m3Hover.hovered ? Qt.rgba(0.55, 0.91, 0.66, 0.4) : Qt.rgba(255, 255, 255, 0.12))
+                                    border.width: commandCenterWindow.barMode === "minimal" ? 1.5 : 1
+
+                                    HoverHandler { id: m3Hover }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: commandCenterWindow.applyBarMode("minimal")
+                                    }
+
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: Theme.px(10)
+                                        spacing: Theme.px(4)
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: Theme.px(6)
+                                            Text { text: "horizontal_distribute"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(16); color: commandCenterWindow.barMode === "minimal" ? "#8ee8a8" : Theme.fg }
+                                            Text { text: "Minimal Monoline"; font.family: Theme.font; font.pixelSize: Theme.fontPx(12.5); font.bold: true; color: commandCenterWindow.barMode === "minimal" ? "#8ee8a8" : Theme.fg }
+                                            Item { Layout.fillWidth: true }
+                                            Rectangle {
+                                                visible: commandCenterWindow.barMode === "minimal"
+                                                Layout.preferredHeight: Theme.px(16)
+                                                Layout.preferredWidth: a3Text.implicitWidth + Theme.px(8)
+                                                radius: Theme.px(3)
+                                                color: Qt.rgba(0.55, 0.91, 0.66, 0.25)
+                                                Text { id: a3Text; anchors.centerIn: parent; text: "ACTIVE"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(8); font.bold: true; color: "#8ee8a8" }
+                                            }
+                                        }
+                                        Text {
+                                            text: "Ultra-slim 26px compact persistent bar for maximal screen efficiency"
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(9.5)
+                                            color: Theme.fgDim
+                                            wrapMode: Text.WordWrap
+                                            Layout.fillWidth: true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Section 2: Wallpaper Engine & Visual Tuner
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            spacing: Theme.px(10)
+
+                            // Current Wallpaper Preview Box
+                            Rectangle {
+                                Layout.preferredWidth: Theme.px(280)
+                                Layout.fillHeight: true
+                                radius: Theme.px(8)
+                                color: Qt.rgba(0.06, 0.08, 0.11, 0.8)
+                                border.color: Qt.rgba(255, 255, 255, 0.12)
+                                border.width: 1
+                                clip: true
+
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: Theme.px(10)
+                                    spacing: Theme.px(6)
+
+                                    Text {
+                                        text: "CURRENT ACTIVE WALLPAPER"
+                                        font.family: Theme.fontMono || "monospace"
+                                        font.pixelSize: Theme.fontPx(9.5)
+                                        font.bold: true
+                                        color: "#8ee8a8"
+                                    }
+
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        radius: Theme.px(6)
+                                        color: "#050608"
+                                        clip: true
+
+                                        Image {
+                                            anchors.fill: parent
+                                            source: "file://" + (Quickshell.env("HOME") || "") + "/.config/hypr/current_wallpaper"
+                                            fillMode: Image.PreserveAspectCrop
+                                        }
+                                    }
+
+                                    // Open Wallpaper Picker Button
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: Theme.px(28)
+                                        radius: Theme.px(4)
+                                        color: wpBtnHover.hovered ? Qt.rgba(0.55, 0.91, 0.66, 0.25) : Qt.rgba(0.55, 0.91, 0.66, 0.12)
+                                        border.color: "#8ee8a8"
+                                        border.width: 1
+
+                                        HoverHandler { id: wpBtnHover }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                commandCenterWindow.execCommand("sh ~/.config/hypr/scripts/carbon-ipc.sh wallpaper")
+                                                commandCenterWindow.closeRequested()
+                                            }
+                                        }
+
+                                        RowLayout {
+                                            anchors.centerIn: parent
+                                            spacing: Theme.px(6)
+                                            Text { text: "wallpaper"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(14); color: "#8ee8a8" }
+                                            Text { text: "OPEN WALLPAPER PICKER"; font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(9.5); font.bold: true; color: "#8ee8a8" }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Quick Actions & Compositor Controls
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                radius: Theme.px(8)
+                                color: Qt.rgba(0.06, 0.08, 0.11, 0.8)
+                                border.color: Qt.rgba(255, 255, 255, 0.12)
+                                border.width: 1
+                                clip: true
+
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: Theme.px(12)
+                                    spacing: Theme.px(10)
+
+                                    Text {
+                                        text: "ENGINE CONTROLS & UTILITIES"
+                                        font.family: Theme.fontMono || "monospace"
+                                        font.pixelSize: Theme.fontPx(10)
+                                        font.bold: true
+                                        color: "#8ee8a8"
+                                    }
+
+                                    GridLayout {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        columns: 2
+                                        columnSpacing: Theme.px(10)
+                                        rowSpacing: Theme.px(10)
+
+                                        // 1. Matugen Palette Rebuild
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            radius: Theme.px(6)
+                                            color: b1Hover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08) : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.04)
+                                            border.color: Qt.rgba(255, 255, 255, 0.12)
+                                            border.width: 1
+
+                                            HoverHandler { id: b1Hover }
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    commandCenterWindow.execCommand("python3 ~/.config/hypr/scripts/theme-mk.py ~/.config/hypr/current_wallpaper")
+                                                    commandCenterWindow.showFeedback("Regenerating theme palette (Matugen)...")
+                                                }
+                                            }
+
+                                            ColumnLayout {
+                                                anchors.centerIn: parent
+                                                spacing: Theme.px(4)
+                                                Text { Layout.alignment: Qt.AlignHCenter; text: "palette"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(20); color: "#8ee8a8" }
+                                                Text { Layout.alignment: Qt.AlignHCenter; text: "Regenerate Palette"; font.family: Theme.font; font.pixelSize: Theme.fontPx(11.5); font.bold: true; color: Theme.fg }
+                                                Text { Layout.alignment: Qt.AlignHCenter; text: "Matugen M3 extraction"; font.family: Theme.font; font.pixelSize: Theme.fontPx(8.5); color: Theme.fgDim }
+                                            }
+                                        }
+
+                                        // 2. Video Wallpaper Toggle (mpvpaper)
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            radius: Theme.px(6)
+                                            color: b2Hover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08) : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.04)
+                                            border.color: Qt.rgba(255, 255, 255, 0.12)
+                                            border.width: 1
+
+                                            HoverHandler { id: b2Hover }
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    commandCenterWindow.execCommand("if pgrep -x mpvpaper >/dev/null; then pkill -f mpvpaper; else sh ~/.config/hypr/scripts/carbon-ipc.sh wallpaper-live; fi")
+                                                    commandCenterWindow.showFeedback("Toggling live wallpaper...")
+                                                }
+                                            }
+
+                                            ColumnLayout {
+                                                anchors.centerIn: parent
+                                                spacing: Theme.px(4)
+                                                Text { Layout.alignment: Qt.AlignHCenter; text: "smart_display"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(20); color: "#8ee8a8" }
+                                                Text { Layout.alignment: Qt.AlignHCenter; text: "Live Video Wallpaper"; font.family: Theme.font; font.pixelSize: Theme.fontPx(11.5); font.bold: true; color: Theme.fg }
+                                                Text { Layout.alignment: Qt.AlignHCenter; text: "mpvpaper engine"; font.family: Theme.font; font.pixelSize: Theme.fontPx(8.5); color: Theme.fgDim }
+                                            }
+                                        }
+
+                                        // 3. Night Light Toggle
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            radius: Theme.px(6)
+                                            color: b3Hover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08) : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.04)
+                                            border.color: Qt.rgba(255, 255, 255, 0.12)
+                                            border.width: 1
+
+                                            HoverHandler { id: b3Hover }
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    commandCenterWindow.execCommand("sh ~/.config/hypr/scripts/carbon-night.sh toggle")
+                                                    commandCenterWindow.showFeedback("Toggled Night Light")
+                                                }
+                                            }
+
+                                            ColumnLayout {
+                                                anchors.centerIn: parent
+                                                spacing: Theme.px(4)
+                                                Text { Layout.alignment: Qt.AlignHCenter; text: "nightlight"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(20); color: "#8ee8a8" }
+                                                Text { Layout.alignment: Qt.AlignHCenter; text: "Night Light"; font.family: Theme.font; font.pixelSize: Theme.fontPx(11.5); font.bold: true; color: Theme.fg }
+                                                Text { Layout.alignment: Qt.AlignHCenter; text: "Warm temperature filter"; font.family: Theme.font; font.pixelSize: Theme.fontPx(8.5); color: Theme.fgDim }
+                                            }
+                                        }
+
+                                        // 4. Reload Hyprland Compositor
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            radius: Theme.px(6)
+                                            color: b4Hover.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08) : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.04)
+                                            border.color: Qt.rgba(255, 255, 255, 0.12)
+                                            border.width: 1
+
+                                            HoverHandler { id: b4Hover }
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    commandCenterWindow.execCommand("hyprctl reload")
+                                                    commandCenterWindow.showFeedback("Hyprland reloaded")
+                                                }
+                                            }
+
+                                            ColumnLayout {
+                                                anchors.centerIn: parent
+                                                spacing: Theme.px(4)
+                                                Text { Layout.alignment: Qt.AlignHCenter; text: "refresh"; font.family: Theme.fontIcon; font.pixelSize: Theme.fontPx(20); color: "#8ee8a8" }
+                                                Text { Layout.alignment: Qt.AlignHCenter; text: "Reload Compositor"; font.family: Theme.font; font.pixelSize: Theme.fontPx(11.5); font.bold: true; color: Theme.fg }
+                                                Text { Layout.alignment: Qt.AlignHCenter; text: "hyprctl reload"; font.family: Theme.font; font.pixelSize: Theme.fontPx(8.5); color: Theme.fgDim }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                }
+            }
         }
     }
 }
-
-
