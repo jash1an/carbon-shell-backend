@@ -1,6 +1,9 @@
 #!/bin/sh
-CONFIG_DIR="${CARBON_CONFIG_DIR:-$HOME/.config/carbon}"
-IPC="$CONFIG_DIR/scripts/carbon-ipc.sh"
-[ -f "$IPC" ] || IPC="$HOME/.config/hypr/scripts/carbon-ipc.sh"
-sh "$IPC" lock
+# Launch hyprlock directly
+pidof hyprlock >/dev/null 2>&1 && exit 0
 
+if [ -x /usr/bin/hyprlock ]; then
+    exec /usr/bin/hyprlock "$@"
+elif command -v hyprlock >/dev/null 2>&1; then
+    exec hyprlock "$@"
+fi
