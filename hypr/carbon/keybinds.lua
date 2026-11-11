@@ -2,11 +2,10 @@
 local mainMod = "SUPER"
 local terminal = "kitty"
 local fileManager = "nautilus"
-local homeDir = os.getenv("HOME") or ""
 
 -- 
 -- CARBON SHELL — DEDICATED HYPRLAND KEYBINDINGS
--- Location: ~/.config/hypr/carbon/keybinds.conf
+-- Location: ~/.config/carbon/keybinds.conf
 -- 
 -- You can freely edit this file! Any changes here are applied whenever you:
 -- 1. Press SUPER + SHIFT + R (or run 'hyprctl reload')
@@ -14,71 +13,96 @@ local homeDir = os.getenv("HOME") or ""
 -- 
 
 local mainMod = "SUPER"
-local terminal = "kitty"
-local fileManager = "nautilus"
+local home = os.getenv("HOME") or "/home/zily"
+local terminal = "/home/zily/.local/opt/kitty/bin/kitty"
+local fileManager = "kitty -e yazi"
 
 -- ==============================================================================
 -- APPLICATIONS & WINDOW CONTROL
 -- ==============================================================================
-hl.bind(mainMod .. " + Return", hl.dsp.exec_cmd("kitty"))
-hl.bind(mainMod .. " + " .. "SHIFT" .. " + Return", hl.dsp.exec_cmd("[float; size 800 550] kitty"))
-hl.bind(mainMod .. " + Q", hl.dsp.window.close())
-hl.bind("ALT" .. " + F4", hl.dsp.window.close())
+hl.bind(mainMod .. " + Return", hl.dsp.exec_cmd("/home/zily/.local/opt/kitty/bin/kitty"))
+hl.bind(mainMod .. " + " .. "SHIFT" .. " + Return", hl.dsp.exec_cmd("[float; size 800 550] /home/zily/.local/opt/kitty/bin/kitty"))
+hl.bind(mainMod .. " + X", hl.dsp.window.close())
 hl.bind("CTRL" .. " + " .. "ALT" .. " + Delete", hl.dsp.exec_cmd("hyprctl dispatch exit 0"))
-hl.bind(mainMod .. " + E", hl.dsp.exec_cmd("nautilus"))
-hl.bind(mainMod .. " + Space", hl.dsp.window.float({ action = "toggle" }))
+hl.bind(mainMod .. " + E", hl.dsp.exec_cmd("kitty -e yazi"))
+hl.bind(mainMod .. " + Space", hl.dsp.exec_cmd("sh ~/.config/carbon/scripts/carbon-ipc.sh spotlight"))
+hl.bind(mainMod .. " + R", hl.dsp.exec_cmd("sh ~/.config/carbon/scripts/carbon-ipc.sh spotlight"))
 hl.bind(mainMod .. " + " .. "SHIFT" .. " + R", hl.dsp.exec_cmd("hyprctl reload"))
-hl.bind(mainMod .. " + F", hl.dsp.window.fullscreen())
-hl.bind(mainMod .. " + " .. "SHIFT" .. " + F", hl.dsp.exec_cmd(homeDir .. "/.config/hypr/scripts/carbon-focus.sh"))
-hl.bind(mainMod .. " + " .. "SHIFT" .. " + S", hl.dsp.exec_cmd("hyprshot -m region"))
-hl.bind(mainMod .. " + " .. "SHIFT" .. " + Q", hl.dsp.exec_cmd("~/.config/hypr/scripts/KillActiveProcess.sh"))
+hl.bind("F11", hl.dsp.window.fullscreen())
+hl.bind("ALT" .. " + D", hl.dsp.exec_cmd("serein"))
+hl.bind(mainMod .. " + F", hl.dsp.exec_cmd("/usr/lib/librewolf/librewolf"))
+-- Game Mode Toggle (Zero latency Direct Scanout, strip transparency & effects)
+hl.bind(mainMod .. " + F1", hl.dsp.exec_cmd("~/.local/bin/hypr-gamemode toggle"))
+hl.bind(mainMod .. " + G", hl.dsp.exec_cmd("sh ~/.config/carbon/scripts/carbon-ipc.sh command-center"))
+hl.bind(mainMod .. " + " .. "SHIFT" .. " + F", hl.dsp.exec_cmd("~/.config/hypr/scripts/carbon-focus.sh"))
+hl.bind(mainMod .. " + " .. "SHIFT" .. " + S", hl.dsp.exec_cmd("~/.config/carbon/scripts/carbon-screenshot-region.sh"))
+hl.bind("Print", hl.dsp.exec_cmd("~/.config/carbon/scripts/carbon-screenshot-full.sh"))
+hl.bind("SHIFT" .. " + Print", hl.dsp.exec_cmd("~/.config/carbon/scripts/carbon-screenshot-region.sh"))
+hl.bind("ALT" .. " + Print", hl.dsp.exec_cmd("~/.config/carbon/scripts/carbon-screenshot-window.sh"))
+hl.bind(mainMod .. " + Print", hl.dsp.exec_cmd("~/.config/carbon/scripts/carbon-screenshot-full.sh"))
+hl.bind(mainMod .. " + " .. "SHIFT" .. " + Q", hl.dsp.exec_cmd("~/.config/carbon/scripts/KillActiveProcess.sh"))
 
 -- ==============================================================================
--- CARBON SHELL FEATURES & CONTROLS (COMMON)
--- Mode-specific shell controls (SUPER+C, SUPER+R, SUPER+N, etc.) are loaded
--- dynamically from ~/.config/hypr/current-mode-keybinds.lua
+-- APP SWITCHING (Alt+Tab)
+-- Cycles between windows on the CURRENT workspace only (Windows-style Alt+Tab).
+-- "hist" order = most-recently-used; drop the "hist" arg to cycle in layout order.
 -- ==============================================================================
--- Carbon Settings GUI
-hl.bind(mainMod .. " + comma", hl.dsp.exec_cmd(homeDir .. "/.config/carbon/scripts/carbon-settings-hub"))
-hl.bind(mainMod .. " + SHIFT + comma", hl.dsp.exec_cmd(homeDir .. "/.config/hypr/scripts/carbon-config-editor"))
-hl.bind(mainMod .. " + SHIFT + C", hl.dsp.exec_cmd(homeDir .. "/.config/carbon/scripts/carbon-settings-hub"))
+hl.bind("ALT" .. " + Tab", hl.dsp.exec_cmd("hyprctl dispatch cyclenext hist"))
+hl.bind("ALT" .. " + Tab", hl.dsp.exec_cmd("hyprctl dispatch alterzorder top"))
+hl.bind("ALT" .. " + " .. "SHIFT" .. " + Tab", hl.dsp.exec_cmd("hyprctl dispatch cyclenext prev hist"))
+hl.bind("ALT" .. " + " .. "SHIFT" .. " + Tab", hl.dsp.exec_cmd("hyprctl dispatch alterzorder top"))
 
--- Carbon Drop (File Uploader & Downloader)
-hl.bind(mainMod .. " + SHIFT + D", hl.dsp.exec_cmd(homeDir .. "/.config/carbon/scripts/carbon-drop.sh"))
-hl.bind(mainMod .. " + D", hl.dsp.exec_cmd(homeDir .. "/.config/carbon/scripts/carbon-drop.sh"))
-
--- Carbon Pomodoro Timer
-hl.bind(mainMod .. " + T", hl.dsp.exec_cmd("~/.config/hypr/scripts/carbon-pomodoro"))
-
--- Lock Screen (Hyprlock with Carbon ornament)
-hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("~/.config/hypr/scripts/hyprlock.sh"))
-
--- Clipboard Manager (Cliphist + Rofi)
-hl.bind(mainMod .. " + V", hl.dsp.exec_cmd("bash -c 'cliphist list | rofi -dmenu | cliphist decode | wl-copy'"))
+-- ==============================================================================
+-- CARBON SHELL FEATURES & CONTROLS
+-- ==============================================================================
+-- Carbon Settings Hub GUI
+hl.bind(mainMod .. " + C", hl.dsp.exec_cmd(home .. "/.config/carbon/scripts/carbon-settings-hub"))
+hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("sh ~/.config/carbon/scripts/carbon-ipc.sh controls"))
 
 -- Special Workspace (Scratchpad)
 hl.bind(mainMod .. " + S", hl.dsp.focus({ workspace = "special:special" }))
 hl.bind(mainMod .. " + ALT + S", hl.dsp.window.move({ workspace = "special:special" }))
 
+-- Carbon Overview (Atom-Fluid Bohr model & workspace carousel)
+hl.bind("SUPER" .. " + Tab", hl.dsp.exec_cmd("sh ~/.config/carbon/scripts/carbon-ipc.sh toggle-overview"))
+
+-- Carbon Wallpaper Picker
+hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("sh ~/.config/carbon/scripts/carbon-ipc.sh wallpaper"))
+
+-- Nautilus File Manager (SUPER + N)
+hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("nautilus"))
+
+-- Carbon Pomodoro Timer
+hl.bind(mainMod .. " + T", hl.dsp.exec_cmd("~/.config/carbon/scripts/carbon-pomodoro"))
+
+-- Lock Screen (Hyprlock with Carbon ornament)
+hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("~/.config/carbon/scripts/hyprlock.sh"))
+
+-- Clipboard Manager (Cliphist + Kitty TUI picker)
+hl.bind(mainMod .. " + V", hl.dsp.exec_cmd("bash -c 'kitty -e python3 /home/zily/.local/bin/carbon-clip-picker'"))
+
+-- Carbon Pulse (System & Task Monitor)
+hl.bind(mainMod .. " + Escape", hl.dsp.exec_cmd("~/.local/bin/carbon-pulse"))
+
 -- ==============================================================================
 -- NAVIGATION & WINDOW MOVEMENT
 -- ==============================================================================
 -- Move focus (Arrow keys)
-hl.bind(mainMod .. " + left", hl.dsp.exec_cmd("hyprctl dispatch movefocus l"))
-hl.bind(mainMod .. " + right", hl.dsp.exec_cmd("hyprctl dispatch movefocus r"))
-hl.bind(mainMod .. " + up", hl.dsp.exec_cmd("hyprctl dispatch movefocus u"))
-hl.bind(mainMod .. " + down", hl.dsp.exec_cmd("hyprctl dispatch movefocus d"))
-
--- Move windows (WAS - Note: "D" is assigned to Carbon Drop)
-hl.bind(mainMod .. " + A", hl.dsp.window.move({ direction = "l" }))
-hl.bind(mainMod .. " + W", hl.dsp.window.move({ direction = "u" }))
-hl.bind(mainMod .. " + S", hl.dsp.window.move({ direction = "d" }))
+-- bind = $mainMod, left, movefocus, l
+-- bind = $mainMod, right, movefocus, r
+-- bind = $mainMod, up, movefocus, u
+-- bind = $mainMod, down, movefocus, d
 
 -- Resize active window (SUPER + SHIFT + Arrow keys)
 hl.bind(mainMod .. " + " .. "SHIFT" .. " + left", hl.dsp.exec_cmd("hyprctl dispatch resizeactive -50 0"), { repeating = true })
 hl.bind(mainMod .. " + " .. "SHIFT" .. " + right", hl.dsp.exec_cmd("hyprctl dispatch resizeactive 50 0"), { repeating = true })
 hl.bind(mainMod .. " + " .. "SHIFT" .. " + up", hl.dsp.exec_cmd("hyprctl dispatch resizeactive 0 -50"), { repeating = true })
 hl.bind(mainMod .. " + " .. "SHIFT" .. " + down", hl.dsp.exec_cmd("hyprctl dispatch resizeactive 0 50"), { repeating = true })
+
+-- ==============================================================================
+-- CARBON DROP (SUPER + D)
+-- ==============================================================================
+hl.bind(mainMod .. " + D", hl.dsp.exec_cmd("~/.config/carbon/scripts/carbon-drop.sh"))
 
 -- ==============================================================================
 -- WORKSPACES
@@ -118,10 +142,9 @@ hl.bind(mainMod .. " + mouse:273", hl.dsp.window.resize(), { mouse = true })
 -- ==============================================================================
 -- HARDWARE & MEDIA KEYS
 -- ==============================================================================
-local homeDir = os.getenv("HOME") or ""
-hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd(homeDir .. "/.config/hypr/scripts/volume.sh --inc"), { repeating = true, locked = true })
-hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd(homeDir .. "/.config/hypr/scripts/volume.sh --dec"), { repeating = true, locked = true })
-hl.bind("XF86AudioMute", hl.dsp.exec_cmd(homeDir .. "/.config/hypr/scripts/volume.sh --toggle"), { repeating = true, locked = true })
+hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("~/.config/carbon/scripts/volume.sh --inc"), { repeating = true, locked = true })
+hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("~/.config/carbon/scripts/volume.sh --dec"), { repeating = true, locked = true })
+hl.bind("XF86AudioMute", hl.dsp.exec_cmd("~/.config/carbon/scripts/volume.sh --toggle"), { repeating = true, locked = true })
 hl.bind("XF86AudioMicMute", hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"), { repeating = true, locked = true })
 hl.bind("XF86MonBrightnessUp", hl.dsp.exec_cmd("brightnessctl set +5%"), { repeating = true, locked = true })
 hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("brightnessctl set 5%-"), { repeating = true, locked = true })
@@ -129,3 +152,7 @@ hl.bind("XF86AudioNext", hl.dsp.exec_cmd("playerctl next"), { locked = true })
 hl.bind("XF86AudioPause", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
 hl.bind("XF86AudioPlay", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
 hl.bind("XF86AudioPrev", hl.dsp.exec_cmd("playerctl previous"), { locked = true })
+hl.bind("XF86PowerOff", hl.dsp.exec_cmd("~/.config/carbon/scripts/carbon-power-handler.sh power_button"), { locked = true })
+hl.bind("XF86Sleep", hl.dsp.exec_cmd("~/.config/carbon/scripts/carbon-power-handler.sh sleep_button"), { locked = true })
+hl.bind("switch:on:Lid Switch", hl.dsp.exec_cmd("~/.config/carbon/scripts/carbon-power-handler.sh lid_close"), { locked = true })
+hl.bind("switch:off:Lid Switch", hl.dsp.exec_cmd("~/.config/carbon/scripts/carbon-power-handler.sh lid_open"), { locked = true })

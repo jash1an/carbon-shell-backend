@@ -324,15 +324,19 @@ Item {
         if (!item) return
         var title = item.name || item.filename || item.id || "Wallpaper"
         root.wallpaperApplyStarted(title)
+
+        // Close wallpaper picker immediately without delay
         root.closeRequested()
 
         root.activeDownloadId = ""
         root.downloadStatus = ""
 
         if (item.is_local) {
-            // Directly apply local wallpaper
-            applyProc.command = ["python3", root.wallhavenScript, "apply", item.path]
-            applyProc.running = true
+            // Apply immediately in Quickshell display buffer without waiting for script
+            Quickshell.execDetached([(Quickshell.env("CARBON_CONFIG_DIR") || ((Quickshell.env("HOME") || "") + "/.config/carbon")) + "/scripts/carbon-ipc.sh", "apply-wallpaper " + item.path])
+            // Run system apply script in detached background process so UI never stalls
+            Quickshell.execDetached(["python3", root.wallhavenScript, "apply", item.path])
+            root.wallpaperApplyFinished()
         } else {
             // Download from Wallhaven then apply
             downloadProc.buffer = ""
@@ -383,13 +387,13 @@ Item {
 
     Behavior on opacity {
         NumberAnimation {
-            duration: root.open ? 260 : 160
+            duration: root.open ? 220 : 120
             easing.type: root.open ? Easing.OutCubic : Easing.InQuad
         }
     }
     Behavior on scale {
         NumberAnimation {
-            duration: root.open ? 260 : 160
+            duration: root.open ? 220 : 120
             easing.type: root.open ? Easing.OutCubic : Easing.InQuad
         }
     }

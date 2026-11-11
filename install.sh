@@ -169,7 +169,7 @@ if [[ "$NO_DEPS" -eq 0 ]]; then
     if [[ ${#MISSING[@]} -gt 0 ]]; then
         warn "Missing dependencies: ${MISSING[*]}"
         if prompt_confirm "Install missing packages with pacman/yay? [Y/n]: " "Y"; then
-            PKGS=(hyprland quickshell python python-pillow python-gobject gtk4 libadwaita cava playerctl brightnessctl grim slurp socat jq fastfetch pipewire wireplumber ttf-jetbrains-mono-nerd)
+            PKGS=(hyprland quickshell python python-pillow python-gobject gtk4 libadwaita cava playerctl brightnessctl grim slurp socat jq fastfetch pipewire wireplumber ttf-jetbrains-mono-nerd hyprsunset)
             if command -v yay >/dev/null 2>&1; then
                 yay -S --needed --noconfirm "${PKGS[@]}" || true
             else

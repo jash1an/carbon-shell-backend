@@ -60,7 +60,15 @@ DisplaysTab DisplaysTab.qml
 AudioTab AudioTab.qml
 NetworkTab NetworkTab.qml
 ModesTab ModesTab.qml
+InputTab InputTab.qml
+PowerTab PowerTab.qml
+SystemTab SystemTab.qml
 FocusHUD FocusHUD.qml
 FocusHUDBackground FocusHUDBackground.qml
 CommandCenter CommandCenter.qml
 SpatialCanvas SpatialCanvas.qml
+LauncherTab LauncherTab.qml
+DefaultAppsTab DefaultAppsTab.qml
+NotificationsTab NotificationsTab.qml
+LockScreenTab LockScreenTab.qml
+PersonalizationTab PersonalizationTab.qml

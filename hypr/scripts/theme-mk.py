@@ -103,6 +103,35 @@ def resolve_source_wallpaper():
     return None
 
 
+def resolve_scheme():
+    for i, arg in enumerate(sys.argv):
+        if arg in ("--scheme", "-s") and i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+    for p_dir in [CARBON_CONFIG_DIR, os.path.expanduser("~/.config/carbon"), os.path.expanduser("~/.config/hypr")]:
+        sf = os.path.join(p_dir, "carbon-scheme.txt")
+        if os.path.isfile(sf):
+            try:
+                with open(sf, "r", encoding="utf-8") as f:
+                    s = f.read().strip()
+                if s:
+                    return s
+            except Exception:
+                pass
+    return "Tonal Spot"
+
+
+def map_scheme_to_matugen_type(scheme_str):
+    s = scheme_str.lower().strip()
+    if "expressive" in s:
+        return "scheme-expressive"
+    elif "fidelity" in s:
+        return "scheme-fidelity"
+    elif "monochrome" in s or "mono" in s:
+        return "scheme-monochrome"
+    else:
+        return "scheme-tonal-spot"
+
+
 def resolve_mode():
     for i, arg in enumerate(sys.argv):
         if arg in ("--light", "-l"):
@@ -128,7 +157,11 @@ def resolve_mode():
 
 
 def get_image_frame_for_analysis(src_path):
-    """If the wallpaper is a video or gif, return a static frame path."""
+    """If a cached screen-scaled image exists, use it for instant color quantization."""
+    scaled = os.path.join(CACHE_DIR, "wallpaper_scaled.jpg")
+    if os.path.isfile(scaled) and os.path.getsize(scaled) > 0:
+        return scaled
+
     ext = os.path.splitext(src_path)[1].lower()
     if ext in {".mp4", ".m4v", ".webm", ".mkv", ".gif"}:
         thumb = os.path.join(CACHE_DIR, "wp_temp_frame.jpg")
@@ -351,16 +384,20 @@ def pick_matugen_source_color_index(img_path):
         return 0
 
 
-def extract_matugen_palette(img_path, mode="dark", color_index=None):
+def extract_matugen_palette(img_path, mode="dark", color_index=None, scheme_type="scheme-tonal-spot"):
     try:
         env = {**os.environ, "MATUGEN_NO_HOOK": "1"}
-        cmd = ["matugen", "image", "--prefer", "saturation", "-j", "hex", "-m", mode]
-        if color_index is not None:
+        cmd = ["matugen", "image", "-t", scheme_type, "--prefer", "saturation", "-j", "hex", "-m", mode]
+        if color_index is not None and scheme_type != "scheme-monochrome":
             cmd.extend(["--source-color-index", str(color_index)])
         cmd.append(img_path)
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=5.0, env=env)
         if res.returncode == 0 and res.stdout.strip():
-            data = json.loads(res.stdout)
+            raw_out = res.stdout.strip()
+            last_brace = raw_out.rfind("}")
+            if last_brace != -1:
+                raw_out = raw_out[:last_brace+1]
+            data = json.loads(raw_out)
             colors = data.get("colors", {})
             def get_c(key, fallback):
                 node = colors.get(key, {})
@@ -410,8 +447,11 @@ def main():
         print("theme-mk: no valid wallpaper source found", file=sys.stderr)
         sys.exit(0)
 
+    scheme_raw = resolve_scheme()
+    mat_type = map_scheme_to_matugen_type(scheme_raw)
+
     analysis_img = get_image_frame_for_analysis(src_wp)
-    is_mono = is_monochrome_image(analysis_img)
+    is_mono = is_monochrome_image(analysis_img) or (mat_type == "scheme-monochrome")
     wp_lower = os.path.basename(src_wp).lower()
     if "carbon" in wp_lower or "black" in wp_lower or "mono" in wp_lower:
         is_mono = True
@@ -442,11 +482,16 @@ def main():
                 ["matugen", "color", "hex", "111111" if mode == "light" else "ffffff", "-t", "scheme-monochrome", "-m", mode],
                 capture_output=True, timeout=4.0, env=env
             )
+            # Also render config templates with scheme-monochrome using fast scaled image
+            subprocess.run(
+                ["matugen", "image", "-t", "scheme-monochrome", "-m", mode, analysis_img],
+                capture_output=True, timeout=4.0, env=env
+            )
         except Exception:
             pass
     else:
         best_color_idx = pick_matugen_source_color_index(analysis_img)
-        m3 = extract_matugen_palette(analysis_img, mode=mode, color_index=best_color_idx)
+        m3 = extract_matugen_palette(analysis_img, mode=mode, color_index=best_color_idx, scheme_type=mat_type)
         if m3:
             accent_hex = m3["primary"]
             accent_lit_hex = m3["primaryContainer"]
@@ -456,16 +501,6 @@ def main():
             bg_alt_hex = m3["surfaceContainerHigh"]
             fg_hex = m3["onSurface"]
             outline_hex = m3["outline"]
-            try:
-                env = {**os.environ, "MATUGEN_NO_HOOK": "1"}
-                cmd_render = ["matugen", "image", "--prefer", "saturation", "-m", mode]
-                if best_color_idx is not None:
-                    cmd_render.extend(["--source-color-index", str(best_color_idx)])
-                cmd_render.append(src_wp)
-                subprocess.run(cmd_render, capture_output=True, timeout=4.0, env=env)
-            except Exception:
-                pass
-
         else:
             pal = extract_wallpaper_palette(analysis_img)
             accent_hex = pal["accent"]
@@ -495,6 +530,7 @@ def main():
         "err": ERR,
         "isDark": (mode == "dark"),
         "mode": mode,
+        "scheme": scheme_raw,
     }
 
     # Write theme.json directly to both carbon and hypr configs (preserving inode for inotify)
@@ -513,7 +549,7 @@ def main():
         "name": "carbon-dynamic",
         "flavour": mode,
         "mode": mode,
-        "variant": "tonalspot",
+        "variant": mat_type.replace("scheme-", ""),
         "colours": {
             "primary": accent_hex.lstrip("#"),
             "onPrimary": on_accent_hex.lstrip("#"),

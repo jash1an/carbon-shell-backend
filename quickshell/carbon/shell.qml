@@ -753,19 +753,18 @@ ShellRoot {
     function closeOverview() { root.overviewOpen = false }
     function toggleOverview() { root.overviewOpen = !root.overviewOpen }
 
-    /* Wallpaper transition state */
+    /* Wallpaper transition state (disabled) */
     property bool wallpaperTransitionOpen: false
     property bool wallpaperTransitionPendingFinish: false
     property string wallpaperTransitionText: "Applying Wallpaper"
 
     function startWallpaperTransition(name) {
-        root.wallpaperTransitionText = "Applying Wallpaper"
-        root.wallpaperTransitionPendingFinish = false
-        root.wallpaperTransitionOpen = true
+        // Disabled: wallpaper changes crossfade cleanly without splash blob
+        root.wallpaperTransitionOpen = false
     }
 
     function finishWallpaperTransition() {
-        root.wallpaperTransitionPendingFinish = true
+        root.wallpaperTransitionOpen = false
     }
 
     function openLauncher() {
@@ -2598,6 +2597,7 @@ ShellRoot {
             WlrLayershell.layer: WlrLayer.Background
             exclusionMode: ExclusionMode.Ignore
             anchors { top: true; left: true; right: true; bottom: true }
+            visible: wpInstance.isNeeded
 
             WallpaperMod {
                 id: wpInstance
@@ -4178,9 +4178,9 @@ ShellRoot {
         }
     }
 
-    /* Wallpaper Transition Overlay */
+    /* Wallpaper Transition Overlay (Disabled) */
     Variants {
-        model: (root.barMode === "minimal" || root.barMode === "minimal_notch" || !root.wallpaperTransitionOpen) ? [] : Quickshell.screens
+        model: []
 
         PanelWindow {
             id: wallpaperTransitionWindow

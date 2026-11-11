@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-export GSK_RENDERER="cairo"
 CONFIG_DIR="${CARBON_CONFIG_DIR:-$HOME/.config/carbon}"
-SCRIPT="$CONFIG_DIR/scripts/carbon-config-editor.py"
-[ -f "$SCRIPT" ] || SCRIPT="$HOME/.config/hypr/scripts/carbon-config-editor.py"
-exec /usr/bin/python3 "$SCRIPT" "$@"
+HUB_SCRIPT="$CONFIG_DIR/scripts/carbon-settings-hub"
+[ -f "$HUB_SCRIPT" ] || HUB_SCRIPT="$HOME/.config/hypr/scripts/carbon-settings-hub"
+if [ -x "$HUB_SCRIPT" ]; then
+    exec "$HUB_SCRIPT" "$@"
+fi
+exec "$HOME/.local/bin/carbon-settings-hub" "$@"

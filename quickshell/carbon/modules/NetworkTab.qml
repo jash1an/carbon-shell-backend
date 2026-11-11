@@ -9,6 +9,10 @@ import "../components"
 Item {
     id: root
 
+    property var hub: null
+    function describe(name, desc) { if (hub && hub.describe) hub.describe(name, desc) }
+    function clearDesc() { if (hub && hub.clearDescription) hub.clearDescription() }
+
     implicitWidth: 800
     implicitHeight: 600
 
@@ -112,6 +116,14 @@ Item {
                 color: Qt.rgba(0, 0, 0, 0.30)
                 border.color: Qt.rgba(1, 1, 1, 0.08)
                 border.width: 1
+
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.NoButton
+                    onEntered: root.describe("Network Telemetry", "Local IP, Default Gateway, and ICMP round-trip ping latency.")
+                    onExited: root.clearDesc()
+                }
 
                 RowLayout {
                     anchors.fill: parent
@@ -243,6 +255,11 @@ Item {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
+                            ToolTip.visible: containsMouse
+                            ToolTip.text: WifiController.enabled ? "Turn Wi-Fi radio off" : "Turn Wi-Fi radio on"
+                            ToolTip.delay: 300
+                            onEntered: root.describe("Wi-Fi Radio Power", "Master toggle to enable or disable the wireless network hardware adapter.")
+                            onExited: root.clearDesc()
                             onClicked: {
                                 WifiController.setEnabled(!WifiController.enabled)
                             }
@@ -319,6 +336,11 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "Search for nearby Wi-Fi networks"
+                                ToolTip.delay: 300
+                                onEntered: root.describe("Rescan Wireless Networks", "Broadcast 802.11 probe requests to discover nearby Wi-Fi access points.")
+                                onExited: root.clearDesc()
                                 onClicked: WifiController.refreshNetworks(true)
                             }
                         }
@@ -580,6 +602,11 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 z: -1
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: (modelData.ssid || "Hidden Network") + " (" + (modelData.signal || 50) + "% signal)"
+                                ToolTip.delay: 300
+                                onEntered: root.describe("Network: " + (modelData.ssid || "Hidden Network"), (isCurrent ? "Currently connected network. " : (modelData.saved ? "Saved network. " : "")) + (modelData.security || "Open") + " • Signal: " + (modelData.signal || 50) + "%")
+                                onExited: root.clearDesc()
                                 onClicked: {
                                     if (!isCurrent) {
                                         if (root.selectedSsid === modelData.ssid) root.selectedSsid = ""
@@ -630,6 +657,17 @@ Item {
                             border.color: Qt.rgba(1, 1, 1, 0.08)
                             border.width: 1
 
+                            MouseArea {
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                acceptedButtons: Qt.NoButton
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "wlp2s0: " + (WifiController.enabled ? "UP / 802.11ac" : "DOWN")
+                                ToolTip.delay: 300
+                                onEntered: root.describe("Wireless Interface (wlp2s0)", "Wi-Fi adapter hardware link status and 802.11 protocol mode.")
+                                onExited: root.clearDesc()
+                            }
+
                             RowLayout {
                                 anchors.fill: parent
                                 anchors.margins: Theme.px(12)
@@ -672,6 +710,17 @@ Item {
                             color: Qt.rgba(1, 1, 1, 0.03)
                             border.color: Qt.rgba(1, 1, 1, 0.08)
                             border.width: 1
+
+                            MouseArea {
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                acceptedButtons: Qt.NoButton
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "enp1s0: Cable Disconnected"
+                                ToolTip.delay: 300
+                                onEntered: root.describe("Ethernet Interface (enp1s0)", "Physical wired LAN adapter link state and carrier status.")
+                                onExited: root.clearDesc()
+                            }
 
                             RowLayout {
                                 anchors.fill: parent

@@ -27,6 +27,10 @@ import "../components"
 Item {
     id: root
 
+    property var hub: null
+    function describe(name, desc) { if (hub && hub.describe) hub.describe(name, desc) }
+    function clearDesc() { if (hub && hub.clearDescription) hub.clearDescription() }
+
     implicitWidth: 800
     implicitHeight: 600
 
@@ -399,9 +403,9 @@ Item {
 
                     Repeater {
                         model: [
-                            { name: "Screen Notch", glyph: "󰹑" },
-                            { name: "Minimal Island", glyph: "󰝥" },
-                            { name: "Vanish", glyph: "󱐋" }
+                            { name: "Screen Notch", glyph: "󰹑", desc: "Three-piece architectural status bar with bezel fillets and expandable chronometer." },
+                            { name: "Minimal Island", glyph: "󰝥", desc: "Compact floating dynamic island capsule with real-time waveform and media controls." },
+                            { name: "Vanish", glyph: "󱐋", desc: "Zero-bezel immersion mode with floating kinetic orbital widgets." }
                         ]
 
                         delegate: Item {
@@ -433,7 +437,13 @@ Item {
 
                             MouseArea {
                                 anchors.fill: parent
+                                hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: modelData.desc
+                                ToolTip.delay: 300
+                                onEntered: root.describe(modelData.name + " Mode", modelData.desc)
+                                onExited: root.clearDesc()
                                 onClicked: {
                                     if (root.currentMode !== index) {
                                         rubberAnim.restart()
@@ -1164,7 +1174,13 @@ Item {
 
                                     MouseArea {
                                         anchors.fill: parent
+                                        hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
+                                        ToolTip.visible: containsMouse
+                                        ToolTip.text: "View notch clock and layout designs"
+                                        ToolTip.delay: 300
+                                        onEntered: root.describe("Notch Designs", "Browse animated chronometer styles and visual designs for the screen notch.")
+                                        onExited: root.clearDesc()
                                         onClicked: root.activeSubSection = "Designs"
                                     }
                                 }
@@ -1188,7 +1204,13 @@ Item {
 
                                     MouseArea {
                                         anchors.fill: parent
+                                        hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
+                                        ToolTip.visible: containsMouse
+                                        ToolTip.text: "Configure notch geometry, fillets, and bottom bar settings"
+                                        ToolTip.delay: 300
+                                        onEntered: root.describe("Notch Settings", "Fine-tune notch height, fillets, corner radii, and bottom clearance.")
+                                        onExited: root.clearDesc()
                                         onClicked: root.activeSubSection = "Settings"
                                     }
                                 }
@@ -1235,6 +1257,11 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: parent.isEnabled ? "Disable Notch Mode (switch to Vanish)" : "Activate Notch Mode"
+                                ToolTip.delay: 300
+                                onEntered: root.describe("Activate Notch Mode", "Engage three-piece architectural notch status bar along the top screen bezel.")
+                                onExited: root.clearDesc()
                                 onClicked: {
                                     if (parent.isEnabled) {
                                         root.activateMode("nucleus")
@@ -1325,7 +1352,13 @@ Item {
 
                                             MouseArea {
                                                 anchors.fill: parent
+                                                hoverEnabled: true
                                                 cursorShape: Qt.PointingHandCursor
+                                                ToolTip.visible: containsMouse
+                                                ToolTip.text: "Navigate to bottom dock settings"
+                                                ToolTip.delay: 300
+                                                onEntered: root.describe("Configure Bottom Bar", "Switch to settings tab to adjust dock position, clearance, and autohide behavior.")
+                                                onExited: root.clearDesc()
                                                 onClicked: root.activeSubSection = "Settings"
                                             }
                                         }
@@ -1438,7 +1471,13 @@ Item {
 
                                                 MouseArea {
                                                     anchors.fill: parent
+                                                    hoverEnabled: true
                                                     cursorShape: Qt.PointingHandCursor
+                                                    ToolTip.visible: containsMouse
+                                                    ToolTip.text: "Dual-ring orbital chronometer with rotating reticle"
+                                                    ToolTip.delay: 300
+                                                    onEntered: root.describe("Tactical Chronometer", "Dual-ring orbital chronometer with rotating reticle, pulsing seconds & date.")
+                                                    onExited: root.clearDesc()
                                                     onClicked: root.selectedClockDesign = "tactical_chrono"
                                                 }
                                             }
@@ -1607,6 +1646,11 @@ Item {
                                                         anchors.fill: parent
                                                         hoverEnabled: true
                                                         cursorShape: Qt.PointingHandCursor
+                                                        ToolTip.visible: containsMouse
+                                                        ToolTip.text: "Select " + modelData.name + " indicator glyphs"
+                                                        ToolTip.delay: 300
+                                                        onEntered: root.describe("Workspace Glyphs: " + modelData.name, "Use " + modelData.active + " and " + modelData.inactive + " for active and inactive workspaces.")
+                                                        onExited: root.clearDesc()
                                                         onClicked: {
                                                             root.selectedActiveGlyph = modelData.active
                                                             root.selectedInactiveGlyph = modelData.inactive
@@ -1709,6 +1753,11 @@ Item {
                                                         anchors.fill: parent
                                                         hoverEnabled: true
                                                         cursorShape: Qt.PointingHandCursor
+                                                        ToolTip.visible: containsMouse
+                                                        ToolTip.text: "Select " + modelData.name + " emblem"
+                                                        ToolTip.delay: 300
+                                                        onEntered: root.describe("Emblem: " + modelData.name, "Set " + modelData.name + " (" + modelData.icon + ") as the workspace switcher brand icon.")
+                                                        onExited: root.clearDesc()
                                                         onClicked: {
                                                             root.selectedLogo = modelData.icon
                                                             if (typeof Theme !== "undefined") {
@@ -1801,7 +1850,13 @@ Item {
 
                                             MouseArea {
                                                 anchors.fill: parent
+                                                hoverEnabled: true
                                                 cursorShape: Qt.PointingHandCursor
+                                                ToolTip.visible: containsMouse
+                                                ToolTip.text: "Dock notch bars to the bottom of the screen"
+                                                ToolTip.delay: 300
+                                                onEntered: root.describe("Dock to Bottom", "Move the screen notch bars to the bottom edge of the display.")
+                                                onExited: root.clearDesc()
                                                 onClicked: root.dockToBottom()
                                             }
                                         }
@@ -1873,7 +1928,13 @@ Item {
 
                                                 MouseArea {
                                                     anchors.fill: parent
+                                                    hoverEnabled: true
                                                     cursorShape: Qt.PointingHandCursor
+                                                    ToolTip.visible: containsMouse
+                                                    ToolTip.text: "Dock notch bars to the top of the screen"
+                                                    ToolTip.delay: 300
+                                                    onEntered: root.describe("Dock to Top", "Move the screen notch bars to the top edge of the display.")
+                                                    onExited: root.clearDesc()
                                                     onClicked: root.dockToTop()
                                                 }
                                             }
@@ -1882,6 +1943,7 @@ Item {
                                         RazorWireSlider {
                                             Layout.fillWidth: true
                                             label: "Bottom Window Clearance / App Gap"
+                                            description: "Clearance margin between bottom tiled windows and the dock."
                                             from: 0
                                             to: 32
                                             value: root.previewBottomGap
@@ -1895,6 +1957,7 @@ Item {
                                         RazorWireSlider {
                                             Layout.fillWidth: true
                                             label: "Bottom Edge Lift / Offset"
+                                            description: "Vertical floating lift offset from the bottom physical display edge."
                                             from: 0
                                             to: 20
                                             value: root.previewBottomOffset
@@ -1947,7 +2010,13 @@ Item {
 
                                                 MouseArea {
                                                     anchors.fill: parent
+                                                    hoverEnabled: true
                                                     cursorShape: Qt.PointingHandCursor
+                                                    ToolTip.visible: containsMouse
+                                                    ToolTip.text: "Reserve space on bottom bezel for dock"
+                                                    ToolTip.delay: 300
+                                                    onEntered: root.describe("Reserve Space on Bottom Bezel", "Pushes tiled and maximized windows upward to prevent overlapping the bottom notch bars.")
+                                                    onExited: root.clearDesc()
                                                     onClicked: {
                                                         root.previewBottomExclusiveZone = !root.previewBottomExclusiveZone
                                                         root.saveBottomSetting("exclusiveZone", root.previewBottomExclusiveZone)
@@ -1998,7 +2067,13 @@ Item {
 
                                                 MouseArea {
                                                     anchors.fill: parent
+                                                    hoverEnabled: true
                                                     cursorShape: Qt.PointingHandCursor
+                                                    ToolTip.visible: containsMouse
+                                                    ToolTip.text: "Tuck notch away when window is focused fullscreen"
+                                                    ToolTip.delay: 300
+                                                    onEntered: root.describe("Smart Bottom Autohide", "Smoothly tuck the notch bar away when a window is focused in full screen mode.")
+                                                    onExited: root.clearDesc()
                                                     onClicked: {
                                                         root.previewBottomAutohide = !root.previewBottomAutohide
                                                         root.saveBottomSetting("autohide", root.previewBottomAutohide)
@@ -2044,6 +2119,7 @@ Item {
                                         RazorWireSlider {
                                             Layout.fillWidth: true
                                             label: "Notch Height"
+                                            description: "Vertical thickness profile of the top screen notch bars."
                                             from: 26
                                             to: 48
                                             value: root.previewNotchHeight
@@ -2054,6 +2130,7 @@ Item {
                                         RazorWireSlider {
                                             Layout.fillWidth: true
                                             label: "Ear Curvature Fillet Radius"
+                                            description: "Smooth continuous curvature radius connecting the notch to the screen bezel."
                                             from: 4
                                             to: 20
                                             value: root.previewEarRadius
@@ -2064,6 +2141,7 @@ Item {
                                         RazorWireSlider {
                                             Layout.fillWidth: true
                                             label: "Bottom Corner Convex Radius"
+                                            description: "Rounded corner radius on the downward-facing edges of the notch."
                                             from: 6
                                             to: 24
                                             value: root.previewBottomRadius
@@ -2108,6 +2186,7 @@ Item {
                                         RazorWireSlider {
                                             Layout.fillWidth: true
                                             label: "Notch Surface Opacity"
+                                            description: "Glass transparency level of the status notch surfaces."
                                             from: 0.20
                                             to: 1.00
                                             value: root.previewNotchOpacity
@@ -2118,6 +2197,7 @@ Item {
                                         RazorWireSlider {
                                             Layout.fillWidth: true
                                             label: "Screen / App Gaps"
+                                            description: "Spacing padding between the notch edge and active application windows."
                                             from: 0
                                             to: 24
                                             value: root.previewAppGap
@@ -2167,7 +2247,13 @@ Item {
 
                                                 MouseArea {
                                                     anchors.fill: parent
+                                                    hoverEnabled: true
                                                     cursorShape: Qt.PointingHandCursor
+                                                    ToolTip.visible: containsMouse
+                                                    ToolTip.text: "Toggle notch dual-kawase blur shader"
+                                                    ToolTip.delay: 300
+                                                    onEntered: root.describe("Hardware Dual-Kawase Blur", "Real-time background frosting beneath notch surfaces.")
+                                                    onExited: root.clearDesc()
                                                     onClicked: root.previewBlur = !root.previewBlur
                                                 }
                                             }
@@ -2921,7 +3007,13 @@ Item {
 
                                     MouseArea {
                                         anchors.fill: parent
+                                        hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
+                                        ToolTip.visible: containsMouse
+                                        ToolTip.text: "View dynamic island layout designs"
+                                        ToolTip.delay: 300
+                                        onEntered: root.describe("Island Designs", "Browse dynamic island styles including Minimal Digital, Valley Typographic, and Cyber Capsule.")
+                                        onExited: root.clearDesc()
                                         onClicked: root.minimalSubSection = "Designs"
                                     }
                                 }
@@ -2945,7 +3037,13 @@ Item {
 
                                     MouseArea {
                                         anchors.fill: parent
+                                        hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
+                                        ToolTip.visible: containsMouse
+                                        ToolTip.text: "Configure dynamic island geometry, blur, and behavior"
+                                        ToolTip.delay: 300
+                                        onEntered: root.describe("Island Settings", "Fine-tune capsule dimensions, top margin, glass blur shaders, and autohide triggers.")
+                                        onExited: root.clearDesc()
                                         onClicked: root.minimalSubSection = "Settings"
                                     }
                                 }
@@ -2987,7 +3085,13 @@ Item {
                             MouseArea {
                                 id: minViewMouse
                                 anchors.fill: parent
+                                hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "Toggle preview between active audio visualizer and digital clock"
+                                ToolTip.delay: 300
+                                onEntered: root.describe("Preview View Mode", "Switch interactive preview between music media display and time status.")
+                                onExited: root.clearDesc()
                                 onClicked: root.minimalActiveView = (root.minimalActiveView === "music") ? "time" : "music"
                             }
                         }
@@ -3025,7 +3129,13 @@ Item {
                             MouseArea {
                                 id: minStyleMouse
                                 anchors.fill: parent
+                                hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: root.minimalCapsuleStyle === "notch" ? "Docked Bezel Notch Style" : "Floating Dynamic Pill Style"
+                                ToolTip.delay: 300
+                                onEntered: root.describe("Capsule Docking Style", "Toggle between floating island pill and docked bezel-flush notch geometry.")
+                                onExited: root.clearDesc()
                                 onClicked: {
                                     root.minimalCapsuleStyle = (root.minimalCapsuleStyle === "notch") ? "pill" : "notch"
                                     root.saveTideConfig("notchMode", root.minimalCapsuleStyle === "notch")
@@ -3066,7 +3176,13 @@ Item {
                             MouseArea {
                                 id: minExpandMouse
                                 anchors.fill: parent
+                                hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: root.minimalCardExpanded ? "Collapse preview island card" : "Expand preview island card"
+                                ToolTip.delay: 300
+                                onEntered: root.describe("Preview Expand State", "Toggle expanded card state showing detailed telemetry and media actions.")
+                                onExited: root.clearDesc()
                                 onClicked: root.minimalCardExpanded = !root.minimalCardExpanded
                             }
                         }
@@ -3109,6 +3225,11 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: parent.isEnabled ? "Disable Minimal Island (switch to Notch)" : "Activate Minimal Island Mode"
+                                ToolTip.delay: 300
+                                onEntered: root.describe("Activate Minimal Island", "Engage compact floating dynamic island capsule with real-time waveform and media.")
+                                onExited: root.clearDesc()
                                 onClicked: {
                                     if (parent.isEnabled) {
                                         root.activateMode("notch")
@@ -3218,7 +3339,13 @@ Item {
 
                                         MouseArea {
                                             anchors.fill: parent
+                                            hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
+                                            ToolTip.visible: containsMouse
+                                            ToolTip.text: "Select Minimal Digital Pill layout"
+                                            ToolTip.delay: 300
+                                            onEntered: root.describe("Minimal Digital Pill", "Floating rounded pill with live digital clock, battery telemetry, and fluid media morphing.")
+                                            onExited: root.clearDesc()
                                             onClicked: root.selectedMinimalDesign = "minimal_digital"
                                         }
                                     }
@@ -3261,7 +3388,13 @@ Item {
 
                                         MouseArea {
                                             anchors.fill: parent
+                                            hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
+                                            ToolTip.visible: containsMouse
+                                            ToolTip.text: "Select Valley Typographic layout"
+                                            ToolTip.delay: 300
+                                            onEntered: root.describe("Valley Typographic", "Expanded calendar typography with stylized day headings and minimalist time.")
+                                            onExited: root.clearDesc()
                                             onClicked: root.selectedMinimalDesign = "valley_typo"
                                         }
                                     }
@@ -3304,7 +3437,13 @@ Item {
 
                                         MouseArea {
                                             anchors.fill: parent
+                                            hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
+                                            ToolTip.visible: containsMouse
+                                            ToolTip.text: "Select Tactical Cyber Capsule layout"
+                                            ToolTip.delay: 300
+                                            onEntered: root.describe("Tactical Cyber Capsule", "Cyberpunk bracket borders with monospaced telemetry counters and high-contrast audio indicators.")
+                                            onExited: root.clearDesc()
                                             onClicked: root.selectedMinimalDesign = "tactical_capsule"
                                         }
                                     }
@@ -3369,7 +3508,13 @@ Item {
 
                                                 MouseArea {
                                                     anchors.fill: parent
+                                                    hoverEnabled: true
                                                     cursorShape: Qt.PointingHandCursor
+                                                    ToolTip.visible: containsMouse
+                                                    ToolTip.text: "Toggle live synced lyrics inside the dynamic island capsule"
+                                                    ToolTip.delay: 300
+                                                    onEntered: root.describe("Synced Lyrics in Capsule", "Scroll kinetic karaoke lines live inside the capsule while music is playing.")
+                                                    onExited: root.clearDesc()
                                                     onClicked: root.previewIslandSyncedLyrics = !root.previewIslandSyncedLyrics
                                                 }
                                             }
@@ -3457,7 +3602,13 @@ Item {
 
                                             MouseArea {
                                                 anchors.fill: parent
+                                                hoverEnabled: true
                                                 cursorShape: Qt.PointingHandCursor
+                                                ToolTip.visible: containsMouse
+                                                ToolTip.text: root.minimalDockPosition === "top" ? "Dock island to bottom bezel" : "Dock island to top bezel"
+                                                ToolTip.delay: 300
+                                                onEntered: root.describe("Minimal Island Docking", "Toggle docking position between screen top and bottom.")
+                                                onExited: root.clearDesc()
                                                 onClicked: {
                                                     if (root.minimalDockPosition === "top") root.dockMinimalToBottom()
                                                     else root.dockMinimalToTop()
@@ -3493,6 +3644,7 @@ Item {
                                         RazorWireSlider {
                                             Layout.fillWidth: true
                                             label: "Island Resting Height"
+                                            description: "Vertical pill height of the minimal floating dynamic island."
                                             from: 20
                                             to: 50
                                             value: root.previewIslandHeight
@@ -3506,6 +3658,7 @@ Item {
                                         RazorWireSlider {
                                             Layout.fillWidth: true
                                             label: "Island Resting Width"
+                                            description: "Horizontal compact width of the minimal island capsule."
                                             from: 80
                                             to: 400
                                             value: root.previewIslandWidth
@@ -3519,6 +3672,7 @@ Item {
                                         RazorWireSlider {
                                             Layout.fillWidth: true
                                             label: "Top Margin (Floating Distance)"
+                                            description: "Distance between the top screen edge and the floating island."
                                             from: 0
                                             to: 24
                                             value: root.previewIslandTopMargin
@@ -3532,6 +3686,7 @@ Item {
                                         RazorWireSlider {
                                             Layout.fillWidth: true
                                             label: "Dock Ear Fillet Radius (Notch Style)"
+                                            description: "Corner fillet radius when docking the island flush to the bezel edge."
                                             from: 0
                                             to: 16
                                             value: root.previewNotchEarRadius
@@ -3570,6 +3725,7 @@ Item {
                                         RazorWireSlider {
                                             Layout.fillWidth: true
                                             label: "Island Surface Opacity"
+                                            description: "Background opacity percentage of the dynamic island capsule."
                                             from: 20
                                             to: 100
                                             value: Math.round(root.previewIslandOpacity * 100)
@@ -3617,7 +3773,13 @@ Item {
 
                                                 MouseArea {
                                                     anchors.fill: parent
+                                                    hoverEnabled: true
                                                     cursorShape: Qt.PointingHandCursor
+                                                    ToolTip.visible: containsMouse
+                                                    ToolTip.text: "Toggle backdrop blur shader behind island"
+                                                    ToolTip.delay: 300
+                                                    onEntered: root.describe("Frosted Glass Blur", "Enable real-time backdrop blur behind the minimal island capsule.")
+                                                    onExited: root.clearDesc()
                                                     onClicked: {
                                                         root.previewIslandBlur = !root.previewIslandBlur
                                                         root.saveTideConfig("shellBlurEnabled", root.previewIslandBlur)
@@ -3629,6 +3791,7 @@ Item {
                                         RazorWireSlider {
                                             Layout.fillWidth: true
                                             label: "Blur Radius Size"
+                                            description: "Gaussian blur kernel spread for backdrop glass effect behind the island."
                                             from: 1
                                             to: 16
                                             value: root.previewIslandBlurSize
@@ -3642,6 +3805,7 @@ Item {
                                         RazorWireSlider {
                                             Layout.fillWidth: true
                                             label: "Blur Sampling Passes"
+                                            description: "Number of compositor blur iteration passes for silk-smooth diffusion."
                                             from: 1
                                             to: 4
                                             value: root.previewIslandBlurPasses
@@ -3714,7 +3878,13 @@ Item {
 
                                                 MouseArea {
                                                     anchors.fill: parent
+                                                    hoverEnabled: true
                                                     cursorShape: Qt.PointingHandCursor
+                                                    ToolTip.visible: containsMouse
+                                                    ToolTip.text: "Toggle workspace change badge inside island"
+                                                    ToolTip.delay: 300
+                                                    onEntered: root.describe("Workspace Switch Indicator", "Display workspace badge when switching between virtual desktops.")
+                                                    onExited: root.clearDesc()
                                                     onClicked: {
                                                         root.previewShowWorkspaceCapsule = !root.previewShowWorkspaceCapsule
                                                         root.saveTideConfig("showWorkspaceCapsule", root.previewShowWorkspaceCapsule)
@@ -3760,7 +3930,13 @@ Item {
 
                                                 MouseArea {
                                                     anchors.fill: parent
+                                                    hoverEnabled: true
                                                     cursorShape: Qt.PointingHandCursor
+                                                    ToolTip.visible: containsMouse
+                                                    ToolTip.text: "Automatically hide minimal capsule when inactive"
+                                                    ToolTip.delay: 300
+                                                    onEntered: root.describe("Auto-Hide Island", "Automatically hide minimal capsule when inactive and reveal on bezel hover.")
+                                                    onExited: root.clearDesc()
                                                     onClicked: {
                                                         root.previewIslandAutoHide = !root.previewIslandAutoHide
                                                         root.saveTideConfig("islandAutoHideEnabled", root.previewIslandAutoHide)
@@ -4707,7 +4883,13 @@ Item {
 
                                     MouseArea {
                                         anchors.fill: parent
+                                        hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
+                                        ToolTip.visible: containsMouse
+                                        ToolTip.text: "View orbital designs and variations"
+                                        ToolTip.delay: 300
+                                        onEntered: root.describe("Vanish Designs", "Browse presets and topology variations for the barless Vanish orbital nucleus.")
+                                        onExited: root.clearDesc()
                                         onClicked: root.vanishSubSection = "Designs"
                                     }
                                 }
@@ -4732,7 +4914,13 @@ Item {
 
                                     MouseArea {
                                         anchors.fill: parent
+                                        hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
+                                        ToolTip.visible: containsMouse
+                                        ToolTip.text: "Configure Vanish mode dynamics and behavior"
+                                        ToolTip.delay: 300
+                                        onEntered: root.describe("Vanish Settings", "Configure transition shaders, resting desktop atom, and visualizer style.")
+                                        onExited: root.clearDesc()
                                         onClicked: root.vanishSubSection = "Settings"
                                     }
                                 }
@@ -4762,7 +4950,13 @@ Item {
                             MouseArea {
                                 id: vanishResetBtnMouse
                                 anchors.fill: parent
+                                hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "Reset draggable orbital lobes to default coordinates"
+                                ToolTip.delay: 300
+                                onEntered: root.describe("Reset Draggable Orbs", "Restores all four valence orbital satellites to their default symmetrical positions.")
+                                onExited: root.clearDesc()
                                 onClicked: root.resetOrbPositions()
                             }
                         }
@@ -4790,7 +4984,13 @@ Item {
                             MouseArea {
                                 id: vanishPreviewBtnMouse
                                 anchors.fill: parent
+                                hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "Toggle media player preview widget"
+                                ToolTip.delay: 300
+                                onEntered: root.describe("Media Preview", "Toggle test display of the kinetic audio player inside the orbital nucleus.")
+                                onExited: root.clearDesc()
                                 onClicked: root.vanishMediaPlaying = !root.vanishMediaPlaying
                             }
                         }
@@ -4835,6 +5035,11 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: parent.isEnabled ? "Disable Vanish Mode (switch back to Notch)" : "Activate Vanish Mode"
+                                ToolTip.delay: 300
+                                onEntered: root.describe("Activate Vanish Mode", "Engage barless zero-bezel immersion mode with floating kinetic orbital satellites.")
+                                onExited: root.clearDesc()
                                 onClicked: {
                                     if (parent.isEnabled) {
                                         root.activateMode("notch")
@@ -5095,6 +5300,11 @@ Item {
                                             anchors.fill: parent
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
+                                            ToolTip.visible: containsMouse
+                                            ToolTip.text: "Create a new custom orbital variation"
+                                            ToolTip.delay: 300
+                                            onEntered: root.describe("New Orbital Variation", "Launch custom orbital variation builder (available in upcoming update).")
+                                            onExited: root.clearDesc()
                                         }
                                     }
                                 }
@@ -5191,7 +5401,13 @@ Item {
 
                                                 MouseArea {
                                                     anchors.fill: parent
+                                                    hoverEnabled: true
                                                     cursorShape: Qt.PointingHandCursor
+                                                    ToolTip.visible: containsMouse
+                                                    ToolTip.text: "Toggle full-screen cinematic overlay during hub transitions"
+                                                    ToolTip.delay: 300
+                                                    onEntered: root.describe("Cinematic Transition Overlay", "Play full-screen cinematic overlay when opening or vanishing the hub.")
+                                                    onExited: root.clearDesc()
                                                     onClicked: {
                                                         root.vanishTransitionEnabled = !root.vanishTransitionEnabled
                                                         root.saveVanishConfig("nucleus.transition", root.vanishTransitionEnabled)
@@ -5201,57 +5417,18 @@ Item {
                                         }
 
                                         // Slider: Transition Duration
-                                        RowLayout {
+                                        RazorWireSlider {
                                             Layout.fillWidth: true
-                                            spacing: Theme.px(12)
-
-                                            ColumnLayout {
-                                                Layout.fillWidth: true
-                                                spacing: Theme.px(2)
-
-                                                Text {
-                                                    text: "Transition Duration"
-                                                    font.family: Theme.font
-                                                    font.pixelSize: Theme.fontPx(11.5)
-                                                    font.weight: Font.Medium
-                                                    color: "#FFFFFF"
-                                                }
-                                                Text {
-                                                    text: "Length of the wallpaper blur, satellite expansion, and atom collapse."
-                                                    font.family: Theme.font
-                                                    font.pixelSize: Theme.fontPx(9.5)
-                                                    color: Qt.rgba(1, 1, 1, 0.45)
-                                                }
-                                            }
-
-                                            Slider {
-                                                Layout.preferredWidth: Theme.px(160)
-
-                                                from: 300
-                                                to: 1500
-                                                stepSize: 50
-                                                value: root.vanishWallpaperDuration
-                                                onMoved: {
-                                                    root.vanishWallpaperDuration = Math.round(value)
-                                                    root.saveVanishConfig("wallpaperDuration", root.vanishWallpaperDuration)
-                                                }
-                                            }
-
-                                            Rectangle {
-                                                Layout.preferredWidth: Theme.px(54)
-
-                                                Layout.preferredHeight: Theme.px(22)
-
-                                                radius: Theme.px(4)
-
-                                                color: Qt.rgba(1, 1, 1, 0.08)
-                                                Text {
-                                                    anchors.centerIn: parent
-                                                    text: root.vanishWallpaperDuration + " ms"
-                                                    font.family: Theme.fontMono
-                                                    font.pixelSize: Theme.fontPx(9)
-                                                    color: Theme.primary
-                                                }
+                                            label: "Transition Duration"
+                                            description: "Length of the wallpaper blur, satellite expansion, and atom collapse in milliseconds."
+                                            from: 300
+                                            to: 1500
+                                            stepSize: 50
+                                            value: root.vanishWallpaperDuration
+                                            unit: "ms"
+                                            onMoved: function(v) {
+                                                root.vanishWallpaperDuration = Math.round(v)
+                                                root.saveVanishConfig("wallpaperDuration", root.vanishWallpaperDuration)
                                             }
                                         }
 
@@ -5313,6 +5490,11 @@ Item {
                                                             anchors.fill: parent
                                                             hoverEnabled: true
                                                             cursorShape: Qt.PointingHandCursor
+                                                            ToolTip.visible: containsMouse
+                                                            ToolTip.text: "Display \"" + modelData + "\" during hub transition"
+                                                            ToolTip.delay: 300
+                                                            onEntered: root.describe("Transition Wordmark: " + modelData, "Text momentarily flashed on screen when transitioning in Vanish mode.")
+                                                            onExited: root.clearDesc()
                                                             onClicked: {
                                                                 root.vanishTransitionWord = modelData
                                                                 root.saveVanishConfig("nucleus.transitionWord", modelData)
@@ -5408,7 +5590,13 @@ Item {
 
                                                 MouseArea {
                                                     anchors.fill: parent
+                                                    hoverEnabled: true
                                                     cursorShape: Qt.PointingHandCursor
+                                                    ToolTip.visible: containsMouse
+                                                    ToolTip.text: "Toggle visibility of resting 14px carbon atom on wallpaper"
+                                                    ToolTip.delay: 300
+                                                    onEntered: root.describe("Show Resting Atom", "Keep a minimalist 14px carbon atom visible on the wallpaper when all apps are minimized.")
+                                                    onExited: root.clearDesc()
                                                     onClicked: {
                                                         root.vanishShowRestingAtom = !root.vanishShowRestingAtom
                                                         root.saveVanishConfig("nucleus.showRestingAtom", root.vanishShowRestingAtom)
@@ -5448,9 +5636,9 @@ Item {
 
                                                 Repeater {
                                                     model: [
-                                                        { id: "hover", label: "Hover / Press Only" },
-                                                        { id: "always", label: "Always Spin" },
-                                                        { id: "never", label: "Static (No Spin)" }
+                                                        { id: "hover", label: "Hover / Press Only", desc: "Electron rings rotate only when hovering or clicking the atom." },
+                                                        { id: "always", label: "Always Spin", desc: "Electron rings continuously orbit the carbon nucleus at 60fps." },
+                                                        { id: "never", label: "Static (No Spin)", desc: "Completely static atom rings without orbital rotation." }
                                                     ]
                                                     delegate: Rectangle {
                                                         required property var modelData
@@ -5479,6 +5667,11 @@ Item {
                                                             anchors.fill: parent
                                                             hoverEnabled: true
                                                             cursorShape: Qt.PointingHandCursor
+                                                            ToolTip.visible: containsMouse
+                                                            ToolTip.text: modelData.desc
+                                                            ToolTip.delay: 300
+                                                            onEntered: root.describe("Resting Spin: " + modelData.label, modelData.desc)
+                                                            onExited: root.clearDesc()
                                                             onClicked: {
                                                                 root.vanishRestingSpin = modelData.id
                                                                 root.saveVanishConfig("nucleus.restingSpin", modelData.id)
@@ -5556,10 +5749,10 @@ Item {
 
                                                 Repeater {
                                                     model: [
-                                                        { id: "liquidHalo", label: "Liquid Halo" },
-                                                        { id: "orbitalWave", label: "Orbital Wave" },
-                                                        { id: "bars", label: "Classic Bars" },
-                                                        { id: "none", label: "Disabled" }
+                                                        { id: "liquidHalo", label: "Liquid Halo", desc: "Fluid glowing neon ring responding to audio spectrum." },
+                                                        { id: "orbitalWave", label: "Orbital Wave", desc: "Elliptical waveform undulating around the atom core." },
+                                                        { id: "bars", label: "Classic Bars", desc: "Circular radial equalizer bars pulsating with music beats." },
+                                                        { id: "none", label: "Disabled", desc: "Disable audio visualizer effects in vanish mode." }
                                                     ]
                                                     delegate: Rectangle {
                                                         required property var modelData
@@ -5588,6 +5781,11 @@ Item {
                                                             anchors.fill: parent
                                                             hoverEnabled: true
                                                             cursorShape: Qt.PointingHandCursor
+                                                            ToolTip.visible: containsMouse
+                                                            ToolTip.text: modelData.desc
+                                                            ToolTip.delay: 300
+                                                            onEntered: root.describe("Music Visualizer: " + modelData.label, modelData.desc)
+                                                            onExited: root.clearDesc()
                                                             onClicked: {
                                                                 root.vanishMusicVisualizer = modelData.id
                                                                 root.saveVanishConfig("musicVisualizer", modelData.id)
@@ -5629,10 +5827,10 @@ Item {
 
                                                 Repeater {
                                                     model: [
-                                                        { id: "cinematic", label: "Cinematic" },
-                                                        { id: "fade", label: "Crossfade" },
-                                                        { id: "zoom", label: "Hyper Zoom" },
-                                                        { id: "slide", label: "Smooth Slide" }
+                                                        { id: "cinematic", label: "Cinematic", desc: "Film wipe with dynamic chromatic dispersion and blur." },
+                                                        { id: "fade", label: "Crossfade", desc: "Soft optical alpha dissolution between wallpapers." },
+                                                        { id: "zoom", label: "Hyper Zoom", desc: "High-velocity depth scale zoom effect during transition." },
+                                                        { id: "slide", label: "Smooth Slide", desc: "Horizontal directional slide transition." }
                                                     ]
                                                     delegate: Rectangle {
                                                         required property var modelData
@@ -5661,6 +5859,11 @@ Item {
                                                             anchors.fill: parent
                                                             hoverEnabled: true
                                                             cursorShape: Qt.PointingHandCursor
+                                                            ToolTip.visible: containsMouse
+                                                            ToolTip.text: modelData.desc
+                                                            ToolTip.delay: 300
+                                                            onEntered: root.describe("Wallpaper Transition: " + modelData.label, modelData.desc)
+                                                            onExited: root.clearDesc()
                                                             onClicked: {
                                                                 root.vanishWallpaperAnimation = modelData.id
                                                                 root.saveVanishConfig("wallpaperAnimation", modelData.id)

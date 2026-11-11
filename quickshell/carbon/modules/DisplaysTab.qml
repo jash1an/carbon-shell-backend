@@ -9,6 +9,10 @@ import "../components"
 Item {
     id: root
 
+    property var hub: null
+    function describe(name, desc) { if (hub && hub.describe) hub.describe(name, desc) }
+    function clearDesc() { if (hub && hub.clearDescription) hub.clearDescription() }
+
     implicitWidth: 800
     implicitHeight: 600
 
@@ -62,7 +66,8 @@ Item {
 
     // Global & Hardware states
     property real globalShellScale: (Theme && Theme.shellScale !== undefined) ? Theme.shellScale : 1.0
-    property int colorTemp: 6500
+    property int colorTemp: 4500
+    property bool nightLightEnabled: false
     property bool vrrEnabled: false
     property bool tenBitEnabled: false
     property bool directScanoutEnabled: true
@@ -80,6 +85,7 @@ Item {
             if (connected) {
                 root.sendHub({ "module": "display", "action": "get_monitors" })
                 root.sendHub({ "module": "display", "action": "get_shell_scale" })
+                root.sendHub({ "module": "display", "action": "get_night_light" })
             }
         }
 
@@ -100,6 +106,22 @@ Item {
                         } else if (resp.action === "get_shell_scale" || resp.action === "set_shell_scale") {
                             if (resp.data && resp.data.scale !== undefined) {
                                 root.globalShellScale = resp.data.scale
+                            }
+                        } else if (resp.action === "get_night_light" || resp.action === "set_night_light") {
+                            if (resp.data) {
+                                if (resp.data.enabled !== undefined) {
+                                    root.nightLightEnabled = Boolean(resp.data.enabled)
+                                }
+                                if (resp.data.temp !== undefined) {
+                                    root.colorTemp = resp.data.temp
+                                }
+                            }
+                        } else if (resp.action === "set_temperature") {
+                            if (resp.data && resp.data.temp !== undefined) {
+                                root.colorTemp = resp.data.temp
+                                if (resp.data.enabled !== undefined) {
+                                    root.nightLightEnabled = Boolean(resp.data.enabled)
+                                }
                             }
                         } else if (resp.action === "set_orientation") {
                             if (resp.data && resp.data.transform !== undefined) {
@@ -206,14 +228,82 @@ Item {
         } catch (e) {}
     }
 
+    FileView {
+        id: monitorsConfigFile
+        path: (Quickshell.env("HOME") || "") + "/.config/carbon/carbon-monitors.json"
+        watchChanges: true
+        blockLoading: true
+        printErrors: false
+        onLoaded: root.readMonitorsConfig()
+        onFileChanged: {
+            reload()
+            root.readMonitorsConfig()
+        }
+    }
+
+    function readMonitorsConfig() {
+        try {
+            var txt = monitorsConfigFile.text().trim()
+            if (txt.length > 0) {
+                var d = JSON.parse(txt)
+                if (d.night_light_enabled !== undefined) {
+                    root.nightLightEnabled = Boolean(d.night_light_enabled)
+                }
+                if (d.night_light_temp !== undefined) {
+                    var t = parseInt(d.night_light_temp) || 4500
+                    if (t > 0 && t <= 6500) root.colorTemp = t
+                } else if (d.night_light_level !== undefined) {
+                    var lvl = parseInt(d.night_light_level) || 50
+                    var calcT = Math.round(6500 - (lvl * 40))
+                    root.colorTemp = Math.max(2500, Math.min(6500, calcT))
+                }
+            }
+        } catch (e) {}
+    }
+
+    function toggleNightLight() {
+        root.nightLightEnabled = !root.nightLightEnabled
+        if (root.nightLightEnabled && (root.colorTemp >= 6500 || root.colorTemp <= 0)) {
+            root.colorTemp = 4000
+        }
+        root.sendHub({
+            "module": "display",
+            "action": "set_night_light",
+            "enabled": root.nightLightEnabled,
+            "temp": root.colorTemp
+        })
+        Quickshell.execDetached([
+            (Quickshell.env("HOME") || "") + "/.config/carbon/scripts/carbon-night.sh",
+            root.nightLightEnabled ? "on" : "off",
+            String(root.colorTemp)
+        ])
+    }
+
     Timer {
         id: tempDebounce
         interval: 32
         repeat: false
-        onTriggered: root.sendHub({ "module": "display", "action": "set_temperature", "temp": root.colorTemp })
+        onTriggered: {
+            root.sendHub({
+                "module": "display",
+                "action": "set_night_light",
+                "enabled": root.nightLightEnabled,
+                "temp": root.colorTemp
+            })
+            Quickshell.execDetached([
+                (Quickshell.env("HOME") || "") + "/.config/carbon/scripts/carbon-night.sh",
+                root.nightLightEnabled ? "on" : "off",
+                String(root.colorTemp)
+            ])
+        }
     }
     function queueTemp(val) {
         root.colorTemp = Math.round(val)
+        if (root.colorTemp < 6500 && !root.nightLightEnabled) {
+            root.nightLightEnabled = true
+        } else if (root.colorTemp >= 6500 && root.nightLightEnabled) {
+            root.nightLightEnabled = false
+        }
         tempDebounce.restart()
     }
 
@@ -239,8 +329,10 @@ Item {
 
     Component.onCompleted: {
         root.initScreensFallback()
+        root.readMonitorsConfig()
         root.sendHub({ "module": "display", "action": "get_monitors" })
         root.sendHub({ "module": "display", "action": "get_shell_scale" })
+        root.sendHub({ "module": "display", "action": "get_night_light" })
     }
 
     ColumnLayout {
@@ -747,6 +839,7 @@ Item {
                         RazorWireSlider {
                             Layout.fillWidth: true
                             label: "Monitor Fractional Scale"
+                            description: "Per-monitor fractional display scaling multiplier (0.8x to 2.0x)."
                             from: 0.80
                             to: 2.00
                             stepSize: 0.05
@@ -802,6 +895,7 @@ Item {
                         RazorWireSlider {
                             Layout.fillWidth: true
                             label: "Global Shell Scale"
+                            description: "System-wide UI scaling factor applied to all Carbon shell widgets."
                             from: 0.75
                             to: 1.50
                             stepSize: 0.05
@@ -811,20 +905,185 @@ Item {
                             onMoved: (val) => root.queueShellScale(val)
                         }
 
-                        // Night-Owl Optics (Temperature) with ice-white to warm-amber gradient track
-                        RazorWireSlider {
+                        // Structural Hairline
+                        Rectangle {
                             Layout.fillWidth: true
-                            label: "Night-Owl Optics"
-                            from: 3000
-                            to: 6500
-                            stepSize: 100
-                            decimals: 0
-                            unit: "K"
-                            value: root.colorTemp
-                            useGradientTrack: true
-                            gradientStart: "#E6F4F1"
-                            gradientEnd: "#F5A623"
-                            onMoved: (val) => root.queueTemp(val)
+                            height: 1
+                            color: Qt.rgba(1, 1, 1, 0.08)
+                        }
+
+                        // Night Light Section Header
+                        Text {
+                            text: "NIGHT LIGHT (BLUE LIGHT FILTER)"
+                            font.family: Theme.font
+                            font.pixelSize: Theme.fontPx(11)
+                            font.weight: Font.Bold
+                            color: Qt.rgba(1, 1, 1, 0.45)
+                        }
+
+                        // Night Light Toggle Card
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 52
+                            radius: 10
+                            color: nightLightMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.25)
+                            border.color: root.nightLightEnabled ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.45) : Qt.rgba(1, 1, 1, 0.08)
+                            border.width: 1
+
+                            Behavior on color { ColorAnimation { duration: 150 } }
+                            Behavior on border.color { ColorAnimation { duration: 180 } }
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 12
+                                anchors.rightMargin: 12
+                                spacing: 12
+
+                                // Icon
+                                Rectangle {
+                                    Layout.preferredWidth: 32
+                                    Layout.preferredHeight: 32
+                                    radius: 8
+                                    color: root.nightLightEnabled ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.18) : Qt.rgba(1, 1, 1, 0.04)
+                                    border.color: root.nightLightEnabled ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.35) : "transparent"
+                                    border.width: 1
+
+                                    Behavior on color { ColorAnimation { duration: 150 } }
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "󰖔"
+                                        font.family: Theme.fontMono
+                                        font.pixelSize: Theme.fontPx(16)
+                                        color: root.nightLightEnabled ? Theme.primary : Qt.rgba(1, 1, 1, 0.45)
+                                    }
+                                }
+
+                                // Labels
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+
+                                    Text {
+                                        text: "Night Light"
+                                        font.family: Theme.font
+                                        font.pixelSize: Theme.fontPx(12.5)
+                                        font.weight: Font.DemiBold
+                                        color: Qt.rgba(1, 1, 1, 0.90)
+                                    }
+
+                                    Text {
+                                        text: root.nightLightEnabled ? (root.colorTemp + "K  •  Active") : "Disabled  •  Standard Colors"
+                                        font.family: Theme.fontMono
+                                        font.pixelSize: Theme.fontPx(10)
+                                        color: root.nightLightEnabled ? Theme.primary : Qt.rgba(1, 1, 1, 0.40)
+                                    }
+                                }
+
+                                // Status Badge Toggle
+                                TerminalStatusBadge {
+                                    checked: root.nightLightEnabled
+                                    interactive: false
+                                    Layout.alignment: Qt.AlignRight
+                                    Layout.preferredWidth: implicitWidth
+                                    Layout.preferredHeight: 24
+                                    scale: nightLightMouse.pressed ? 0.95 : (nightLightMouse.containsMouse ? 1.05 : 1.0)
+                                    Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+                                }
+                            }
+
+                            MouseArea {
+                                id: nightLightMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onEntered: root.describe("Night Light", "Warm screen color temperature to filter blue light and reduce eye fatigue.")
+                                onExited: root.clearDesc()
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "Warm screen color temperature to reduce blue light eye strain."
+                                ToolTip.delay: 300
+                                onClicked: root.toggleNightLight()
+                            }
+                        }
+
+                        // Warmth Temperature Slider & Quick Presets
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            opacity: root.nightLightEnabled ? 1.0 : 0.55
+                            Behavior on opacity { NumberAnimation { duration: 200 } }
+
+                            RazorWireSlider {
+                                Layout.fillWidth: true
+                                label: "Warmth Temperature"
+                                description: "Target color warmth (Kelvin) for the display night light filter."
+                                from: 2500
+                                to: 6500
+                                stepSize: 100
+                                decimals: 0
+                                unit: "K"
+                                value: root.colorTemp
+                                useGradientTrack: true
+                                gradientStart: "#F5A623"
+                                gradientEnd: "#E6F4F1"
+                                onMoved: (val) => root.queueTemp(val)
+                            }
+
+                            // Quick Temperature Presets: Warm (3000K), Balanced (4200K), Gentle (5200K)
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 6
+
+                                Repeater {
+                                    model: [
+                                        { label: "Warm", temp: 3000 },
+                                        { label: "Balanced", temp: 4200 },
+                                        { label: "Gentle", temp: 5200 }
+                                    ]
+
+                                    delegate: Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 26
+                                        radius: 6
+                                        readonly property bool isSelected: root.nightLightEnabled && Math.abs(root.colorTemp - modelData.temp) < 250
+                                        color: isSelected ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.16) : (presetMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.20))
+                                        border.color: isSelected ? Theme.primary : Qt.rgba(1, 1, 1, 0.08)
+                                        border.width: 1
+
+                                        scale: presetMouse.pressed ? 0.96 : (presetMouse.containsMouse ? 1.02 : 1.0)
+                                        Behavior on color { ColorAnimation { duration: 150 } }
+                                        Behavior on border.color { ColorAnimation { duration: 150 } }
+                                        Behavior on scale { NumberAnimation { duration: 150 } }
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: modelData.label + " (" + modelData.temp + "K)"
+                                            font.family: Theme.fontMono
+                                            font.pixelSize: Theme.fontPx(9.5)
+                                            font.weight: parent.isSelected ? Font.Bold : Font.Normal
+                                            color: parent.isSelected ? Theme.primary : Qt.rgba(1, 1, 1, 0.65)
+                                        }
+
+                                        MouseArea {
+                                            id: presetMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onEntered: root.describe(modelData.label + " Preset", "Set night light warmth directly to " + modelData.temp + "K.")
+                                            onExited: root.clearDesc()
+                                            ToolTip.visible: containsMouse
+                                            ToolTip.text: "Set warmth to " + modelData.temp + "K"
+                                            ToolTip.delay: 300
+                                            onClicked: {
+                                                if (!root.nightLightEnabled) {
+                                                    root.nightLightEnabled = true
+                                                }
+                                                root.queueTemp(modelData.temp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         // Structural Hairline
@@ -883,6 +1142,11 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                onEntered: root.describe("Variable Refresh Rate (VRR)", "Synchronize monitor refresh rate with GPU frame rendering to eliminate tearing.")
+                                onExited: root.clearDesc()
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "Synchronize monitor refresh rate with GPU frame rendering to eliminate tearing."
+                                ToolTip.delay: 300
                                 onClicked: {
                                     root.vrrEnabled = !root.vrrEnabled
                                     root.sendHub({ "module": "display", "action": "set_vrr", "state": root.vrrEnabled ? 1 : 0 })
@@ -930,6 +1194,11 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                onEntered: root.describe("10-Bit Color Depth", "Enable 30-bit color depth (10 bits per channel) for wide color gamut displays.")
+                                onExited: root.clearDesc()
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "Enable 30-bit color depth (10 bits per channel) for wide color gamut displays."
+                                ToolTip.delay: 300
                                 onClicked: {
                                     root.tenBitEnabled = !root.tenBitEnabled
                                     root.sendHub({ "module": "display", "action": "set_display_feature", "feature": "10bit", "value": root.tenBitEnabled })
@@ -977,6 +1246,11 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                onEntered: root.describe("Direct Scanout", "Allow fullscreen applications to bypass compositor for reduced input latency.")
+                                onExited: root.clearDesc()
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "Allow fullscreen applications to bypass compositor for reduced input latency."
+                                ToolTip.delay: 300
                                 onClicked: {
                                     root.directScanoutEnabled = !root.directScanoutEnabled
                                     root.sendHub({ "module": "display", "action": "set_display_feature", "feature": "direct_scanout", "value": root.directScanoutEnabled })
@@ -1024,6 +1298,11 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                onEntered: root.describe("Mirror Display", "Clone primary desktop output across all connected external displays.")
+                                onExited: root.clearDesc()
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "Clone primary desktop output across all connected external displays."
+                                ToolTip.delay: 300
                                 onClicked: {
                                     root.mirrorEnabled = !root.mirrorEnabled
                                     root.sendHub({ "module": "display", "action": "set_display_feature", "feature": "mirror", "value": root.mirrorEnabled })

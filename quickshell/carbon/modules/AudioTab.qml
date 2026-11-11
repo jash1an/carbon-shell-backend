@@ -10,6 +10,10 @@ import "../components"
 Item {
     id: root
 
+    property var hub: null
+    function describe(name, desc) { if (hub && hub.describe) hub.describe(name, desc) }
+    function clearDesc() { if (hub && hub.clearDescription) hub.clearDescription() }
+
     implicitWidth: 800
     implicitHeight: 600
 
@@ -37,6 +41,50 @@ Item {
     // Keep live audio state bound for default sink & source
     PwObjectTracker {
         objects: [ root.defaultSink, root.defaultSource ].filter(n => n !== null)
+    }
+
+    // Media & Control Center Backend
+    readonly property string applyScript: (Quickshell.env("CARBON_CONFIG_DIR") || ((Quickshell.env("HOME") || "") + "/.config/carbon")) + "/scripts/carbon-settings-apply.py"
+    property bool showVinylDisc: true
+    property bool showEqualizer: true
+    property bool autoExpandOnTrack: false
+    property string musicVisualizer: "liquidHalo"
+    property int volumeStep: 5
+    property int brightnessStep: 5
+    property bool showBatteryPercent: true
+
+    Process {
+        id: audioExtProc
+        command: [root.applyScript, "dump-all"]
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: function(line) {
+                var raw = line.trim()
+                if (!raw) return
+                try {
+                    var d = JSON.parse(raw)
+                    if (d.media) {
+                        if (d.media.showVinylDisc !== undefined) root.showVinylDisc = Boolean(d.media.showVinylDisc)
+                        if (d.media.showEqualizer !== undefined) root.showEqualizer = Boolean(d.media.showEqualizer)
+                        if (d.media.autoExpandOnTrack !== undefined) root.autoExpandOnTrack = Boolean(d.media.autoExpandOnTrack)
+                        if (d.media.musicVisualizer !== undefined) root.musicVisualizer = d.media.musicVisualizer
+                    }
+                    if (d.control_center) {
+                        if (d.control_center.volumeStep !== undefined) root.volumeStep = parseInt(d.control_center.volumeStep) || 5
+                        if (d.control_center.brightnessStep !== undefined) root.brightnessStep = parseInt(d.control_center.brightnessStep) || 5
+                        if (d.control_center.showBatteryPercent !== undefined) root.showBatteryPercent = Boolean(d.control_center.showBatteryPercent)
+                    }
+                } catch(e) {}
+            }
+        }
+    }
+
+    function setMedia(key, val) {
+        Quickshell.execDetached([root.applyScript, "set", "media", key, String(val)])
+    }
+
+    function setCtrl(key, val) {
+        Quickshell.execDetached([root.applyScript, "set", "control_center", key, String(val)])
     }
 
     // ALSA Route / Port Detection
@@ -117,6 +165,7 @@ Item {
 
     Component.onCompleted: {
         root.refreshOutputPorts()
+        if (!audioExtProc.running) audioExtProc.running = true
     }
 
     // Scrollable Settings Layout
@@ -443,6 +492,11 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: (root.defaultSink && root.defaultSink.audio && root.defaultSink.audio.muted) ? "Unmute output audio" : "Mute output audio"
+                                ToolTip.delay: 300
+                                onEntered: root.describe("Master Mute", "Mute or unmute all desktop audio playback.")
+                                onExited: root.clearDesc()
                                 onClicked: {
                                     if (root.defaultSink && root.defaultSink.audio) {
                                         root.defaultSink.audio.muted = !root.defaultSink.audio.muted
@@ -457,6 +511,7 @@ Item {
                         RazorWireSlider {
                             Layout.fillWidth: true
                             label: "Master Output Level"
+                            description: "System master audio output volume gain level."
                             from: 0.0
                             to: 1.0
                             stepSize: 0.01
@@ -505,6 +560,11 @@ Item {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
+                                    ToolTip.visible: containsMouse
+                                    ToolTip.text: "Set output volume to " + modelData.label
+                                    ToolTip.delay: 300
+                                    onEntered: root.describe("Volume Preset " + modelData.label, "Quickly jump output audio level to " + modelData.label + ".")
+                                    onExited: root.clearDesc()
                                     onClicked: {
                                         if (root.defaultSink && root.defaultSink.audio) {
                                             root.defaultSink.audio.volume = modelData.val
@@ -642,6 +702,11 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: (root.defaultSource && root.defaultSource.audio && root.defaultSource.audio.muted) ? "Unmute microphone" : "Mute microphone"
+                                ToolTip.delay: 300
+                                onEntered: root.describe("Microphone Mute", "Mute or unmute default audio capture input.")
+                                onExited: root.clearDesc()
                                 onClicked: {
                                     if (root.defaultSource && root.defaultSource.audio) {
                                         root.defaultSource.audio.muted = !root.defaultSource.audio.muted
@@ -656,6 +721,7 @@ Item {
                         RazorWireSlider {
                             Layout.fillWidth: true
                             label: "Microphone Gain"
+                            description: "Hardware input sensitivity level for default recording microphone."
                             from: 0.0
                             to: 1.0
                             stepSize: 0.01
@@ -871,6 +937,307 @@ Item {
                                     Layout.preferredWidth: Theme.px(36)
                                     horizontalAlignment: Text.AlignRight
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Section: Media Player Visuals
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Theme.px(10)
+
+                Text {
+                    text: "MEDIA PLAYER & ISLAND VISUALIZERS"
+                    font.family: Theme.fontMono
+                    font.pixelSize: Theme.fontPx(11)
+                    font.weight: Font.Bold
+                    color: Qt.rgba(1, 1, 1, 0.40)
+                }
+
+                // Spinning Vinyl Album Record
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Theme.px(54)
+                    radius: Theme.px(8)
+                    color: Qt.rgba(0, 0, 0, 0.20)
+                    border.color: Qt.rgba(1, 1, 1, 0.08)
+                    border.width: 1
+
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.NoButton
+                        onEntered: root.describe("Spinning Vinyl Record", "Show animated rotating vinyl record with album art in player.")
+                        onExited: root.clearDesc()
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Theme.px(16)
+                        anchors.rightMargin: Theme.px(16)
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.px(2)
+                            Text { text: "Spinning Vinyl Album Record"; font.family: Theme.font; font.pixelSize: Theme.fontPx(13); color: Theme.fg }
+                            Text { text: "Show animated rotating vinyl record with album art in player"; font.family: Theme.font; font.pixelSize: Theme.fontPx(11); color: Qt.rgba(1, 1, 1, 0.50) }
+                        }
+
+                        TerminalStatusBadge {
+                            settingName: "Spinning Vinyl Record"
+                            description: "Show animated rotating vinyl record with album art in player."
+                            checked: root.showVinylDisc
+                            onClicked: {
+                                root.showVinylDisc = !root.showVinylDisc
+                                root.setMedia("showVinylDisc", root.showVinylDisc)
+                            }
+                        }
+                    }
+                }
+
+                // Dynamic Waveform Equalizer
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Theme.px(54)
+                    radius: Theme.px(8)
+                    color: Qt.rgba(0, 0, 0, 0.20)
+                    border.color: Qt.rgba(1, 1, 1, 0.08)
+                    border.width: 1
+
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.NoButton
+                        onEntered: root.describe("Dynamic Equalizer", "Show animated audio equalizer bars in island during playback.")
+                        onExited: root.clearDesc()
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Theme.px(16)
+                        anchors.rightMargin: Theme.px(16)
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.px(2)
+                            Text { text: "Dynamic Waveform Equalizer"; font.family: Theme.font; font.pixelSize: Theme.fontPx(13); color: Theme.fg }
+                            Text { text: "Show animated audio equalizer bars in island during playback"; font.family: Theme.font; font.pixelSize: Theme.fontPx(11); color: Qt.rgba(1, 1, 1, 0.50) }
+                        }
+
+                        TerminalStatusBadge {
+                            settingName: "Dynamic Equalizer"
+                            description: "Show animated audio equalizer bars in island during playback."
+                            checked: root.showEqualizer
+                            onClicked: {
+                                root.showEqualizer = !root.showEqualizer
+                                root.setMedia("showEqualizer", root.showEqualizer)
+                            }
+                        }
+                    }
+                }
+
+                // Auto-expand on Track Change
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Theme.px(54)
+                    radius: Theme.px(8)
+                    color: Qt.rgba(0, 0, 0, 0.20)
+                    border.color: Qt.rgba(1, 1, 1, 0.08)
+                    border.width: 1
+
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.NoButton
+                        onEntered: root.describe("Auto-expand Track Info", "Briefly morph the island capsule to reveal song title on track switch.")
+                        onExited: root.clearDesc()
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Theme.px(16)
+                        anchors.rightMargin: Theme.px(16)
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.px(2)
+                            Text { text: "Auto-expand on Track Change"; font.family: Theme.font; font.pixelSize: Theme.fontPx(13); color: Theme.fg }
+                            Text { text: "Briefly morph the island capsule to reveal song title on track switch"; font.family: Theme.font; font.pixelSize: Theme.fontPx(11); color: Qt.rgba(1, 1, 1, 0.50) }
+                        }
+
+                        TerminalStatusBadge {
+                            settingName: "Auto-expand Track Info"
+                            description: "Briefly morph the island capsule to reveal song title on track switch."
+                            checked: root.autoExpandOnTrack
+                            onClicked: {
+                                root.autoExpandOnTrack = !root.autoExpandOnTrack
+                                root.setMedia("autoExpandOnTrack", root.autoExpandOnTrack)
+                            }
+                        }
+                    }
+                }
+
+                // Audio Visualizer Effect (Liquid Halo vs None)
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Theme.px(64)
+                    radius: Theme.px(8)
+                    color: Qt.rgba(0, 0, 0, 0.20)
+                    border.color: Qt.rgba(1, 1, 1, 0.08)
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: Theme.px(16)
+                        spacing: Theme.px(16)
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.px(2)
+                            Text { text: "Desktop Music Visualizer"; font.family: Theme.font; font.pixelSize: Theme.fontPx(13); color: Theme.fg }
+                            Text { text: "Visualizer style across Vanish and expanded pavilions"; font.family: Theme.font; font.pixelSize: Theme.fontPx(11); color: Qt.rgba(1, 1, 1, 0.50) }
+                        }
+
+                        RowLayout {
+                            spacing: Theme.px(8)
+
+                            Rectangle {
+                                Layout.preferredWidth: Theme.px(110)
+                                Layout.preferredHeight: Theme.px(30)
+                                radius: Theme.px(6)
+                                color: root.musicVisualizer === "liquidHalo" ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.18) : (haloMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.30))
+                                border.color: root.musicVisualizer === "liquidHalo" ? Theme.primary : Qt.rgba(1, 1, 1, 0.10)
+                                border.width: 1
+                                Text { anchors.centerIn: parent; text: "Liquid Halo"; font.family: Theme.font; font.pixelSize: Theme.fontPx(11); font.weight: Font.DemiBold; color: root.musicVisualizer === "liquidHalo" ? Theme.primary : Theme.fgDim }
+                                MouseArea {
+                                    id: haloMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    ToolTip.visible: containsMouse
+                                    ToolTip.text: "Fluid liquid ring pulsing around music orb"
+                                    ToolTip.delay: 300
+                                    onEntered: root.describe("Liquid Halo Visualizer", "Fluid liquid ring pulsing around music orb.")
+                                    onExited: root.clearDesc()
+                                    onClicked: {
+                                        root.musicVisualizer = "liquidHalo"
+                                        root.setMedia("musicVisualizer", "liquidHalo")
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                Layout.preferredWidth: Theme.px(70)
+                                Layout.preferredHeight: Theme.px(30)
+                                radius: Theme.px(6)
+                                color: root.musicVisualizer !== "liquidHalo" ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.18) : (noneMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.30))
+                                border.color: root.musicVisualizer !== "liquidHalo" ? Theme.primary : Qt.rgba(1, 1, 1, 0.10)
+                                border.width: 1
+                                Text { anchors.centerIn: parent; text: "None"; font.family: Theme.font; font.pixelSize: Theme.fontPx(11); font.weight: Font.DemiBold; color: root.musicVisualizer !== "liquidHalo" ? Theme.primary : Theme.fgDim }
+                                MouseArea {
+                                    id: noneMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    ToolTip.visible: containsMouse
+                                    ToolTip.text: "Disable desktop audio visualizer animation"
+                                    ToolTip.delay: 300
+                                    onEntered: root.describe("No Visualizer", "Disable desktop audio visualizer animation for minimum CPU usage.")
+                                    onExited: root.clearDesc()
+                                    onClicked: {
+                                        root.musicVisualizer = "none"
+                                        root.setMedia("musicVisualizer", "none")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Section: Control Center & Steps
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Theme.px(10)
+
+                Text {
+                    text: "CONTROL CENTER & HARDWARE STEPS"
+                    font.family: Theme.fontMono
+                    font.pixelSize: Theme.fontPx(11)
+                    font.weight: Font.Bold
+                    color: Qt.rgba(1, 1, 1, 0.40)
+                }
+
+                // Volume Step
+                RazorWireSlider {
+                    Layout.fillWidth: true
+                    label: "Volume Step"
+                    description: "Percentage changed per volume keypress or mouse wheel scroll step."
+                    from: 1
+                    to: 10
+                    stepSize: 1
+                    unit: " %"
+                    value: root.volumeStep
+                    onMoved: (val) => {
+                        root.volumeStep = Math.round(val)
+                        root.setCtrl("volumeStep", root.volumeStep)
+                    }
+                }
+
+                // Brightness Step
+                RazorWireSlider {
+                    Layout.fillWidth: true
+                    label: "Brightness Step"
+                    description: "Percentage changed per hardware brightness keypress."
+                    from: 1
+                    to: 10
+                    stepSize: 1
+                    unit: " %"
+                    value: root.brightnessStep
+                    onMoved: (val) => {
+                        root.brightnessStep = Math.round(val)
+                        root.setCtrl("brightnessStep", root.brightnessStep)
+                    }
+                }
+
+                // Battery Percentage in Control Center
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Theme.px(54)
+                    radius: Theme.px(8)
+                    color: Qt.rgba(0, 0, 0, 0.20)
+                    border.color: Qt.rgba(1, 1, 1, 0.08)
+                    border.width: 1
+
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.NoButton
+                        onEntered: root.describe("Show Battery Percentage", "Display battery percentage text in the Control Center quick card.")
+                        onExited: root.clearDesc()
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Theme.px(16)
+                        anchors.rightMargin: Theme.px(16)
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.px(2)
+                            Text { text: "Show Battery Percentage"; font.family: Theme.font; font.pixelSize: Theme.fontPx(13); color: Theme.fg }
+                            Text { text: "Display battery percentage text in the Control Center quick card"; font.family: Theme.font; font.pixelSize: Theme.fontPx(11); color: Qt.rgba(1, 1, 1, 0.50) }
+                        }
+
+                        TerminalStatusBadge {
+                            settingName: "Show Battery Percentage"
+                            description: "Display battery percentage text in the Control Center quick card."
+                            checked: root.showBatteryPercent
+                            onClicked: {
+                                root.showBatteryPercent = !root.showBatteryPercent
+                                root.setCtrl("showBatteryPercent", root.showBatteryPercent)
                             }
                         }
                     }

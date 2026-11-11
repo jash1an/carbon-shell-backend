@@ -13,6 +13,18 @@ Item {
     signal closeRequested()
 
     property string currentSection: "Modes"
+    property string activeSettingName: ""
+    property string activeDescription: ""
+
+    function describe(name, desc) {
+        root.activeSettingName = name || ""
+        root.activeDescription = desc || ""
+    }
+
+    function clearDescription() {
+        root.activeSettingName = ""
+        root.activeDescription = ""
+    }
 
     // Backdrop dismissal
     MouseArea {
@@ -125,9 +137,16 @@ Item {
                             model: [
                                 { name: "Appearance", glyph: "󰏘", badge: "M3" },
                                 { name: "Modes", glyph: "󱐋", badge: "STUDIO" },
+                                { name: "Personalization", glyph: "󰥔", badge: "" },
+                                { name: "Launcher", glyph: "󰌌", badge: "" },
+                                { name: "Default Apps", glyph: "󰀻", badge: "" },
+                                { name: "Notifications", glyph: "󰂚", badge: "" },
+                                { name: "Lock Screen", glyph: "󰌾", badge: "" },
                                 { name: "Display", glyph: "󰍹", badge: "" },
                                 { name: "Audio", glyph: "󰓃", badge: "" },
                                 { name: "Network", glyph: "󰤨", badge: "" },
+                                { name: "Input", glyph: "󰍽", badge: "" },
+                                { name: "Power", glyph: "󰁹", badge: "" },
                                 { name: "System", glyph: "󰘚", badge: "" }
                             ]
 
@@ -208,56 +227,123 @@ Item {
                     Layout.fillHeight: true
 
                     AppearanceTab {
+                        hub: root
                         anchors.fill: parent
                         visible: root.currentSection.toLowerCase() === "appearance"
                     }
 
                     ModesTab {
+                        hub: root
                         anchors.fill: parent
                         visible: root.currentSection.toLowerCase() === "modes"
                     }
 
+                    PersonalizationTab {
+                        hub: root
+                        anchors.fill: parent
+                        visible: root.currentSection.toLowerCase() === "personalization" || root.currentSection.toLowerCase() === "clock" || root.currentSection.toLowerCase() === "tile"
+                    }
+
+                    LauncherTab {
+                        hub: root
+                        anchors.fill: parent
+                        visible: root.currentSection.toLowerCase() === "launcher" || root.currentSection.toLowerCase() === "spotlight"
+                    }
+
+                    DefaultAppsTab {
+                        hub: root
+                        anchors.fill: parent
+                        visible: root.currentSection.toLowerCase() === "default apps" || root.currentSection.toLowerCase() === "defaultapps" || root.currentSection.toLowerCase() === "default_apps"
+                    }
+
+                    NotificationsTab {
+                        hub: root
+                        anchors.fill: parent
+                        visible: root.currentSection.toLowerCase() === "notifications" || root.currentSection.toLowerCase() === "dnd"
+                    }
+
+                    LockScreenTab {
+                        hub: root
+                        anchors.fill: parent
+                        visible: root.currentSection.toLowerCase() === "lock screen" || root.currentSection.toLowerCase() === "lockscreen" || root.currentSection.toLowerCase() === "lock"
+                    }
+
                     DisplaysTab {
+                        hub: root
                         anchors.fill: parent
                         visible: root.currentSection.toLowerCase() === "display" || root.currentSection.toLowerCase() === "displays"
                     }
 
                     AudioTab {
+                        hub: root
                         anchors.fill: parent
-                        visible: root.currentSection.toLowerCase() === "audio"
+                        visible: root.currentSection.toLowerCase() === "audio" || root.currentSection.toLowerCase() === "media"
                     }
 
                     NetworkTab {
+                        hub: root
                         anchors.fill: parent
-                        visible: root.currentSection.toLowerCase() === "network"
+                        visible: root.currentSection.toLowerCase() === "network" || root.currentSection.toLowerCase() === "wifi"
                     }
 
-                    // Placeholder for other sections (e.g. System)
-                    Item {
+                    InputTab {
+                        hub: root
                         anchors.fill: parent
-                        visible: root.currentSection.toLowerCase() === "system"
+                        visible: root.currentSection.toLowerCase() === "input" || root.currentSection.toLowerCase() === "mouse" || root.currentSection.toLowerCase() === "keyboard"
+                    }
 
-                        ColumnLayout {
-                            anchors.centerIn: parent
-                            spacing: 8
+                    PowerTab {
+                        hub: root
+                        anchors.fill: parent
+                        visible: root.currentSection.toLowerCase() === "power" || root.currentSection.toLowerCase() === "battery"
+                    }
 
-                            Text {
-                                text: "SYSTEM TELEMETRY"
-                                font.family: Theme.font
-                                font.pixelSize: Theme.fontPx(14)
-                                font.weight: Font.Bold
-                                color: Qt.rgba(1, 1, 1, 0.50)
-                                Layout.alignment: Qt.AlignHCenter
-                            }
+                    SystemTab {
+                        hub: root
+                        anchors.fill: parent
+                        visible: root.currentSection.toLowerCase() === "system" || root.currentSection.toLowerCase() === "startup"
+                    }
+                }
+            }
 
-                            Text {
-                                text: "Section under active development"
-                                font.family: Theme.font
-                                font.pixelSize: Theme.fontPx(12)
-                                color: Qt.rgba(1, 1, 1, 0.30)
-                                Layout.alignment: Qt.AlignHCenter
-                            }
-                        }
+            // ==========================================
+            // STATUS & DESCRIPTION FOOTER BAR
+            // ==========================================
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Theme.px(34)
+                color: Qt.rgba(0, 0, 0, 0.35)
+                border.color: Qt.rgba(1, 1, 1, 0.08)
+                border.width: 1
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: Theme.px(16)
+                    anchors.rightMargin: Theme.px(16)
+                    spacing: Theme.px(10)
+
+                    Text {
+                        text: root.activeSettingName.length > 0 ? "󰋼 " + root.activeSettingName.toUpperCase() : "󰘳 READY"
+                        font.family: Theme.fontMono
+                        font.pixelSize: Theme.fontPx(11)
+                        font.weight: Font.Bold
+                        color: root.activeSettingName.length > 0 ? Theme.primary : Qt.rgba(1, 1, 1, 0.40)
+                    }
+
+                    Rectangle {
+                        visible: root.activeSettingName.length > 0
+                        width: 1
+                        height: Theme.px(14)
+                        color: Qt.rgba(1, 1, 1, 0.15)
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: root.activeDescription.length > 0 ? root.activeDescription : "Hover over any setting or control to inspect its purpose and system impact."
+                        font.family: Theme.font
+                        font.pixelSize: Theme.fontPx(11)
+                        color: root.activeDescription.length > 0 ? Qt.rgba(1, 1, 1, 0.85) : Qt.rgba(1, 1, 1, 0.35)
+                        elide: Text.ElideRight
                     }
                 }
             }

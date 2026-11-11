@@ -83,14 +83,28 @@ pkill -f "python3.*theme-mk.py" 2>/dev/null || true
 
 # Paint wallpaper to monitor via awww daemon with distinct dynamic transitions
 if command -v awww &>/dev/null; then
-    TRANSITION_TYPES=("fade" "left" "right" "top" "bottom" "wipe" "wave" "grow" "center" "any" "outer")
-    RANDOM_T="${TRANSITION_TYPES[$((RANDOM % ${#TRANSITION_TYPES[@]}))]}"
-    RANDOM_ANGLE=$((RANDOM % 360))
-    awww img "$WALL" \
-        --transition-type "$RANDOM_T" \
-        --transition-angle "$RANDOM_ANGLE" \
-        --transition-duration 1.2 \
-        --transition-fps 60 2>/dev/null || true
+    if [ "$EXT" = "mp4" ] || [ "$EXT" = "m4v" ] || [ "$EXT" = "webm" ] || [ "$EXT" = "mkv" ] || [[ "$WALL" == *"carbon-live"* ]] || [[ "$WALL" == *"carbon-lewis"* ]]; then
+        # Video or live shader is handled by Quickshell: clear and pause awww so it consumes 0 resources
+        if pgrep -x awww-daemon >/dev/null 2>&1 && awww query >/dev/null 2>&1; then
+            awww clear 000000 2>/dev/null || true
+            awww pause 2>/dev/null || true
+        fi
+    else
+        # Static image / gif: ensure daemon is running, unpause, and apply transition
+        if ! pgrep -x awww-daemon >/dev/null 2>&1 || ! awww query >/dev/null 2>&1; then
+            systemctl --user start carbon-awww.service 2>/dev/null || true
+            sleep 0.3
+        fi
+        awww unpause 2>/dev/null || true
+        TRANSITION_TYPES=("fade" "left" "right" "top" "bottom" "wipe" "wave" "grow" "center" "any" "outer")
+        RANDOM_T="${TRANSITION_TYPES[$((RANDOM % ${#TRANSITION_TYPES[@]}))]}"
+        RANDOM_ANGLE=$((RANDOM % 360))
+        awww img "$WALL" \
+            --transition-type "$RANDOM_T" \
+            --transition-angle "$RANDOM_ANGLE" \
+            --transition-duration 1.2 \
+            --transition-fps 60 2>/dev/null &
+    fi
 fi
 
 # Update tide-island userconfig

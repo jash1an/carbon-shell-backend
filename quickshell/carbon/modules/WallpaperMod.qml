@@ -33,6 +33,37 @@ Item {
 
     readonly property string currentType: getWallpaperType(root.currentWpPath)
 
+    /* ── Coordination with external awww-daemon ────────────────────── */
+    property bool awwwActive: true
+
+    Process {
+        id: awwwChecker
+        command: ["sh", "-c", "awww query >/dev/null 2>&1 && echo '1' || echo '0'"]
+        running: false
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const res = awwwChecker.stdout.text.toString().trim()
+                root.awwwActive = (res === "1")
+            }
+        }
+    }
+
+    function checkAwww() {
+        if (!awwwChecker.running) {
+            awwwChecker.running = true
+        }
+    }
+
+    /* Only show Quickshell layer if video/live, OR if awww-daemon is inactive (fallback) */
+    readonly property bool isNeeded: {
+        if (currentType === "video" || currentType === "carbon-live") return true
+        return !awwwActive
+    }
+
+    Component.onCompleted: {
+        root.checkAwww()
+    }
+
     function resolveWpUrl(filePath) {
         if (!filePath) return ""
         var clean = filePath.trim()
@@ -131,13 +162,14 @@ Item {
     }
 
     Timer {
-        interval: 10000
+        interval: 5000
         running: true
         repeat: true
         onTriggered: {
             if (!wpReader.running && !root.isAnimating) {
                 wpReader.running = true
             }
+            root.checkAwww()
         }
     }
 

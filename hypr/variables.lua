@@ -7,7 +7,7 @@ return {
 
     -- Apps
     terminal                   = "foot",
-    browser                    = "firefox",
+    browser                    = "librewolf",
     editor                     = (os.getenv("HOME") or "") .. "/.config/carbon/scripts/carbon-settings-hub",
     pomodoro                   = (os.getenv("HOME") or "") .. "/.config/hypr/scripts/carbon-pomodoro",
     fileExplorer               = "nautilus",

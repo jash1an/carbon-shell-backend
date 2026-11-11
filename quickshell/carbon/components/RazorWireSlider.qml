@@ -1,11 +1,13 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 import "../Singletons"
 
 Item {
     id: root
 
     property string label: ""
+    property string description: ""
     property real from: 0
     property real to: 100
     property real value: 0
@@ -31,6 +33,50 @@ Item {
 
     implicitWidth: 300
     implicitHeight: Math.max(48, Math.round(48 * (Theme && Theme.fontScale !== undefined ? Theme.fontScale : 1.0)))
+
+    MouseArea {
+        id: hoverArea
+        anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.NoButton
+        ToolTip.visible: containsMouse && root.description.length > 0
+        ToolTip.text: root.description
+        ToolTip.delay: 300
+        onEntered: {
+            if (root.description) {
+                var p = root.parent
+                while (p) {
+                    if (typeof p.describe === "function") {
+                        p.describe(root.label || root.description, root.description)
+                        break
+                    }
+                    if (p.hub && typeof p.hub.describe === "function") {
+                        p.hub.describe(root.label || root.description, root.description)
+                        break
+                    }
+                    p = p.parent
+                }
+            }
+        }
+        onExited: {
+            var p = root.parent
+            while (p) {
+                if (typeof p.clearDesc === "function") {
+                    p.clearDesc()
+                    break
+                }
+                if (typeof p.clearDescription === "function") {
+                    p.clearDescription()
+                    break
+                }
+                if (p.hub && typeof p.hub.clearDescription === "function") {
+                    p.hub.clearDescription()
+                    break
+                }
+                p = p.parent
+            }
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent

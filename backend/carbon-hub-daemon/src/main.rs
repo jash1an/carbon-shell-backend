@@ -19,6 +19,8 @@ struct HubRequest {
     #[serde(default)]
     value: Option<Value>,
     #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default)]
     path: Option<String>,
     #[serde(default)]
     scheme: Option<String>,
@@ -474,13 +476,164 @@ async fn set_vrr(state: i64) -> Result<(), String> {
     res.map(|_| ())
 }
 
-async fn set_temperature(temp: i64) {
-    if temp >= 6500 {
-        let _ = Command::new("pkill").args(["-x", "hyprsunset"]).spawn();
+fn get_runtime_dir() -> PathBuf {
+    if let Ok(xdg) = env::var("XDG_RUNTIME_DIR") {
+        PathBuf::from(xdg)
+    } else if let Ok(out) = std::process::Command::new("id").arg("-u").output() {
+        let uid = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        PathBuf::from(format!("/run/user/{}", uid))
     } else {
-        let _ = Command::new("pkill").args(["-x", "hyprsunset"]).status().await;
-        let _ = Command::new("hyprsunset").arg("-t").arg(temp.to_string()).spawn();
+        PathBuf::from("/run/user/1000")
     }
+}
+
+fn prepare_command(cmd_name: &str) -> Command {
+    let mut cmd = Command::new(cmd_name);
+    let home = home_dir();
+    let local_bin = home.join(".local/bin");
+    let run_dir = get_runtime_dir();
+    
+    let cur_path = env::var("PATH").unwrap_or_default();
+    let new_path = if let Some(lb) = local_bin.to_str() {
+        if !cur_path.contains(lb) {
+            format!("{}:{}", lb, cur_path)
+        } else {
+            cur_path
+        }
+    } else {
+        cur_path
+    };
+    cmd.env("PATH", new_path);
+
+    if env::var("WAYLAND_DISPLAY").is_err() {
+        let wayland_display = if run_dir.join("wayland-1").exists() {
+            "wayland-1"
+        } else if run_dir.join("wayland-0").exists() {
+            "wayland-0"
+        } else {
+            "wayland-1"
+        };
+        cmd.env("WAYLAND_DISPLAY", wayland_display);
+    }
+
+    if env::var("HYPRLAND_INSTANCE_SIGNATURE").is_err() {
+        let hypr_dir = run_dir.join("hypr");
+        if let Ok(entries) = std::fs::read_dir(&hypr_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                if name_str.contains('_') && entry.path().join(".socket.sock").exists() {
+                    cmd.env("HYPRLAND_INSTANCE_SIGNATURE", name_str.to_string());
+                    break;
+                }
+            }
+        }
+    }
+
+    if env::var("XDG_RUNTIME_DIR").is_err() {
+        cmd.env("XDG_RUNTIME_DIR", run_dir.to_string_lossy().to_string());
+    }
+
+    cmd
+}
+
+fn update_night_light_config(enabled: bool, temp: i64) {
+    let level = ((6500 - temp).max(0) / 40).clamp(0, 100);
+    let targets = [
+        config_dir().join("carbon-monitors.json"),
+        home_dir().join(".config/hypr/carbon-monitors.json"),
+    ];
+
+    for path in &targets {
+        let mut doc = if let Ok(content) = std::fs::read_to_string(path) {
+            serde_json::from_str::<Value>(&content).unwrap_or_else(|_| json!({}))
+        } else {
+            json!({})
+        };
+        doc["night_light_enabled"] = json!(enabled);
+        doc["night_light_level"] = json!(level);
+        doc["night_light_temp"] = json!(temp);
+        if let Ok(formatted) = serde_json::to_string_pretty(&doc) {
+            let _ = std::fs::write(path, formatted);
+        }
+    }
+
+    let level_targets = [
+        home_dir().join(".config/hypr/carbon-night.level"),
+        config_dir().join("carbon-night.level"),
+    ];
+    for path in &level_targets {
+        if let Some(p) = path.parent() {
+            let _ = std::fs::create_dir_all(p);
+        }
+        let _ = std::fs::write(path, format!("{}\n", level));
+    }
+}
+
+fn get_night_light_state() -> (bool, i64, i64) {
+    let cfg_path = config_dir().join("carbon-monitors.json");
+    let mut temp = 4500;
+    let mut level = 50;
+    let mut cfg_enabled = false;
+
+    if let Ok(content) = std::fs::read_to_string(&cfg_path) {
+        if let Ok(v) = serde_json::from_str::<Value>(&content) {
+            if let Some(en) = v.get("night_light_enabled").and_then(|x| x.as_bool()) {
+                cfg_enabled = en;
+            }
+            if let Some(t) = v.get("night_light_temp").and_then(|x| x.as_i64()) {
+                temp = t.clamp(2000, 6500);
+                level = ((6500 - temp).max(0) / 40).clamp(0, 100);
+            } else if let Some(l) = v.get("night_light_level").and_then(|x| x.as_i64()) {
+                level = l.clamp(0, 100);
+                temp = (6500 - (level * 40)).clamp(2000, 6500);
+            }
+        }
+    }
+
+    let is_on = Path::new("/tmp/carbon-night.on").exists() || (cfg_enabled && {
+        let output = std::process::Command::new("pgrep").args(["-x", "hyprsunset"]).output();
+        output.map(|o| o.status.success()).unwrap_or(false)
+    });
+
+    (is_on, temp, level)
+}
+
+async fn apply_night_light_temp(temp: i64) {
+    if temp >= 6500 {
+        let _ = prepare_command("hyprctl").args(["hyprsunset", "identity"]).status().await;
+        let _ = prepare_command("pkill").args(["-x", "hyprsunset"]).status().await;
+        let _ = prepare_command("hyprctl").args(["keyword", "decoration:screen_shader", ""]).spawn();
+        let _ = std::fs::remove_file("/tmp/carbon-night.on");
+    } else {
+        // Try dynamic update via hyprctl hyprsunset first
+        let hyprctl_res = prepare_command("hyprctl")
+            .args(["hyprsunset", "temperature", &temp.to_string()])
+            .output()
+            .await;
+        let mut updated = false;
+        if let Ok(out) = hyprctl_res {
+            if out.status.success() {
+                let s = String::from_utf8_lossy(&out.stdout);
+                if s.contains("ok") {
+                    updated = true;
+                }
+            }
+        }
+        if !updated {
+            let _ = prepare_command("pkill").args(["-x", "hyprsunset"]).status().await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            let _ = prepare_command("hyprsunset").arg("-t").arg(temp.to_string()).spawn();
+        }
+        let _ = std::fs::write("/tmp/carbon-night.on", "1\n");
+    }
+}
+
+async fn set_temperature(temp: i64) {
+    let t = temp.clamp(2000, 6500);
+    let enabled = t < 6500;
+    apply_night_light_temp(t).await;
+    update_night_light_config(enabled, t);
 }
 
 async fn resolve_monitor_defaults(req_mon: Option<String>, req_w: Option<i64>, req_h: Option<i64>) -> (String, i64, i64) {
@@ -892,13 +1045,47 @@ async fn handle_request(req: HubRequest) -> HubResponse {
                 },
             }
         }
+        "get_night_light" => {
+            let (is_on, temp, level) = get_night_light_state();
+            HubResponse {
+                status: "ok".into(),
+                action: Some(action),
+                data: Some(json!({ "enabled": is_on, "temp": temp, "level": level })),
+                error: None,
+                elapsed_us: Some(t0.elapsed().as_micros()),
+            }
+        }
+        "set_night_light" => {
+            let enabled = req.enabled
+                .or_else(|| req.state.map(|s| s == 1))
+                .or_else(|| req.value.as_ref().and_then(|v| v.as_bool()))
+                .unwrap_or(true);
+            let (_, saved_temp, _) = get_night_light_state();
+            let remembered_temp = if saved_temp >= 6500 { 4500 } else { saved_temp };
+            let target_temp = if enabled {
+                let t = req.temp.unwrap_or(remembered_temp);
+                if t >= 6500 { 4500 } else { t }
+            } else {
+                6500
+            };
+            apply_night_light_temp(target_temp).await;
+            update_night_light_config(enabled, if enabled { target_temp } else { remembered_temp });
+            HubResponse {
+                status: "ok".into(),
+                action: Some(action),
+                data: Some(json!({ "enabled": enabled, "temp": if enabled { target_temp } else { remembered_temp } })),
+                error: None,
+                elapsed_us: Some(t0.elapsed().as_micros()),
+            }
+        }
         "set_temperature" => {
             let temp = req.temp.or_else(|| req.value.and_then(|v| v.as_i64())).unwrap_or(6500);
+            let enabled = temp < 6500;
             set_temperature(temp).await;
             HubResponse {
                 status: "ok".into(),
                 action: Some(action),
-                data: Some(json!({ "temp": temp })),
+                data: Some(json!({ "temp": temp, "enabled": enabled })),
                 error: None,
                 elapsed_us: Some(t0.elapsed().as_micros()),
             }

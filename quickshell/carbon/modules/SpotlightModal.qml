@@ -271,15 +271,15 @@ Item {
             }
         },
         {
-            id: "config_legacy",
-            title: "Carbon Config Editor (Classic)",
-            desc: "Advanced settings for wallpapers, gestures, and blank tiles",
-            glyph: "tune",
-            appIcon: "preferences-desktop-theme",
+            id: "night_light",
+            title: "Night Light",
+            desc: "Configure display warmth and blue light filter",
+            glyph: "bedtime",
+            appIcon: "preferences-system",
             category: "Preferences",
             run: () => {
                 root.closeRequested()
-                Quickshell.execDetached(["carbon-config-editor"])
+                Quickshell.execDetached([(Quickshell.env("HOME") || "") + "/.config/carbon/scripts/carbon-ipc.sh", "settings-tab", "display"])
             }
         },
         {
@@ -375,6 +375,11 @@ Item {
                 var o = Quickshell.iconPath("obsidian", "") || Quickshell.iconPath("md.obsidian.Obsidian", "")
                 if (o) return o
                 return "file://" + (Quickshell.env("HOME") || "") + "/.local/share/icons/hicolor/scalable/apps/obsidian.svg"
+            }
+            if (t.indexOf("antigravity") !== -1) {
+                var ag = Quickshell.iconPath("antigravity", "")
+                if (ag) return ag
+                return "file://" + (Quickshell.env("HOME") || "") + "/.local/share/icons/hicolor/512x512/apps/antigravity.png"
             }
         }
         if (appId) {

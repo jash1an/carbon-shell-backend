@@ -63,16 +63,6 @@ Item {
             }
         },
         {
-            "id": "config_legacy",
-            "name": "Carbon Config Editor",
-            "desc": "Open Classic GTK4 Config Editor",
-            "glyph": "tune",
-            "run": () => {
-                root.closeRequested()
-                Quickshell.execDetached(["carbon-config-editor"])
-            }
-        },
-        {
             "id": "terminal",
             "name": "Open Terminal",
             "desc": "Launch default terminal emulator",

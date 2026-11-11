@@ -34,27 +34,9 @@ case "$MODE" in
 esac
 
 CARBON_DIR="$HOME/.config/carbon"
-HYPR_CONFIGS="$HOME/.config/hypr/configs"
-SOURCE_CONF="$CARBON_DIR/keybinds-${NORM_MODE}.conf"
-TARGET_CONF="$HYPR_CONFIGS/current-mode-keybinds.conf"
 TARGET_LUA="$HOME/.config/hypr/current-mode-keybinds.lua"
 
-mkdir -p "$HYPR_CONFIGS" "$CARBON_DIR"
-
-if [ ! -f "$SOURCE_CONF" ]; then
-    if [ -f "$HYPR_CONFIGS/keybinds-${NORM_MODE}.conf" ]; then
-        SOURCE_CONF="$HYPR_CONFIGS/keybinds-${NORM_MODE}.conf"
-    elif [ -f "$HOME/carbon-shell/hypr/configs/keybinds-${NORM_MODE}.conf" ]; then
-        SOURCE_CONF="$HOME/carbon-shell/hypr/configs/keybinds-${NORM_MODE}.conf"
-    fi
-fi
-
-# 1. Update Hyprland Conf format
-if [ -f "$SOURCE_CONF" ]; then
-    cp -f "$SOURCE_CONF" "$TARGET_CONF"
-else
-    echo "# Mode keybinds for $NORM_MODE (empty)" > "$TARGET_CONF"
-fi
+mkdir -p "$CARBON_DIR"
 
 # 2. Update Hyprland Lua format
 python3 -c '
@@ -66,7 +48,7 @@ home = os.environ.get("HOME", os.path.expanduser("~"))
 
 lua_bindings = {
     "minimal": f"""-- Active Mode: Minimal Notch / Tide Island
-hl.bind("SUPER + C", hl.dsp.exec_cmd("/usr/bin/quickshell ipc --any-display -p {home}/.local/share/quickshell/carbon call tide toggleControlCenter"))
+hl.bind("SUPER + C", hl.dsp.exec_cmd("{home}/.config/carbon/scripts/carbon-settings-hub"))
 hl.bind("SUPER + SHIFT + E", hl.dsp.exec_cmd("/usr/bin/quickshell ipc --any-display -p {home}/.local/share/quickshell/carbon call tide toggleControlCenter"))
 hl.bind("SUPER + R", hl.dsp.exec_cmd("/usr/bin/quickshell ipc --any-display -p {home}/.local/share/quickshell/carbon call tide toggleApplicationLauncher"))
 hl.bind("SUPER + M", hl.dsp.exec_cmd("/usr/bin/quickshell ipc --any-display -p {home}/.local/share/quickshell/carbon call tide togglePlayer"))
@@ -86,10 +68,10 @@ hl.bind("SUPER + ALT + Up", hl.dsp.focus({{ direction = "up" }}))
 hl.bind("SUPER + ALT + Down", hl.dsp.focus({{ direction = "down" }}))
 """,
     "notch": f"""-- Active Mode: Carbon Notch
+hl.bind("SUPER + C", hl.dsp.exec_cmd("{home}/.config/carbon/scripts/carbon-settings-hub"))
 hl.bind("SUPER + B", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh center-dashboard"))
 hl.bind("SUPER + K", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh spotlight"))
 hl.bind("SUPER + R", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh spotlight"))
-hl.bind("SUPER + C", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh controls"))
 hl.bind("SUPER + SHIFT + B", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh controls"))
 hl.bind("SUPER + SHIFT + P", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh power"))
 hl.bind("SUPER + Left", hl.dsp.window.move({{ direction = "l" }}))
@@ -98,7 +80,7 @@ hl.bind("SUPER + Up", hl.dsp.window.move({{ direction = "u" }}))
 hl.bind("SUPER + Down", hl.dsp.window.move({{ direction = "d" }}))
 """,
     "pill": f"""-- Active Mode: Pill / Waybar
-hl.bind("SUPER + C", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh controls"))
+hl.bind("SUPER + C", hl.dsp.exec_cmd("{home}/.config/carbon/scripts/carbon-settings-hub"))
 hl.bind("SUPER + B", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh controls"))
 hl.bind("SUPER + K", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh spotlight"))
 hl.bind("SUPER + R", hl.dsp.exec_cmd("{home}/.config/hypr/scripts/carbon-ipc.sh spotlight"))
@@ -109,12 +91,12 @@ hl.bind("SUPER + Down", hl.dsp.window.move({{ direction = "d" }}))
 """
 ,
     "vanish": f"""-- Active Mode: Vanish / Nucleus
+hl.bind("SUPER + C", hl.dsp.exec_cmd("{home}/.config/carbon/scripts/carbon-settings-hub"))
 hl.bind("SUPER + Super_L", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/carbon-vanish-dispatch.sh toggle-hub"), {{ release = true }})
 hl.bind("SUPER + Super_R", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/carbon-vanish-dispatch.sh toggle-hub"), {{ release = true }})
 hl.bind("SUPER + M", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/carbon-vanish-dispatch.sh lyrics"))
 hl.bind("SUPER + A", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/carbon-vanish-dispatch.sh focus-alerts"))
 hl.bind("SUPER + B", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/carbon-vanish-dispatch.sh quick-toggles"))
-hl.bind("SUPER + C", hl.dsp.exec_cmd("sh {home}/.config/carbon/scripts/carbon-vanish-dispatch.sh quick-toggles"))
 hl.bind("SUPER + Left", hl.dsp.window.move({{ direction = "l" }}))
 hl.bind("SUPER + Right", hl.dsp.window.move({{ direction = "r" }}))
 hl.bind("SUPER + Up", hl.dsp.window.move({{ direction = "u" }}))

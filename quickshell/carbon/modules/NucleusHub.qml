@@ -1225,16 +1225,6 @@ Item {
             }
         },
         {
-            id: "config_legacy",
-            title: "Carbon Config Editor (Classic)",
-            desc: "Advanced settings for wallpapers, gestures, and blank tiles",
-            glyph: "tune",
-            run: () => {
-                root.close()
-                Quickshell.execDetached(["carbon-config-editor"])
-            }
-        },
-        {
             id: "terminal",
             title: "Open Terminal",
             desc: "Launch kitty terminal emulator",

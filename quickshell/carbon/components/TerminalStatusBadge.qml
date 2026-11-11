@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import "../Singletons"
 
 Item {
@@ -6,6 +7,8 @@ Item {
 
     property bool checked: false
     property bool interactive: true
+    property string settingName: ""
+    property string description: ""
     signal clicked()
 
     implicitWidth: textLabel.implicitWidth + 12
@@ -46,6 +49,43 @@ Item {
         hoverEnabled: root.interactive
         enabled: root.interactive
         cursorShape: root.interactive ? Qt.PointingHandCursor : Qt.ArrowCursor
+        ToolTip.visible: containsMouse && root.description.length > 0
+        ToolTip.text: root.description
+        ToolTip.delay: 300
+        onEntered: {
+            if (root.description) {
+                var p = root.parent
+                while (p) {
+                    if (typeof p.describe === "function") {
+                        p.describe(root.settingName || root.description, root.description)
+                        break
+                    }
+                    if (p.hub && typeof p.hub.describe === "function") {
+                        p.hub.describe(root.settingName || root.description, root.description)
+                        break
+                    }
+                    p = p.parent
+                }
+            }
+        }
+        onExited: {
+            var p = root.parent
+            while (p) {
+                if (typeof p.clearDesc === "function") {
+                    p.clearDesc()
+                    break
+                }
+                if (typeof p.clearDescription === "function") {
+                    p.clearDescription()
+                    break
+                }
+                if (p.hub && typeof p.hub.clearDescription === "function") {
+                    p.hub.clearDescription()
+                    break
+                }
+                p = p.parent
+            }
+        }
         onClicked: {
             root.checked = !root.checked
             root.clicked()
