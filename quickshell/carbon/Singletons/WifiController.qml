@@ -20,6 +20,9 @@ Singleton {
     property string currentSecurity: ""
     property string infoMessage: ""
     property string errorMessage: ""
+    property string wifiDevice: ""
+    property string ethDevice: ""
+    property string ethState: "Cable Disconnected"
     readonly property string unsupportedReason: ""
 
     readonly property string statusText: {
@@ -74,7 +77,10 @@ Singleton {
         if (root.currentSsid.length === 0) return;
         root.busy = true;
         clearMessages();
-        var cmd = "nmcli dev disconnect wlan0 2>/dev/null || nmcli con down id \"" + root.currentSsid + "\" 2>/dev/null";
+        var dev = root.wifiDevice ? root.wifiDevice : "";
+        var cmd = dev.length > 0
+            ? "nmcli dev disconnect " + dev + " 2>/dev/null || nmcli con down id \"" + root.currentSsid + "\" 2>/dev/null"
+            : "nmcli con down id \"" + root.currentSsid + "\" 2>/dev/null";
         var p = simpleProcComponent.createObject(root, {
             "cmd": cmd,
             "onFinishedCallback": function(success) {
@@ -117,7 +123,7 @@ Singleton {
 
     Process {
         id: stateProc
-        command: ["bash", "-c", "echo '===RADIO==='; nmcli radio wifi 2>/dev/null; echo '===DEV==='; nmcli -t -f TYPE,STATE,CONNECTION dev 2>/dev/null | grep '^wifi:'"]
+        command: ["bash", "-c", "echo '===RADIO==='; nmcli radio wifi 2>/dev/null; echo '===DEV==='; nmcli -t -f TYPE,STATE,CONNECTION,DEVICE dev 2>/dev/null"]
         stdout: StdioCollector {
             onTextChanged: {
                 if (text && text.length > 0) {
@@ -157,6 +163,9 @@ Singleton {
         var radioOn = true;
         var activeConn = "";
         var hasWifiDev = false;
+        var detectedWifiDev = "";
+        var detectedEthDev = "";
+        var detectedEthState = "Cable Disconnected";
 
         for (var i = 0; i < lines.length; i++) {
             var line = lines[i].trim();
@@ -171,16 +180,42 @@ Singleton {
             if (section === "radio" && line.length > 0) {
                 radioOn = (line === "enabled");
             } else if (section === "dev" && line.length > 0) {
-                hasWifiDev = true;
                 var parts = line.split(":");
-                if (parts.length >= 3 && parts[1] === "connected") {
-                    activeConn = parts.slice(2).join(":");
+                var dType = parts[0] || "";
+                var dState = parts.length > 1 ? parts[1] : "";
+                var dConn = parts.length > 2 ? parts[2] : "";
+                var dName = parts.length > 3 ? parts[3] : "";
+
+                if (dType === "wifi") {
+                    hasWifiDev = true;
+                    if (dName.length > 0 && !detectedWifiDev) detectedWifiDev = dName;
+                    if (dState === "connected") {
+                        activeConn = dConn;
+                        if (dName.length > 0) detectedWifiDev = dName;
+                    }
+                } else if (dType === "ethernet") {
+                    if (dName.length > 0 && !detectedEthDev) {
+                        detectedEthDev = dName;
+                        if (dState === "connected") {
+                            detectedEthState = "Connected" + (dConn ? " (" + dConn + ")" : "");
+                        } else if (dState === "unavailable") {
+                            detectedEthState = "Cable Disconnected";
+                        } else if (dState === "disconnected") {
+                            detectedEthState = "Disconnected";
+                        } else {
+                            detectedEthState = dState ? (dState.charAt(0).toUpperCase() + dState.slice(1)) : "Disconnected";
+                        }
+                    }
                 }
             }
         }
 
         root.available = hasWifiDev;
         root.enabled = radioOn;
+        if (detectedWifiDev.length > 0) root.wifiDevice = detectedWifiDev;
+        if (detectedEthDev.length > 0) root.ethDevice = detectedEthDev;
+        root.ethState = detectedEthState;
+
         if (activeConn.length > 0) {
             root.currentSsid = activeConn;
         } else if (!root.busy) {

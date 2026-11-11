@@ -608,7 +608,7 @@ PanelWindow {
     // ══════════════════════════════════════════════════════════════════
     // DATA SOURCE: QUICK FILE BROWSER
     // ══════════════════════════════════════════════════════════════════
-    property string currentBrowserPath: (Quickshell.env("HOME") || "/home/shogun")
+    property string currentBrowserPath: Theme.home
     property var currentBrowserFiles: []
     property string storageUsageText: "Storage Capacity"
     property real storageUsageFraction: 0.50
@@ -698,13 +698,13 @@ PanelWindow {
     }
 
     readonly property var quickPlaces: [
-        { name: "Home", path: (Quickshell.env("HOME") || "/home/shogun"), icon: "home", color: "#38bdf8" },
-        { name: "Desktop", path: (Quickshell.env("HOME") || "/home/shogun") + "/Desktop", icon: "desktop_windows", color: "#818cf8" },
-        { name: "Downloads", path: (Quickshell.env("HOME") || "/home/shogun") + "/Downloads", icon: "download", color: "#34d399" },
-        { name: "Documents", path: (Quickshell.env("HOME") || "/home/shogun") + "/Documents", icon: "description", color: "#fbbf24" },
-        { name: "Pictures", path: (Quickshell.env("HOME") || "/home/shogun") + "/Pictures", icon: "photo", color: "#f472b6" },
-        { name: "Wallpapers", path: (Quickshell.env("HOME") || "/home/shogun") + "/Pictures/Wallpapers", icon: "image", color: "#a78bfa" },
-        { name: ".config", path: (Quickshell.env("HOME") || "/home/shogun") + "/.config", icon: "settings", color: "#94a3b8" }
+        { name: "Home", path: Theme.home, icon: "home", color: "#38bdf8" },
+        { name: "Desktop", path: Theme.home + "/Desktop", icon: "desktop_windows", color: "#818cf8" },
+        { name: "Downloads", path: Theme.home + "/Downloads", icon: "download", color: "#34d399" },
+        { name: "Documents", path: Theme.home + "/Documents", icon: "description", color: "#fbbf24" },
+        { name: "Pictures", path: Theme.home + "/Pictures", icon: "photo", color: "#f472b6" },
+        { name: "Wallpapers", path: Theme.home + "/Pictures/Wallpapers", icon: "image", color: "#a78bfa" },
+        { name: ".config", path: Theme.home + "/.config", icon: "settings", color: "#94a3b8" }
     ]
 
     function getFileIcon(name, isDir) {
@@ -2625,7 +2625,7 @@ PanelWindow {
                                             }
                                             Text {
                                                 Layout.alignment: Qt.AlignHCenter
-                                                text: spatialCanvasWindow.systemUptime + " • shogun@Raid"
+                                                text: spatialCanvasWindow.systemUptime + " • " + (Quickshell.env("USER") || "user") + "@" + (Quickshell.env("HOSTNAME") || "arch")
                                                 font.family: Theme.fontMono || "monospace"; font.pixelSize: Theme.fontPx(9); color: Theme.fgDim
                                             }
                                         }

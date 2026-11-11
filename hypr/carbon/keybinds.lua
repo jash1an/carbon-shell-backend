@@ -1,27 +1,24 @@
--- Auto-synchronized from ~/.config/hypr/carbon/keybinds.conf
-local mainMod = "SUPER"
-local terminal = "kitty"
-local fileManager = "nautilus"
-
--- 
 -- CARBON SHELL — DEDICATED HYPRLAND KEYBINDINGS
--- Location: ~/.config/carbon/keybinds.conf
--- 
--- You can freely edit this file! Any changes here are applied whenever you:
--- 1. Press SUPER + SHIFT + R (or run 'hyprctl reload')
--- 2. Use the Carbon Config Editor GUI (SUPER + C or QuickSettings gear icon)
--- 
+-- Location: ~/.config/hypr/carbon/keybinds.lua
 
 local mainMod = "SUPER"
-local home = os.getenv("HOME") or "/home/zily"
-local terminal = "/home/zily/.local/opt/kitty/bin/kitty"
+local home = os.getenv("HOME") or ("/home/" .. (os.getenv("USER") or "user"))
+local terminal = (function()
+    local opt_kitty = home .. "/.local/opt/kitty/bin/kitty"
+    local f = io.open(opt_kitty, "r")
+    if f ~= nil then
+        f:close()
+        return opt_kitty
+    end
+    return "kitty"
+end)()
 local fileManager = "kitty -e yazi"
 
 -- ==============================================================================
 -- APPLICATIONS & WINDOW CONTROL
 -- ==============================================================================
-hl.bind(mainMod .. " + Return", hl.dsp.exec_cmd("/home/zily/.local/opt/kitty/bin/kitty"))
-hl.bind(mainMod .. " + " .. "SHIFT" .. " + Return", hl.dsp.exec_cmd("[float; size 800 550] /home/zily/.local/opt/kitty/bin/kitty"))
+hl.bind(mainMod .. " + Return", hl.dsp.exec_cmd(terminal))
+hl.bind(mainMod .. " + " .. "SHIFT" .. " + Return", hl.dsp.exec_cmd("[float; size 800 550] " .. terminal))
 hl.bind(mainMod .. " + X", hl.dsp.window.close())
 hl.bind("CTRL" .. " + " .. "ALT" .. " + Delete", hl.dsp.exec_cmd("hyprctl dispatch exit 0"))
 hl.bind(mainMod .. " + E", hl.dsp.exec_cmd("kitty -e yazi"))
@@ -30,7 +27,7 @@ hl.bind(mainMod .. " + R", hl.dsp.exec_cmd("sh ~/.config/carbon/scripts/carbon-i
 hl.bind(mainMod .. " + " .. "SHIFT" .. " + R", hl.dsp.exec_cmd("hyprctl reload"))
 hl.bind("F11", hl.dsp.window.fullscreen())
 hl.bind("ALT" .. " + D", hl.dsp.exec_cmd("serein"))
-hl.bind(mainMod .. " + F", hl.dsp.exec_cmd("/usr/lib/librewolf/librewolf"))
+hl.bind(mainMod .. " + F", hl.dsp.exec_cmd("librewolf"))
 -- Game Mode Toggle (Zero latency Direct Scanout, strip transparency & effects)
 hl.bind(mainMod .. " + F1", hl.dsp.exec_cmd("~/.local/bin/hypr-gamemode toggle"))
 hl.bind(mainMod .. " + G", hl.dsp.exec_cmd("sh ~/.config/carbon/scripts/carbon-ipc.sh command-center"))
@@ -79,7 +76,7 @@ hl.bind(mainMod .. " + T", hl.dsp.exec_cmd("~/.config/carbon/scripts/carbon-pomo
 hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("~/.config/carbon/scripts/hyprlock.sh"))
 
 -- Clipboard Manager (Cliphist + Kitty TUI picker)
-hl.bind(mainMod .. " + V", hl.dsp.exec_cmd("bash -c 'kitty -e python3 /home/zily/.local/bin/carbon-clip-picker'"))
+hl.bind(mainMod .. " + V", hl.dsp.exec_cmd("bash -c 'kitty -e python3 " .. home .. "/.local/bin/carbon-clip-picker'"))
 
 -- Carbon Pulse (System & Task Monitor)
 hl.bind(mainMod .. " + Escape", hl.dsp.exec_cmd("~/.local/bin/carbon-pulse"))

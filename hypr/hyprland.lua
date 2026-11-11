@@ -5,7 +5,7 @@
 -- Dynamically integrates with Carbon Settings App (carbon-config-editor)
 -- ==============================================================================
 
-local home = os.getenv("HOME") or "/home/zily"
+local home = os.getenv("HOME") or ("/home/" .. (os.getenv("USER") or "user"))
 local carbon_dir = os.getenv("CARBON_CONFIG_DIR") or (home .. "/.config/carbon")
 
 --------------------------------------------------------------------------------
@@ -138,8 +138,7 @@ local function load_monitors(path)
         f:close()
     end
     if count == 0 then
-        hl.monitor({ output = "eDP-1", mode = "1366x768@59", position = "auto", scale = 1 })
-        hl.monitor({ output = "", mode = "preferred", position = "auto", scale = "auto" })
+        hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
     end
 end
 

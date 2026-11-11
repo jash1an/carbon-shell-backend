@@ -662,9 +662,9 @@ Item {
                                 hoverEnabled: true
                                 acceptedButtons: Qt.NoButton
                                 ToolTip.visible: containsMouse
-                                ToolTip.text: "wlp2s0: " + (WifiController.enabled ? "UP / 802.11ac" : "DOWN")
+                                ToolTip.text: (WifiController.wifiDevice || "Wi-Fi") + ": " + (WifiController.enabled ? "UP" : "DOWN")
                                 ToolTip.delay: 300
-                                onEntered: root.describe("Wireless Interface (wlp2s0)", "Wi-Fi adapter hardware link status and 802.11 protocol mode.")
+                                onEntered: root.describe("Wireless Interface (" + (WifiController.wifiDevice || "Wi-Fi") + ")", "Wi-Fi adapter hardware link status and wireless radio state.")
                                 onExited: root.clearDesc()
                             }
 
@@ -685,7 +685,7 @@ Item {
                                     spacing: Theme.px(2)
 
                                     Text {
-                                        text: "Wireless Interface (wlp2s0)"
+                                        text: "Wireless Interface (" + (WifiController.wifiDevice || "Wi-Fi") + ")"
                                         font.family: Theme.font
                                         font.pixelSize: Theme.fontPx(11)
                                         font.weight: Font.Bold
@@ -693,7 +693,7 @@ Item {
                                     }
 
                                     Text {
-                                        text: WifiController.enabled ? "Status: UP / 802.11ac" : "Status: DOWN"
+                                        text: WifiController.enabled ? (WifiController.currentSsid ? ("Status: Connected (" + WifiController.currentSsid + ")") : "Status: UP / Disconnected") : "Status: DOWN"
                                         font.family: Theme.fontMono
                                         font.pixelSize: Theme.fontPx(10)
                                         color: WifiController.enabled ? "#55FF99" : Qt.rgba(1, 1, 1, 0.4)
@@ -716,9 +716,9 @@ Item {
                                 hoverEnabled: true
                                 acceptedButtons: Qt.NoButton
                                 ToolTip.visible: containsMouse
-                                ToolTip.text: "enp1s0: Cable Disconnected"
+                                ToolTip.text: (WifiController.ethDevice || "Ethernet") + ": " + WifiController.ethState
                                 ToolTip.delay: 300
-                                onEntered: root.describe("Ethernet Interface (enp1s0)", "Physical wired LAN adapter link state and carrier status.")
+                                onEntered: root.describe("Ethernet Interface (" + (WifiController.ethDevice || "Ethernet") + ")", "Physical wired LAN adapter link state and carrier status.")
                                 onExited: root.clearDesc()
                             }
 
@@ -731,7 +731,7 @@ Item {
                                     text: "󰈀"
                                     font.family: Theme.fontMono
                                     font.pixelSize: Theme.fontPx(20)
-                                    color: Qt.rgba(1, 1, 1, 0.4)
+                                    color: WifiController.ethState.indexOf("Connected") !== -1 ? Theme.primary : Qt.rgba(1, 1, 1, 0.4)
                                 }
 
                                 ColumnLayout {
@@ -739,7 +739,7 @@ Item {
                                     spacing: Theme.px(2)
 
                                     Text {
-                                        text: "Ethernet Interface (enp1s0)"
+                                        text: "Ethernet Interface (" + (WifiController.ethDevice || "Ethernet") + ")"
                                         font.family: Theme.font
                                         font.pixelSize: Theme.fontPx(11)
                                         font.weight: Font.Bold
@@ -747,10 +747,10 @@ Item {
                                     }
 
                                     Text {
-                                        text: "Cable Disconnected"
+                                        text: WifiController.ethState
                                         font.family: Theme.fontMono
                                         font.pixelSize: Theme.fontPx(10)
-                                        color: Qt.rgba(1, 1, 1, 0.4)
+                                        color: WifiController.ethState.indexOf("Connected") !== -1 ? "#55FF99" : Qt.rgba(1, 1, 1, 0.4)
                                     }
                                 }
                             }
