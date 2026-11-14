@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os, sys, json, subprocess
+import os, sys, json, subprocess, glob
 
 CONFIG_DIR = os.environ.get("CARBON_CONFIG_DIR", os.path.expanduser("~/.config/carbon"))
 HYPR_DIR = os.path.expanduser("~/.config/hypr")
@@ -57,9 +57,126 @@ def save_exceptions(apps):
     except Exception:
         pass
 
+def get_available_apps(query=""):
+    search_dirs = [
+        "/usr/share/applications",
+        os.path.expanduser("~/.local/share/applications")
+    ]
+    clients = []
+    try:
+        raw = subprocess.check_output(["hyprctl", "clients", "-j"], stderr=subprocess.DEVNULL, timeout=1.5).decode("utf-8")
+        clients = json.loads(raw)
+    except Exception:
+        pass
+
+    running_by_class = {}
+    running_by_name = {}
+    running_clients = []
+    for c in clients:
+        cls = c.get("class", "").strip()
+        title = c.get("initialTitle") or c.get("title") or cls
+        if cls:
+            running_by_class[cls.lower()] = cls
+            running_by_name[title.lower()] = cls
+            running_clients.append({
+                "class": cls,
+                "name": title,
+                "title": c.get("title", ""),
+                "initialTitle": c.get("initialTitle", ""),
+                "pid": c.get("pid", 0)
+            })
+
+    apps = []
+    seen_classes = set()
+
+    for d in search_dirs:
+        if not os.path.isdir(d):
+            continue
+        for p in glob.glob(d + "/*.desktop"):
+            fn = os.path.basename(p)
+            base_id = fn[:-8] if fn.endswith(".desktop") else fn
+            try:
+                with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                    name, exec_cmd, icon, wmclass, nodisp, comment = "", "", "", "", False, ""
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("Name=") and not name:
+                            name = line.split("=", 1)[1]
+                        elif line.startswith("Exec=") and not exec_cmd:
+                            exec_cmd = line.split("=", 1)[1]
+                        elif line.startswith("Icon=") and not icon:
+                            icon = line.split("=", 1)[1]
+                        elif line.startswith("Comment=") and not comment:
+                            comment = line.split("=", 1)[1]
+                        elif line.startswith("StartupWMClass=") and not wmclass:
+                            wmclass = line.split("=", 1)[1]
+                        elif line == "NoDisplay=true":
+                            nodisp = True
+                    
+                    if nodisp or not name:
+                        continue
+                    
+                    final_class = ""
+                    if wmclass and wmclass.lower() in running_by_class:
+                        final_class = running_by_class[wmclass.lower()]
+                    elif base_id.lower() in running_by_class:
+                        final_class = running_by_class[base_id.lower()]
+                    elif name.lower() in running_by_name:
+                        final_class = running_by_name[name.lower()]
+                    elif wmclass:
+                        final_class = wmclass.strip()
+                    else:
+                        bin_name = os.path.basename(exec_cmd.split()[0]).strip("\"'") if exec_cmd else base_id
+                        if bin_name.lower() in running_by_class:
+                            final_class = running_by_class[bin_name.lower()]
+                        else:
+                            final_class = base_id
+                    
+                    is_open = (final_class.lower() in running_by_class)
+                    
+                    apps.append({
+                        "id": fn,
+                        "name": name,
+                        "class": final_class,
+                        "icon": icon or "application-x-executable",
+                        "comment": comment,
+                        "isOpen": is_open
+                    })
+                    seen_classes.add(final_class.lower())
+            except Exception:
+                pass
+
+    for c in running_clients:
+        cls = c["class"]
+        title = c["initialTitle"] or c["title"] or cls
+        if cls and cls.lower() not in seen_classes:
+            apps.append({
+                "id": cls.lower() + ".client",
+                "name": title,
+                "class": cls,
+                "icon": "application-x-executable",
+                "comment": "Active Running Window",
+                "isOpen": True
+            })
+            seen_classes.add(cls.lower())
+
+    apps.sort(key=lambda a: (not a.get("isOpen", False), a.get("name", "").lower()))
+    
+    if query:
+        q = query.lower().strip()
+        apps = [
+            a for a in apps 
+            if q in a.get("name", "").lower() 
+            or q in a.get("class", "").lower() 
+            or q in a.get("comment", "").lower() 
+            or q in a.get("id", "").lower()
+        ]
+        
+    return apps
+
 def main():
     if len(sys.argv) < 2:
-        print("Usage: carbon-blur-apply.py {list|add <name> <class> [icon]|remove <index_or_class>}")
+        print("Usage: carbon-blur-apply.py {list|available-apps [query]|add <name> <class> [icon]|remove <index_or_class>}")
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -77,6 +194,11 @@ def main():
 
     if cmd == "list":
         print(json.dumps(apps))
+        sys.exit(0)
+
+    if cmd in ("available-apps", "all-apps", "search"):
+        q = sys.argv[2] if len(sys.argv) >= 3 else ""
+        print(json.dumps(get_available_apps(q)))
         sys.exit(0)
 
     if cmd == "remove" and len(sys.argv) >= 3:

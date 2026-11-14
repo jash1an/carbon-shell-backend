@@ -30,6 +30,10 @@ Item {
 
     // Blur Exceptions
     property var blurExceptions: []
+    property var allAvailableApps: []
+    property string appSearchQuery: ""
+    property bool appBrowserOpen: false
+    property bool showManualEntry: false
     property string newBlurName: ""
     property string newBlurClass: ""
     property var runningClasses: []
@@ -315,18 +319,59 @@ Item {
         } catch (e) {}
     }
 
-    function addBlurException(name, cls) {
+    function isException(cls) {
+        if (!cls) return false
+        var c = cls.toLowerCase()
+        for (var i = 0; i < root.blurExceptions.length; i++) {
+            var ex = root.blurExceptions[i]
+            if (ex && ex.class && ex.class.toLowerCase() === c) return true
+        }
+        return false
+    }
+
+    function loadAvailableApps() {
+        if (!availableAppsProc.running) availableAppsProc.running = true
+    }
+
+    function addBlurException(name, cls, icon) {
         var n = (name || "").trim()
         var c = (cls || "").trim()
+        var ic = (icon || "application-x-executable").trim()
         if (!c) return
         if (!n) n = c.charAt(0).toUpperCase() + c.slice(1)
-        Quickshell.execDetached([root.blurScript, "add", n, c])
+        Quickshell.execDetached([root.blurScript, "add", n, c, ic])
         root.newBlurName = ""
         root.newBlurClass = ""
+        root.appSearchQuery = ""
+        root.describe("Blur Exception Added", "Excluded " + n + " (" + c + ") from compositor blur.")
+        root.refreshRunningClasses()
+        root.loadAvailableApps()
     }
 
     function removeBlurException(idx) {
         Quickshell.execDetached([root.blurScript, "remove", String(idx)])
+        root.refreshRunningClasses()
+        root.loadAvailableApps()
+    }
+
+    Process {
+        id: availableAppsProc
+        command: [root.blurScript, "available-apps"]
+        stdout: StdioCollector {
+            id: availableAppsCollector
+            waitForEnd: true
+        }
+        onExited: {
+            try {
+                var raw = availableAppsCollector.text.trim()
+                if (raw.length > 0) {
+                    var data = JSON.parse(raw)
+                    if (Array.isArray(data)) {
+                        root.allAvailableApps = data
+                    }
+                }
+            } catch(e) {}
+        }
     }
 
     Process {
@@ -347,12 +392,14 @@ Item {
 
     function refreshRunningClasses() {
         if (!runningClientsProc.running) runningClientsProc.running = true
+        root.loadAvailableApps()
     }
 
     Component.onCompleted: {
         root.sendHub({ "module": "appearance", "action": "get_state" })
         root.loadBlurExceptions()
         root.refreshRunningClasses()
+        root.loadAvailableApps()
     }
 
     // -----------------------------------------------------------------------
@@ -855,153 +902,461 @@ Item {
                         }
                     }
 
-                    // Add Exception Card
+                    // Add Exception Card (Search & Exclude Apps)
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: Theme.px(108)
+                        Layout.preferredHeight: addCardContent.implicitHeight + Theme.px(20)
                         radius: Theme.px(8)
                         color: Qt.rgba(0, 0, 0, 0.35)
                         border.color: Qt.rgba(1, 1, 1, 0.08)
                         border.width: 1
+                        clip: true
 
                         ColumnLayout {
-                            anchors.fill: parent
+                            id: addCardContent
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
                             anchors.margins: Theme.px(10)
-                            spacing: Theme.px(6)
+                            spacing: Theme.px(8)
 
+                            // Search bar & Browse button
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: Theme.px(6)
 
                                 Rectangle {
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: Theme.px(28)
-                                    radius: Theme.px(4)
+                                    Layout.preferredHeight: Theme.px(32)
+                                    radius: Theme.px(6)
                                     color: Qt.rgba(0, 0, 0, 0.30)
-                                    border.color: blurNameInput.activeFocus ? Theme.primary : Qt.rgba(1, 1, 1, 0.12)
+                                    border.color: appSearchInput.activeFocus ? Theme.primary : Qt.rgba(1, 1, 1, 0.12)
                                     border.width: 1
 
-                                    TextInput {
-                                        id: blurNameInput
+                                    RowLayout {
                                         anchors.fill: parent
-                                        anchors.margins: Theme.px(5)
-                                        text: root.newBlurName
-                                        onTextChanged: root.newBlurName = text
-                                        font.family: Theme.font
-                                        font.pixelSize: Theme.fontPx(11)
-                                        color: Qt.rgba(1, 1, 1, 0.90)
-                                        selectByMouse: true
+                                        anchors.leftMargin: Theme.px(8)
+                                        anchors.rightMargin: Theme.px(8)
+                                        spacing: Theme.px(6)
 
                                         Text {
-                                            visible: !blurNameInput.text && !blurNameInput.activeFocus
-                                            text: "App Name"
-                                            font: blurNameInput.font
-                                            color: Qt.rgba(1, 1, 1, 0.30)
+                                            text: "󰍉"
+                                            font.family: Theme.fontMono
+                                            font.pixelSize: Theme.fontPx(12)
+                                            color: appSearchInput.activeFocus ? Theme.primary : Qt.rgba(1, 1, 1, 0.40)
+                                        }
+
+                                        TextInput {
+                                            id: appSearchInput
+                                            Layout.fillWidth: true
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(11)
+                                            color: Qt.rgba(1, 1, 1, 0.95)
+                                            selectByMouse: true
+                                            text: root.appSearchQuery
+                                            onTextChanged: root.appSearchQuery = text
+
+                                            Text {
+                                                visible: !appSearchInput.text && !appSearchInput.activeFocus
+                                                text: "Search apps to exclude (Steam, LibreWolf, Files)..."
+                                                font: appSearchInput.font
+                                                color: Qt.rgba(1, 1, 1, 0.30)
+                                                anchors.verticalCenter: parent.verticalCenter
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            visible: root.appSearchQuery.length > 0
+                                            Layout.preferredWidth: Theme.px(16)
+                                            Layout.preferredHeight: Theme.px(16)
+                                            radius: Theme.px(8)
+                                            color: Qt.rgba(1, 1, 1, 0.15)
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: "✕"
+                                                font.family: Theme.fontMono
+                                                font.pixelSize: Theme.fontPx(8)
+                                                color: Qt.rgba(1, 1, 1, 0.70)
+                                            }
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: root.appSearchQuery = ""
+                                            }
                                         }
                                     }
                                 }
 
+                                // Browse All Button
                                 Rectangle {
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: Theme.px(28)
-                                    radius: Theme.px(4)
-                                    color: Qt.rgba(0, 0, 0, 0.30)
-                                    border.color: blurClassInput.activeFocus ? Theme.primary : Qt.rgba(1, 1, 1, 0.12)
+                                    Layout.preferredHeight: Theme.px(32)
+                                    Layout.preferredWidth: browseBtnTxt.implicitWidth + Theme.px(16)
+                                    radius: Theme.px(6)
+                                    color: browseBtnMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20) : Qt.rgba(1, 1, 1, 0.06)
+                                    border.color: browseBtnMouse.containsMouse ? Theme.primary : Qt.rgba(1, 1, 1, 0.12)
                                     border.width: 1
 
-                                    TextInput {
-                                        id: blurClassInput
-                                        anchors.fill: parent
-                                        anchors.margins: Theme.px(5)
-                                        text: root.newBlurClass
-                                        onTextChanged: root.newBlurClass = text
-                                        font.family: Theme.fontMono
-                                        font.pixelSize: Theme.fontPx(10.5)
-                                        color: Qt.rgba(1, 1, 1, 0.90)
-                                        selectByMouse: true
-
+                                    RowLayout {
+                                        anchors.centerIn: parent
+                                        spacing: Theme.px(4)
                                         Text {
-                                            visible: !blurClassInput.text && !blurClassInput.activeFocus
-                                            text: "Window Class"
-                                            font: blurClassInput.font
-                                            color: Qt.rgba(1, 1, 1, 0.30)
+                                            text: "󰀻"
+                                            font.family: Theme.fontMono
+                                            font.pixelSize: Theme.fontPx(11)
+                                            color: Theme.primary
+                                        }
+                                        Text {
+                                            id: browseBtnTxt
+                                            text: "Browse All"
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(10.5)
+                                            font.weight: Font.DemiBold
+                                            color: Qt.rgba(1, 1, 1, 0.90)
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: browseBtnMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onEntered: root.describe("Browse All Applications", "Open the application catalog to browse and search all apps to exclude.")
+                                        onExited: root.clearDesc()
+                                        onClicked: {
+                                            root.appBrowserOpen = true
+                                            root.loadAvailableApps()
                                         }
                                     }
                                 }
                             }
 
-                            // Quick add chips from running apps (if any)
-                            RowLayout {
+                            // Instant Filtered Results (when query is entered)
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                visible: root.runningClasses.length > 0
+                                visible: root.appSearchQuery.trim().length > 0
                                 spacing: Theme.px(4)
 
-                                Text {
-                                    text: "Open:"
-                                    font.family: Theme.font
-                                    font.pixelSize: Theme.fontPx(9)
-                                    color: Qt.rgba(1, 1, 1, 0.30)
-                                }
-
                                 Repeater {
-                                    model: root.runningClasses.slice(0, 4)
+                                    model: {
+                                        var q = root.appSearchQuery.toLowerCase().trim()
+                                        if (!q) return []
+                                        var matches = root.allAvailableApps.filter(function(a) {
+                                            return (a.name && a.name.toLowerCase().indexOf(q) !== -1) ||
+                                                   (a.class && a.class.toLowerCase().indexOf(q) !== -1) ||
+                                                   (a.comment && a.comment.toLowerCase().indexOf(q) !== -1) ||
+                                                   (a.id && a.id.toLowerCase().indexOf(q) !== -1)
+                                        })
+                                        return matches.slice(0, 5)
+                                    }
 
                                     delegate: Rectangle {
-                                        Layout.preferredHeight: Theme.px(18)
-                                        Layout.preferredWidth: chipText.implicitWidth + Theme.px(8)
-                                        radius: Theme.px(3)
-                                        color: chipMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20) : Qt.rgba(1, 1, 1, 0.05)
-                                        border.color: Qt.rgba(1, 1, 1, 0.10)
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: Theme.px(38)
+                                        radius: Theme.px(5)
+                                        readonly property bool alreadyAdded: root.isException(modelData.class)
+                                        color: resMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(1, 1, 1, 0.04)
+                                        border.color: resMouse.containsMouse ? Theme.primary : Qt.rgba(1, 1, 1, 0.08)
+                                        border.width: 1
 
-                                        Text {
-                                            id: chipText
-                                            anchors.centerIn: parent
-                                            text: modelData
-                                            font.family: Theme.fontMono
-                                            font.pixelSize: Theme.fontPx(9)
-                                            color: chipMouse.containsMouse ? Theme.primary : Qt.rgba(1, 1, 1, 0.60)
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.leftMargin: Theme.px(8)
+                                            anchors.rightMargin: Theme.px(8)
+                                            spacing: Theme.px(8)
+
+                                            Text {
+                                                text: "󰣆"
+                                                font.family: Theme.fontMono
+                                                font.pixelSize: Theme.fontPx(13)
+                                                color: alreadyAdded ? Theme.primary : Qt.rgba(1, 1, 1, 0.60)
+                                            }
+
+                                            ColumnLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 0
+
+                                                RowLayout {
+                                                    spacing: Theme.px(6)
+                                                    Text {
+                                                        text: modelData.name || modelData.class
+                                                        font.family: Theme.font
+                                                        font.pixelSize: Theme.fontPx(11)
+                                                        font.weight: Font.DemiBold
+                                                        color: Qt.rgba(1, 1, 1, 0.95)
+                                                    }
+                                                    Rectangle {
+                                                        visible: modelData.isOpen
+                                                        Layout.preferredHeight: Theme.px(13)
+                                                        Layout.preferredWidth: openTxt.implicitWidth + Theme.px(6)
+                                                        radius: Theme.px(3)
+                                                        color: Qt.rgba(0.2, 0.8, 0.4, 0.2)
+                                                        border.color: "#34d399"
+                                                        border.width: 1
+                                                        Text {
+                                                            id: openTxt
+                                                            anchors.centerIn: parent
+                                                            text: "RUNNING"
+                                                            font.family: Theme.fontMono
+                                                            font.pixelSize: Theme.fontPx(7)
+                                                            font.bold: true
+                                                            color: "#34d399"
+                                                        }
+                                                    }
+                                                }
+
+                                                Text {
+                                                    text: "class: " + (modelData.class || "")
+                                                    font.family: Theme.fontMono
+                                                    font.pixelSize: Theme.fontPx(9)
+                                                    color: Qt.rgba(1, 1, 1, 0.40)
+                                                    elide: Text.ElideRight
+                                                    Layout.fillWidth: true
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                Layout.preferredHeight: Theme.px(22)
+                                                Layout.preferredWidth: addBtnTxt.implicitWidth + Theme.px(12)
+                                                radius: Theme.px(4)
+                                                color: alreadyAdded ? Qt.rgba(1, 1, 1, 0.05) : (resMouse.containsMouse ? Theme.primary : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.85))
+
+                                                Text {
+                                                    id: addBtnTxt
+                                                    anchors.centerIn: parent
+                                                    text: alreadyAdded ? "󰄬 Added" : "+ Add"
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(9.5)
+                                                    font.weight: Font.Bold
+                                                    color: alreadyAdded ? Qt.rgba(1, 1, 1, 0.40) : "#050508"
+                                                }
+                                            }
                                         }
 
                                         MouseArea {
-                                            id: chipMouse
+                                            id: resMouse
                                             anchors.fill: parent
                                             hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
+                                            cursorShape: alreadyAdded ? Qt.ArrowCursor : Qt.PointingHandCursor
                                             onClicked: {
-                                                root.newBlurClass = modelData
-                                                root.newBlurName = modelData.charAt(0).toUpperCase() + modelData.slice(1)
+                                                if (!alreadyAdded) {
+                                                    root.addBlurException(modelData.name, modelData.class, modelData.icon)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Text {
+                                    visible: {
+                                        var q = root.appSearchQuery.toLowerCase().trim()
+                                        if (!q) return false
+                                        var matches = root.allAvailableApps.filter(function(a) {
+                                            return (a.name && a.name.toLowerCase().indexOf(q) !== -1) ||
+                                                   (a.class && a.class.toLowerCase().indexOf(q) !== -1) ||
+                                                   (a.id && a.id.toLowerCase().indexOf(q) !== -1)
+                                        })
+                                        return matches.length === 0
+                                    }
+                                    text: "No applications found. You can enter class manually below."
+                                    font.family: Theme.font
+                                    font.pixelSize: Theme.fontPx(9.5)
+                                    color: Qt.rgba(1, 1, 1, 0.40)
+                                    Layout.fillWidth: true
+                                }
+                            }
+
+                            // Quick add chips from open windows (when search is empty)
+                            ColumnLayout {
+                                id: openSectionCol
+                                Layout.fillWidth: true
+                                visible: root.appSearchQuery.trim().length === 0 && openAppsList.length > 0
+                                spacing: Theme.px(4)
+
+                                readonly property var openAppsList: {
+                                    return root.allAvailableApps.filter(function(a) {
+                                        return a.isOpen === true && !root.isException(a.class)
+                                    })
+                                }
+
+                                Text {
+                                    text: "Active Windows (Click to exclude):"
+                                    font.family: Theme.font
+                                    font.pixelSize: Theme.fontPx(9.5)
+                                    color: Qt.rgba(1, 1, 1, 0.40)
+                                }
+
+                                Flow {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.px(4)
+
+                                    Repeater {
+                                        model: openSectionCol.openAppsList
+
+                                        delegate: Rectangle {
+                                            height: Theme.px(22)
+                                            width: openChipRow.implicitWidth + Theme.px(10)
+                                            radius: Theme.px(4)
+                                            color: openChipMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.22) : Qt.rgba(1, 1, 1, 0.05)
+                                            border.color: openChipMouse.containsMouse ? Theme.primary : Qt.rgba(1, 1, 1, 0.10)
+                                            border.width: 1
+
+                                            RowLayout {
+                                                id: openChipRow
+                                                anchors.centerIn: parent
+                                                spacing: Theme.px(5)
+
+                                                Rectangle {
+                                                    width: Theme.px(5)
+                                                    height: Theme.px(5)
+                                                    radius: Theme.px(2.5)
+                                                    color: "#34d399"
+                                                }
+
+                                                Text {
+                                                    text: modelData.name || modelData.class
+                                                    font.family: Theme.font
+                                                    font.pixelSize: Theme.fontPx(9.5)
+                                                    color: openChipMouse.containsMouse ? Theme.primary : Qt.rgba(1, 1, 1, 0.85)
+                                                }
+
+                                                Text {
+                                                    text: "+"
+                                                    font.family: Theme.fontMono
+                                                    font.pixelSize: Theme.fontPx(9.5)
+                                                    font.bold: true
+                                                    color: Theme.primary
+                                                }
+                                            }
+
+                                            MouseArea {
+                                                id: openChipMouse
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onEntered: root.describe("Quick Exclude Window", "Exclude " + (modelData.name || modelData.class) + " (" + modelData.class + ") from compositor blur.")
+                                                onExited: root.clearDesc()
+                                                onClicked: {
+                                                    root.addBlurException(modelData.name, modelData.class, modelData.icon)
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
 
-                            // Submit Button
+                            // Manual Entry Expander Toggle
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: Theme.px(26)
-                                radius: Theme.px(4)
-                                color: addBlurMouse.containsMouse ? Theme.primary : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.85)
+                                Layout.preferredHeight: Theme.px(20)
+                                color: "transparent"
 
                                 Text {
                                     anchors.centerIn: parent
-                                    text: "+ ADD BLUR EXCEPTION"
+                                    text: root.showManualEntry ? "▲ Hide manual window class entry" : "▼ Enter custom window class manually..."
                                     font.family: Theme.font
-                                    font.pixelSize: Theme.fontPx(10)
-                                    font.weight: Font.Bold
-                                    color: "#050508"
+                                    font.pixelSize: Theme.fontPx(9.5)
+                                    color: manualToggleMouse.containsMouse ? Theme.primary : Qt.rgba(1, 1, 1, 0.40)
                                 }
 
                                 MouseArea {
-                                    id: addBlurMouse
+                                    id: manualToggleMouse
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onEntered: root.describe("Add Exception", "Disable blur and enforce 100% opacity for this window class.")
-                                    onExited: root.clearDesc()
-                                    onClicked: {
-                                        root.addBlurException(root.newBlurName, root.newBlurClass)
-                                        root.refreshRunningClasses()
+                                    onClicked: root.showManualEntry = !root.showManualEntry
+                                }
+                            }
+
+                            // Manual input fields
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                visible: root.showManualEntry
+                                spacing: Theme.px(6)
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.px(6)
+
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: Theme.px(28)
+                                        radius: Theme.px(4)
+                                        color: Qt.rgba(0, 0, 0, 0.30)
+                                        border.color: blurNameInput.activeFocus ? Theme.primary : Qt.rgba(1, 1, 1, 0.12)
+                                        border.width: 1
+
+                                        TextInput {
+                                            id: blurNameInput
+                                            anchors.fill: parent
+                                            anchors.margins: Theme.px(5)
+                                            text: root.newBlurName
+                                            onTextChanged: root.newBlurName = text
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(11)
+                                            color: Qt.rgba(1, 1, 1, 0.90)
+                                            selectByMouse: true
+
+                                            Text {
+                                                visible: !blurNameInput.text && !blurNameInput.activeFocus
+                                                text: "App Name"
+                                                font: blurNameInput.font
+                                                color: Qt.rgba(1, 1, 1, 0.30)
+                                            }
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: Theme.px(28)
+                                        radius: Theme.px(4)
+                                        color: Qt.rgba(0, 0, 0, 0.30)
+                                        border.color: blurClassInput.activeFocus ? Theme.primary : Qt.rgba(1, 1, 1, 0.12)
+                                        border.width: 1
+
+                                        TextInput {
+                                            id: blurClassInput
+                                            anchors.fill: parent
+                                            anchors.margins: Theme.px(5)
+                                            text: root.newBlurClass
+                                            onTextChanged: root.newBlurClass = text
+                                            font.family: Theme.fontMono
+                                            font.pixelSize: Theme.fontPx(10.5)
+                                            color: Qt.rgba(1, 1, 1, 0.90)
+                                            selectByMouse: true
+
+                                            Text {
+                                                visible: !blurClassInput.text && !blurClassInput.activeFocus
+                                                text: "Window Class"
+                                                font: blurClassInput.font
+                                                color: Qt.rgba(1, 1, 1, 0.30)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: Theme.px(26)
+                                    radius: Theme.px(4)
+                                    color: addManualMouse.containsMouse ? Theme.primary : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.85)
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "+ ADD CUSTOM CLASS"
+                                        font.family: Theme.font
+                                        font.pixelSize: Theme.fontPx(10)
+                                        font.weight: Font.Bold
+                                        color: "#050508"
+                                    }
+
+                                    MouseArea {
+                                        id: addManualMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            root.addBlurException(root.newBlurName, root.newBlurClass, "application-x-executable")
+                                        }
                                     }
                                 }
                             }
@@ -1325,6 +1680,333 @@ Item {
                             interactive: false
                             settingName: "Material-3 Transitions"
                             description: "Material You animated surface transitions across shell components."
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // =======================================================================
+    // APPLICATION BROWSER MODAL (SEARCH & SELECT APPS FOR BLUR EXCEPTION)
+    // =======================================================================
+    Rectangle {
+        id: blurAppModalOverlay
+        anchors.fill: parent
+        visible: root.appBrowserOpen
+        color: Qt.rgba(0, 0, 0, 0.75)
+        z: 999
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: root.appBrowserOpen = false
+        }
+
+        Rectangle {
+            id: modalDialogBox
+            anchors.centerIn: parent
+            width: Math.min(parent.width - Theme.px(40), Theme.px(640))
+            height: Math.min(parent.height - Theme.px(40), Theme.px(540))
+            radius: Theme.px(12)
+            color: "#121316"
+            border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.35)
+            border.width: 1
+            clip: true
+
+            MouseArea {
+                anchors.fill: parent
+            }
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: Theme.px(16)
+                spacing: Theme.px(12)
+
+                // Dialog Header
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    Text {
+                        text: "󰣆"
+                        font.family: Theme.fontMono
+                        font.pixelSize: Theme.fontPx(20)
+                        color: Theme.primary
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.px(2)
+
+                        Text {
+                            text: "Add Application to Blur Exceptions"
+                            font.family: Theme.font
+                            font.pixelSize: Theme.fontPx(14)
+                            font.weight: Font.Bold
+                            color: Qt.rgba(1, 1, 1, 0.95)
+                        }
+
+                        Text {
+                            text: "Search or browse installed applications and active windows to exclude from blur."
+                            font.family: Theme.font
+                            font.pixelSize: Theme.fontPx(10.5)
+                            color: Qt.rgba(1, 1, 1, 0.45)
+                        }
+                    }
+
+                    // Close button
+                    Rectangle {
+                        Layout.preferredWidth: Theme.px(28)
+                        Layout.preferredHeight: Theme.px(28)
+                        radius: Theme.px(6)
+                        color: closeModalMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                        border.color: closeModalMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.20) : "transparent"
+                        border.width: 1
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "✕"
+                            font.family: Theme.fontMono
+                            font.pixelSize: Theme.fontPx(13)
+                            color: Qt.rgba(1, 1, 1, 0.70)
+                        }
+
+                        MouseArea {
+                            id: closeModalMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.appBrowserOpen = false
+                        }
+                    }
+                }
+
+                // 1px Hairline
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: Qt.rgba(1, 1, 1, 0.08)
+                }
+
+                // Search Bar inside Modal
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Theme.px(38)
+                    radius: Theme.px(8)
+                    color: Qt.rgba(0, 0, 0, 0.35)
+                    border.color: modalSearchInput.activeFocus ? Theme.primary : Qt.rgba(1, 1, 1, 0.12)
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Theme.px(12)
+                        anchors.rightMargin: Theme.px(12)
+                        spacing: Theme.px(10)
+
+                        Text {
+                            text: "󰍉"
+                            font.family: Theme.fontMono
+                            font.pixelSize: Theme.fontPx(13)
+                            color: modalSearchInput.activeFocus ? Theme.primary : Qt.rgba(1, 1, 1, 0.40)
+                        }
+
+                        TextInput {
+                            id: modalSearchInput
+                            Layout.fillWidth: true
+                            font.family: Theme.font
+                            font.pixelSize: Theme.fontPx(12)
+                            color: Qt.rgba(1, 1, 1, 0.95)
+                            selectByMouse: true
+                            text: root.appSearchQuery
+                            onTextChanged: root.appSearchQuery = text
+
+                            Text {
+                                visible: !modalSearchInput.text && !modalSearchInput.activeFocus
+                                text: "Search by application name, category, or window class..."
+                                font: modalSearchInput.font
+                                color: Qt.rgba(1, 1, 1, 0.30)
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        Rectangle {
+                            visible: root.appSearchQuery.length > 0
+                            Layout.preferredWidth: Theme.px(20)
+                            Layout.preferredHeight: Theme.px(20)
+                            radius: Theme.px(10)
+                            color: Qt.rgba(1, 1, 1, 0.12)
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "✕"
+                                font.family: Theme.fontMono
+                                font.pixelSize: Theme.fontPx(9)
+                                color: Qt.rgba(1, 1, 1, 0.60)
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.appSearchQuery = ""
+                            }
+                        }
+                    }
+                }
+
+                // Scrollable List of Apps
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    radius: Theme.px(8)
+                    color: Qt.rgba(0, 0, 0, 0.20)
+                    border.color: Qt.rgba(1, 1, 1, 0.06)
+                    border.width: 1
+                    clip: true
+
+                    ListView {
+                        id: modalListView
+                        anchors.fill: parent
+                        anchors.margins: Theme.px(6)
+                        spacing: Theme.px(4)
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        model: {
+                            var q = root.appSearchQuery.toLowerCase().trim()
+                            if (!q) return root.allAvailableApps
+                            return root.allAvailableApps.filter(function(a) {
+                                return (a.name && a.name.toLowerCase().indexOf(q) !== -1) ||
+                                       (a.class && a.class.toLowerCase().indexOf(q) !== -1) ||
+                                       (a.comment && a.comment.toLowerCase().indexOf(q) !== -1) ||
+                                       (a.id && a.id.toLowerCase().indexOf(q) !== -1)
+                            })
+                        }
+
+                        delegate: Rectangle {
+                            width: modalListView.width
+                            height: Theme.px(48)
+                            radius: Theme.px(6)
+                            readonly property bool isExc: root.isException(modelData.class)
+                            color: isExc ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.12) : (modalItemMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.08) : "transparent")
+                            border.color: isExc ? Theme.primary : (modalItemMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.18) : "transparent")
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: Theme.px(12)
+                                anchors.rightMargin: Theme.px(12)
+                                spacing: Theme.px(12)
+
+                                // Icon box
+                                Rectangle {
+                                    Layout.preferredWidth: Theme.px(30)
+                                    Layout.preferredHeight: Theme.px(30)
+                                    radius: Theme.px(6)
+                                    color: Qt.rgba(1, 1, 1, 0.06)
+                                    border.color: Qt.rgba(1, 1, 1, 0.10)
+                                    border.width: 1
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "󰣆"
+                                        font.family: Theme.fontMono
+                                        font.pixelSize: Theme.fontPx(14)
+                                        color: isExc ? Theme.primary : Qt.rgba(1, 1, 1, 0.70)
+                                    }
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.px(1)
+
+                                    RowLayout {
+                                        spacing: Theme.px(6)
+                                        Text {
+                                            text: modelData.name || modelData.class
+                                            font.family: Theme.font
+                                            font.pixelSize: Theme.fontPx(12)
+                                            font.weight: isExc ? Font.DemiBold : Font.Normal
+                                            color: isExc ? Qt.rgba(1, 1, 1, 0.98) : Qt.rgba(1, 1, 1, 0.85)
+                                        }
+
+                                        Rectangle {
+                                            visible: modelData.isOpen
+                                            Layout.preferredHeight: Theme.px(14)
+                                            Layout.preferredWidth: modalOpenTxt.implicitWidth + Theme.px(8)
+                                            radius: Theme.px(3)
+                                            color: Qt.rgba(0.2, 0.8, 0.4, 0.2)
+                                            border.color: "#34d399"
+                                            border.width: 1
+                                            Text {
+                                                id: modalOpenTxt
+                                                anchors.centerIn: parent
+                                                text: "RUNNING"
+                                                font.family: Theme.fontMono
+                                                font.pixelSize: Theme.fontPx(7.5)
+                                                font.bold: true
+                                                color: "#34d399"
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        text: "class: " + (modelData.class || "") + (modelData.comment ? "  •  " + modelData.comment : "")
+                                        font.family: Theme.fontMono
+                                        font.pixelSize: Theme.fontPx(9.5)
+                                        color: Qt.rgba(1, 1, 1, 0.35)
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+                                }
+
+                                // Status or Action badge
+                                Rectangle {
+                                    visible: isExc
+                                    Layout.preferredHeight: Theme.px(24)
+                                    Layout.preferredWidth: excBadgeTxt.implicitWidth + Theme.px(14)
+                                    radius: Theme.px(4)
+                                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.18)
+                                    border.color: Theme.primary
+                                    border.width: 1
+
+                                    RowLayout {
+                                        anchors.centerIn: parent
+                                        spacing: Theme.px(4)
+                                        Text { text: "󰄬"; font.family: Theme.fontMono; font.pixelSize: Theme.fontPx(9); color: Theme.primary }
+                                        Text { id: excBadgeTxt; text: "EXCLUDED"; font.family: Theme.font; font.pixelSize: Theme.fontPx(9); font.weight: Font.Bold; color: Theme.primary }
+                                    }
+                                }
+
+                                Rectangle {
+                                    visible: !isExc && modalItemMouse.containsMouse
+                                    Layout.preferredHeight: Theme.px(24)
+                                    Layout.preferredWidth: addExcTxt.implicitWidth + Theme.px(16)
+                                    radius: Theme.px(4)
+                                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.20)
+                                    border.color: Theme.primary
+                                    border.width: 1
+
+                                    Text {
+                                        id: addExcTxt
+                                        anchors.centerIn: parent
+                                        text: "+ Exclude"
+                                        font.family: Theme.font
+                                        font.pixelSize: Theme.fontPx(10)
+                                        font.weight: Font.Bold
+                                        color: Theme.primary
+                                    }
+                                }
+                            }
+
+                            MouseArea {
+                                id: modalItemMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: isExc ? Qt.ArrowCursor : Qt.PointingHandCursor
+                                onClicked: {
+                                    if (!isExc) {
+                                        root.addBlurException(modelData.name, modelData.class, modelData.icon)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
