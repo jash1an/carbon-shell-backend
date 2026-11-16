@@ -73,3 +73,4 @@ NotificationsTab NotificationsTab.qml
 LockScreenTab LockScreenTab.qml
 PersonalizationTab PersonalizationTab.qml
 ShortcutsTab ShortcutsTab.qml
+ShortcutCheatSheet ShortcutCheatSheet.qml

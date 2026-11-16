@@ -482,6 +482,45 @@ Item {
                 }
             }
 
+            // Cheat Sheet Button
+            Rectangle {
+                Layout.preferredHeight: Theme.px(28)
+                Layout.preferredWidth: cheatSheetLabel.implicitWidth + Theme.px(20)
+                radius: Theme.px(6)
+                color: cheatSheetMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(1, 1, 1, 0.05)
+                border.color: cheatSheetMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.25) : Qt.rgba(1, 1, 1, 0.12)
+                border.width: 1
+
+                RowLayout {
+                    id: cheatSheetLabel
+                    anchors.centerIn: parent
+                    spacing: Theme.px(6)
+                    Text {
+                        text: "󰌌"
+                        font.family: Theme.fontMono
+                        font.pixelSize: Theme.fontPx(12)
+                        color: Qt.rgba(1, 1, 1, 0.85)
+                    }
+                    Text {
+                        text: "Cheat Sheet"
+                        font.family: Theme.font
+                        font.pixelSize: Theme.fontPx(11)
+                        font.weight: Font.DemiBold
+                        color: Qt.rgba(1, 1, 1, 0.85)
+                    }
+                }
+
+                MouseArea {
+                    id: cheatSheetMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onEntered: root.describe("Shortcut Cheat Sheet", "Open instant visual heads-up display of all Carbon Shell shortcuts (SUPER + /).")
+                    onExited: root.clearDesc()
+                    onClicked: Quickshell.execDetached(["sh", (Quickshell.env("HOME") || "") + "/.config/carbon/scripts/carbon-ipc.sh", "toggle-cheatsheet"])
+                }
+            }
+
             // Add Custom Shortcut Button
             Rectangle {
                 Layout.preferredHeight: Theme.px(28)
@@ -1045,9 +1084,14 @@ Item {
                                 Layout.preferredWidth: Theme.px(28)
                                 Layout.preferredHeight: Theme.px(28)
                                 radius: Theme.px(4)
-                                color: editKeyMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.18) : Qt.rgba(1, 1, 1, 0.04)
+                                color: editKeyMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.32) : Qt.rgba(1, 1, 1, 0.04)
                                 border.color: editKeyMouse.containsMouse ? Theme.primary : Qt.rgba(1, 1, 1, 0.10)
-                                border.width: 1
+                                border.width: editKeyMouse.containsMouse ? 1.5 : 1
+                                scale: editKeyMouse.containsMouse ? 1.10 : 1.0
+
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                                Behavior on border.color { ColorAnimation { duration: 150 } }
+                                Behavior on scale { NumberAnimation { duration: 150 } }
 
                                 Text {
                                     anchors.centerIn: parent
@@ -1080,9 +1124,14 @@ Item {
                                 Layout.preferredWidth: Theme.px(28)
                                 Layout.preferredHeight: Theme.px(28)
                                 radius: Theme.px(4)
-                                color: resetSingleMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : Qt.rgba(1, 1, 1, 0.04)
+                                color: resetSingleMouse.containsMouse ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.28) : Qt.rgba(1, 1, 1, 0.04)
                                 border.color: resetSingleMouse.containsMouse ? Theme.primary : Qt.rgba(1, 1, 1, 0.10)
-                                border.width: 1
+                                border.width: resetSingleMouse.containsMouse ? 1.5 : 1
+                                scale: resetSingleMouse.containsMouse ? 1.10 : 1.0
+
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                                Behavior on border.color { ColorAnimation { duration: 150 } }
+                                Behavior on scale { NumberAnimation { duration: 150 } }
 
                                 Text {
                                     anchors.centerIn: parent
@@ -1109,9 +1158,14 @@ Item {
                                 Layout.preferredWidth: Theme.px(28)
                                 Layout.preferredHeight: Theme.px(28)
                                 radius: Theme.px(4)
-                                color: deleteMouse.containsMouse ? Qt.rgba(249/255, 115/255, 134/255, 0.20) : Qt.rgba(1, 1, 1, 0.04)
+                                color: deleteMouse.containsMouse ? Qt.rgba(249/255, 115/255, 134/255, 0.35) : Qt.rgba(1, 1, 1, 0.04)
                                 border.color: deleteMouse.containsMouse ? Theme.error : Qt.rgba(1, 1, 1, 0.10)
-                                border.width: 1
+                                border.width: deleteMouse.containsMouse ? 1.5 : 1
+                                scale: deleteMouse.containsMouse ? 1.10 : 1.0
+
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                                Behavior on border.color { ColorAnimation { duration: 150 } }
+                                Behavior on scale { NumberAnimation { duration: 150 } }
 
                                 Text {
                                     anchors.centerIn: parent

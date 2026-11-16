@@ -61,6 +61,18 @@ DEFAULT_SHORTCUTS = [
         "is_custom": False
     },
     {
+        "id": "cheat_sheet",
+        "title": "Shortcuts Cheat Sheet (HUD)",
+        "desc": "Open instant visual quick-reference heads-up display",
+        "category": "Shell & Controls",
+        "combo": "SUPER + slash",
+        "default_combo": "SUPER + slash",
+        "dispatcher": "exec_cmd",
+        "target": "sh ~/.config/carbon/scripts/carbon-ipc.sh toggle-cheatsheet",
+        "can_edit": True,
+        "is_custom": False
+    },
+    {
         "id": "overview",
         "title": "Carbon Overview",
         "desc": "Fluid Bohr-model workspace overview and window switcher",

@@ -195,6 +195,7 @@ ShellRoot {
         if (keep !== "spatialCanvas") { root.spatialCanvasOpen = false; root.spatialCanvasAnimatingOut = false }
         if (keep !== "focus") { root.focusHudOpen = false }
         if (keep !== "settings") { root.settingsHubOpen = false }
+        if (keep !== "cheatsheet") { root.cheatSheetOpen = false }
     }
 
     property bool smallMusicOpen: false
@@ -802,6 +803,21 @@ ShellRoot {
         if (now - root.lastSettingsToggleTime < 280) return
         root.lastSettingsToggleTime = now
         if (root.settingsHubOpen) closeSettingsHub(); else openSettingsHub()
+    }
+
+    /* Shortcuts Cheat Sheet HUD */
+    property bool cheatSheetOpen: false
+    property real lastCheatSheetToggleTime: 0
+    function openCheatSheet() {
+        root.closeLauncher()
+        root.cheatSheetOpen = true
+    }
+    function closeCheatSheet() { root.cheatSheetOpen = false }
+    function toggleCheatSheet() {
+        var now = Date.now()
+        if (now - root.lastCheatSheetToggleTime < 280) return
+        root.lastCheatSheetToggleTime = now
+        if (root.cheatSheetOpen) closeCheatSheet(); else openCheatSheet()
     }
     onLauncherOpenChanged: {
         if (!root.launcherOpen && root.launcherItem)
@@ -1576,6 +1592,12 @@ ShellRoot {
                     }
                     else if (cmd === "close-settings") {
                         root.closeSettingsHub()
+                    }
+                    else if (cmd === "cheatsheet" || cmd === "toggle-cheatsheet" || cmd === "open-cheatsheet") {
+                        root.toggleCheatSheet()
+                    }
+                    else if (cmd === "close-cheatsheet") {
+                        root.closeCheatSheet()
                     }
                     else if (cmd === "reload-blank-tile") {
                         if (root.nucleusHubItem && root.nucleusHubItem.reloadBlankTileConfig) {
@@ -4105,6 +4127,38 @@ ShellRoot {
                     }
                 }
                 onCloseRequested: root.closeSettingsHub()
+            }
+        }
+    }
+
+    /* Shortcuts Cheat Sheet HUD Overlay */
+    Variants {
+        model: Quickshell.screens
+
+        PanelWindow {
+            id: cheatSheetWindow
+            required property var modelData
+
+            screen: modelData
+            color: "transparent"
+            WlrLayershell.namespace: "carbon-cheatsheet"
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.keyboardFocus: root.cheatSheetOpen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            exclusionMode: ExclusionMode.Ignore
+            anchors { top: true; left: true; right: true; bottom: true }
+
+            aboveWindows: true
+            visible: root.cheatSheetOpen
+
+            ShortcutCheatSheet {
+                anchors.fill: parent
+                isOpen: root.cheatSheetOpen
+                onCloseRequested: root.closeCheatSheet()
+                onOpenSettingsRequested: {
+                    root.closeCheatSheet()
+                    root.settingsHubActiveTab = "shortcuts"
+                    root.openSettingsHub()
+                }
             }
         }
     }
