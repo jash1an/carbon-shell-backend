@@ -72,3 +72,4 @@ DefaultAppsTab DefaultAppsTab.qml
 NotificationsTab NotificationsTab.qml
 LockScreenTab LockScreenTab.qml
 PersonalizationTab PersonalizationTab.qml
+ShortcutsTab ShortcutsTab.qml

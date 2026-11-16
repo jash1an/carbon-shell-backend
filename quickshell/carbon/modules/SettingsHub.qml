@@ -137,8 +137,9 @@ Item {
                             model: [
                                 { name: "Appearance", glyph: "󰏘", badge: "M3" },
                                 { name: "Modes", glyph: "󱐋", badge: "STUDIO" },
+                                { name: "Shortcuts", glyph: "󰌌", badge: "KEYMAP" },
                                 { name: "Personalization", glyph: "󰥔", badge: "" },
-                                { name: "Launcher", glyph: "󰌌", badge: "" },
+                                { name: "Launcher", glyph: "󰍉", badge: "" },
                                 { name: "Default Apps", glyph: "󰀻", badge: "" },
                                 { name: "Notifications", glyph: "󰂚", badge: "" },
                                 { name: "Lock Screen", glyph: "󰌾", badge: "" },
@@ -236,6 +237,12 @@ Item {
                         hub: root
                         anchors.fill: parent
                         visible: root.currentSection.toLowerCase() === "modes"
+                    }
+
+                    ShortcutsTab {
+                        hub: root
+                        anchors.fill: parent
+                        visible: root.currentSection.toLowerCase() === "shortcuts" || root.currentSection.toLowerCase() === "keybinds" || root.currentSection.toLowerCase() === "keymap"
                     }
 
                     PersonalizationTab {
