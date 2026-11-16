@@ -2,13 +2,13 @@
 """
 Carbon Shell — Keyboard Shortcuts Manager Backend
 Handles storage, presets, custom user shortcuts, conflict detection,
-Tap Super modifier-only trigger, export/import, and generation of Hyprland Lua keybindings.
+Tap Super modifier-only trigger, mode-specific shortcuts, export/import,
+and generation of Hyprland Lua keybindings.
 """
 
 import os
 import sys
 import json
-import shutil
 import subprocess
 from datetime import datetime
 
@@ -19,8 +19,19 @@ REPO_HYPR_DIR = os.path.join(HOME, "carbon-shell", "hypr")
 
 SHORTCUTS_JSON = os.path.join(CARBON_DIR, "carbon-shortcuts.json")
 CUSTOM_SHORTCUTS_JSON = os.path.join(CARBON_DIR, "carbon-custom-shortcuts.json")
+BAR_MODE_JSON = os.path.join(CARBON_DIR, "carbon-bar-mode.json")
 KEYBINDS_LUA = os.path.join(HYPR_DIR, "keybinds.lua")
 REPO_KEYBINDS_LUA = os.path.join(REPO_HYPR_DIR, "carbon", "keybinds.lua")
+
+def get_active_bar_mode():
+    if os.path.exists(BAR_MODE_JSON):
+        try:
+            with open(BAR_MODE_JSON, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                return d.get("mode", "nucleus")
+        except Exception:
+            pass
+    return "nucleus"
 
 # Default Base Shortcuts Catalog
 DEFAULT_SHORTCUTS = [
@@ -378,6 +389,54 @@ DEFAULT_SHORTCUTS = [
         "is_custom": False
     },
     {
+        "id": "focus_left",
+        "title": "Focus Window Left",
+        "desc": "Move keyboard focus to the window on the left",
+        "category": "Window Management",
+        "combo": "SUPER + left",
+        "default_combo": "SUPER + left",
+        "dispatcher": "exec_cmd",
+        "target": "hyprctl dispatch movefocus l",
+        "can_edit": True,
+        "is_custom": False
+    },
+    {
+        "id": "focus_right",
+        "title": "Focus Window Right",
+        "desc": "Move keyboard focus to the window on the right",
+        "category": "Window Management",
+        "combo": "SUPER + right",
+        "default_combo": "SUPER + right",
+        "dispatcher": "exec_cmd",
+        "target": "hyprctl dispatch movefocus r",
+        "can_edit": True,
+        "is_custom": False
+    },
+    {
+        "id": "focus_up",
+        "title": "Focus Window Up",
+        "desc": "Move keyboard focus to the window above",
+        "category": "Window Management",
+        "combo": "SUPER + up",
+        "default_combo": "SUPER + up",
+        "dispatcher": "exec_cmd",
+        "target": "hyprctl dispatch movefocus u",
+        "can_edit": True,
+        "is_custom": False
+    },
+    {
+        "id": "focus_down",
+        "title": "Focus Window Down",
+        "desc": "Move keyboard focus to the window below",
+        "category": "Window Management",
+        "combo": "SUPER + down",
+        "default_combo": "SUPER + down",
+        "dispatcher": "exec_cmd",
+        "target": "hyprctl dispatch movefocus d",
+        "can_edit": True,
+        "is_custom": False
+    },
+    {
         "id": "resize_left",
         "title": "Resize Window Left",
         "desc": "Contract active window width by 50px",
@@ -427,6 +486,30 @@ DEFAULT_SHORTCUTS = [
         "target": "0 50",
         "repeating": True,
         "can_edit": True,
+        "is_custom": False
+    },
+    {
+        "id": "window_drag",
+        "title": "Move Window (Mouse Drag)",
+        "desc": "Drag floating or tiled window using mouse pointer",
+        "category": "Window Management",
+        "combo": "SUPER + mouse:272",
+        "default_combo": "SUPER + mouse:272",
+        "dispatcher": "drag",
+        "target": "",
+        "can_edit": False,
+        "is_custom": False
+    },
+    {
+        "id": "window_resize_mouse",
+        "title": "Resize Window (Mouse Drag)",
+        "desc": "Resize floating or tiled window using mouse pointer",
+        "category": "Window Management",
+        "combo": "SUPER + mouse:273",
+        "default_combo": "SUPER + mouse:273",
+        "dispatcher": "resize",
+        "target": "",
+        "can_edit": False,
         "is_custom": False
     },
 
@@ -553,8 +636,226 @@ DEFAULT_SHORTCUTS = [
         "locked": True,
         "can_edit": True,
         "is_custom": False
+    },
+    {
+        "id": "power_button",
+        "title": "Hardware Power Button",
+        "desc": "Trigger Carbon power shutdown dialog",
+        "category": "Hardware & Media",
+        "combo": "XF86PowerOff",
+        "default_combo": "XF86PowerOff",
+        "dispatcher": "exec_cmd",
+        "target": "~/.config/carbon/scripts/carbon-power-handler.sh power_button",
+        "locked": True,
+        "can_edit": False,
+        "is_custom": False
+    },
+    {
+        "id": "sleep_button",
+        "title": "Hardware Sleep Button",
+        "desc": "Suspend system and lock session",
+        "category": "Hardware & Media",
+        "combo": "XF86Sleep",
+        "default_combo": "XF86Sleep",
+        "dispatcher": "exec_cmd",
+        "target": "~/.config/carbon/scripts/carbon-power-handler.sh sleep_button",
+        "locked": True,
+        "can_edit": False,
+        "is_custom": False
+    },
+
+    # Workspaces
+    {
+        "id": "workspaces_1_10",
+        "title": "Switch to Workspace 1–10",
+        "desc": "Instant navigation to virtual workspaces 1 through 10",
+        "category": "Workspaces",
+        "combo": "SUPER + 1..0",
+        "default_combo": "SUPER + 1..0",
+        "dispatcher": "workspace",
+        "target": "1..10",
+        "can_edit": False,
+        "is_custom": False
+    },
+    {
+        "id": "moveto_1_10",
+        "title": "Move Window to Workspace 1–10",
+        "desc": "Transfer active window directly to workspaces 1 through 10",
+        "category": "Workspaces",
+        "combo": "SUPER + SHIFT + 1..0",
+        "default_combo": "SUPER + SHIFT + 1..0",
+        "dispatcher": "movetoworkspace",
+        "target": "1..10",
+        "can_edit": False,
+        "is_custom": False
+    },
+    {
+        "id": "scroll_workspace",
+        "title": "Scroll Workspaces (Mouse Wheel)",
+        "desc": "Switch to adjacent workspace using Super + mouse scroll wheel",
+        "category": "Workspaces",
+        "combo": "SUPER + mouse_up/down",
+        "default_combo": "SUPER + mouse_up/down",
+        "dispatcher": "workspace",
+        "target": "e+/-1",
+        "can_edit": False,
+        "is_custom": False
     }
 ]
+
+# Mode-Specific Shortcuts (dynamically injected based on active bar mode)
+MODE_SHORTCUTS = {
+    "vanish": [
+        {
+            "id": "vanish_hub",
+            "title": "Toggle Vanish Hub & Radial Satellites",
+            "desc": "Open or close central clock orb and radial satellites (Tap Super)",
+            "category": "Active Mode: Vanish",
+            "combo": "SUPER (Tap)",
+            "default_combo": "SUPER (Tap)",
+            "dispatcher": "exec_cmd",
+            "target": "sh ~/.config/carbon/scripts/carbon-vanish-dispatch.sh toggle-hub",
+            "can_edit": False,
+            "is_custom": False
+        },
+        {
+            "id": "vanish_lyrics",
+            "title": "Toggle Synced Lyrics",
+            "desc": "Morph bottom caption between calendar date and live synced lyrics",
+            "category": "Active Mode: Vanish",
+            "combo": "SUPER + M",
+            "default_combo": "SUPER + M",
+            "dispatcher": "exec_cmd",
+            "target": "sh ~/.config/carbon/scripts/carbon-vanish-dispatch.sh lyrics",
+            "can_edit": True,
+            "is_custom": False
+        },
+        {
+            "id": "vanish_alerts",
+            "title": "Focus Alerts & Notifications Lobe",
+            "desc": "Directly bloom System Alerts & Notifications satellite",
+            "category": "Active Mode: Vanish",
+            "combo": "SUPER + A",
+            "default_combo": "SUPER + A",
+            "dispatcher": "exec_cmd",
+            "target": "sh ~/.config/carbon/scripts/carbon-vanish-dispatch.sh focus-alerts",
+            "can_edit": True,
+            "is_custom": False
+        },
+        {
+            "id": "vanish_controls",
+            "title": "Vanish Quick Toggles / Control Lobe",
+            "desc": "Bloom Audio, Network, and Device control satellite",
+            "category": "Active Mode: Vanish",
+            "combo": "SUPER + B",
+            "default_combo": "SUPER + B",
+            "dispatcher": "exec_cmd",
+            "target": "sh ~/.config/carbon/scripts/carbon-vanish-dispatch.sh quick-toggles",
+            "can_edit": True,
+            "is_custom": False
+        }
+    ],
+    "nucleus": [
+        {
+            "id": "vanish_hub",
+            "title": "Toggle Vanish Hub & Radial Satellites",
+            "desc": "Open or close central clock orb and radial satellites (Tap Super)",
+            "category": "Active Mode: Nucleus",
+            "combo": "SUPER (Tap)",
+            "default_combo": "SUPER (Tap)",
+            "dispatcher": "exec_cmd",
+            "target": "sh ~/.config/carbon/scripts/carbon-vanish-dispatch.sh toggle-hub",
+            "can_edit": False,
+            "is_custom": False
+        },
+        {
+            "id": "vanish_lyrics",
+            "title": "Toggle Synced Lyrics",
+            "desc": "Morph bottom caption between calendar date and live synced lyrics",
+            "category": "Active Mode: Nucleus",
+            "combo": "SUPER + M",
+            "default_combo": "SUPER + M",
+            "dispatcher": "exec_cmd",
+            "target": "sh ~/.config/carbon/scripts/carbon-vanish-dispatch.sh lyrics",
+            "can_edit": True,
+            "is_custom": False
+        },
+        {
+            "id": "vanish_alerts",
+            "title": "Focus Alerts & Notifications Lobe",
+            "desc": "Directly bloom System Alerts & Notifications satellite",
+            "category": "Active Mode: Nucleus",
+            "combo": "SUPER + A",
+            "default_combo": "SUPER + A",
+            "dispatcher": "exec_cmd",
+            "target": "sh ~/.config/carbon/scripts/carbon-vanish-dispatch.sh focus-alerts",
+            "can_edit": True,
+            "is_custom": False
+        },
+        {
+            "id": "vanish_controls",
+            "title": "Vanish Quick Toggles / Control Lobe",
+            "desc": "Bloom Audio, Network, and Device control satellite",
+            "category": "Active Mode: Nucleus",
+            "combo": "SUPER + B",
+            "default_combo": "SUPER + B",
+            "dispatcher": "exec_cmd",
+            "target": "sh ~/.config/carbon/scripts/carbon-vanish-dispatch.sh quick-toggles",
+            "can_edit": True,
+            "is_custom": False
+        }
+    ],
+    "minimal": [
+        {
+            "id": "minimal_cc",
+            "title": "Toggle Tide Control Center",
+            "desc": "Open Minimal Island quick settings and controls flyout",
+            "category": "Active Mode: Minimal",
+            "combo": "SUPER + SHIFT + E",
+            "default_combo": "SUPER + SHIFT + E",
+            "dispatcher": "exec_cmd",
+            "target": "/usr/bin/quickshell ipc --any-display -p ~/.local/share/quickshell/carbon call tide toggleControlCenter",
+            "can_edit": True,
+            "is_custom": False
+        },
+        {
+            "id": "minimal_player",
+            "title": "Toggle Media Player Pill",
+            "desc": "Expand media controls pill in island bar",
+            "category": "Active Mode: Minimal",
+            "combo": "SUPER + M",
+            "default_combo": "SUPER + M",
+            "dispatcher": "exec_cmd",
+            "target": "/usr/bin/quickshell ipc --any-display -p ~/.local/share/quickshell/carbon call tide togglePlayer",
+            "can_edit": True,
+            "is_custom": False
+        },
+        {
+            "id": "minimal_swipe_r",
+            "title": "Island Next Module",
+            "desc": "Swipe right to next active module in Minimal Island",
+            "category": "Active Mode: Minimal",
+            "combo": "SUPER + Right",
+            "default_combo": "SUPER + Right",
+            "dispatcher": "exec_cmd",
+            "target": "/usr/bin/quickshell ipc --any-display -p ~/.local/share/quickshell/carbon call tide swipeRight",
+            "can_edit": True,
+            "is_custom": False
+        },
+        {
+            "id": "minimal_swipe_l",
+            "title": "Island Previous Module",
+            "desc": "Swipe left to previous active module in Minimal Island",
+            "category": "Active Mode: Minimal",
+            "combo": "SUPER + Left",
+            "default_combo": "SUPER + Left",
+            "dispatcher": "exec_cmd",
+            "target": "/usr/bin/quickshell ipc --any-display -p ~/.local/share/quickshell/carbon call tide swipeLeft",
+            "can_edit": True,
+            "is_custom": False
+        }
+    ]
+}
 
 # Preset Variations
 PRESET_DEFINITIONS = {
@@ -611,6 +912,7 @@ def save_json(path, data):
 def get_config():
     cfg = load_json(SHORTCUTS_JSON, {})
     custom = load_json(CUSTOM_SHORTCUTS_JSON, [])
+    active_mode = get_active_bar_mode()
 
     tap_super = cfg.get("tap_super", False)
     tap_super_action = cfg.get("tap_super_action", "spotlight")
@@ -618,13 +920,22 @@ def get_config():
     user_combos = cfg.get("combos", {})
 
     shortcuts_map = {}
+    # 1. Base shortcuts
     for s in DEFAULT_SHORTCUTS:
         item = s.copy()
         if item["id"] in user_combos:
             item["combo"] = user_combos[item["id"]]
         shortcuts_map[item["id"]] = item
 
-    # Append custom shortcuts
+    # 2. Mode-specific shortcuts
+    mode_items = MODE_SHORTCUTS.get(active_mode, [])
+    for m in mode_items:
+        m_item = m.copy()
+        if m_item["id"] in user_combos:
+            m_item["combo"] = user_combos[m_item["id"]]
+        shortcuts_map[m_item["id"]] = m_item
+
+    # 3. Custom shortcuts
     custom_list = []
     for c in custom:
         c_item = {
@@ -644,6 +955,7 @@ def get_config():
     all_shortcuts = list(shortcuts_map.values()) + custom_list
 
     return {
+        "active_mode": active_mode,
         "tap_super": tap_super,
         "tap_super_action": tap_super_action,
         "preset": preset,
@@ -653,19 +965,6 @@ def get_config():
         "shortcuts": all_shortcuts,
         "custom": custom
     }
-
-def find_conflict(new_combo, ignore_id=None):
-    """Check if new_combo is already claimed by any active shortcut."""
-    if not new_combo or new_combo.strip() in ("", "Unset", "unset", "none"):
-        return None
-    norm_new = normalize_combo(new_combo)
-    cfg = get_config()
-    for s in cfg["shortcuts"]:
-        if ignore_id and s["id"] == ignore_id:
-            continue
-        if normalize_combo(s.get("combo", "")) == norm_new:
-            return s
-    return None
 
 def normalize_combo(combo_str):
     if not combo_str:
@@ -686,6 +985,21 @@ def normalize_combo(combo_str):
             key = p
     mods.sort()
     return " + ".join(mods + ([key] if key else []))
+
+def find_conflict(new_combo, ignore_id=None):
+    """Check if new_combo is already claimed by any active shortcut."""
+    if not new_combo or new_combo.strip() in ("", "Unset", "unset", "none"):
+        return None
+    norm_new = normalize_combo(new_combo)
+    cfg = get_config()
+    for s in cfg["shortcuts"]:
+        if ignore_id and s["id"] == ignore_id:
+            continue
+        if s.get("combo") in ("", "Unset", "unset", "none"):
+            continue
+        if normalize_combo(s.get("combo", "")) == norm_new:
+            return s
+    return None
 
 def generate_lua_bindings(config):
     """
@@ -736,11 +1050,21 @@ def generate_lua_bindings(config):
 
     # Group shortcuts by category
     categories = ["Applications", "Shell & Controls", "Window Management", "Hardware & Media", "Custom"]
+    # Add active mode category dynamically
+    mode_cat = f"Active Mode: {config.get('active_mode', 'nucleus').capitalize()}"
+    if mode_cat not in categories:
+        categories.insert(2, mode_cat)
+
     grouped = {c: [] for c in categories}
     for s in config["shortcuts"]:
         cat = s.get("category", "Shell & Controls")
         if cat in grouped:
             grouped[cat].append(s)
+        elif cat.startswith("Active Mode"):
+            if mode_cat in grouped:
+                grouped[mode_cat].append(s)
+            else:
+                grouped["Shell & Controls"].append(s)
         else:
             grouped["Shell & Controls"].append(s)
 
@@ -754,7 +1078,8 @@ def generate_lua_bindings(config):
 
         for item in items:
             combo = item.get("combo", "").strip()
-            if not combo or combo.lower() == "unset":
+            # If deleted / unset, skip registering in Lua completely!
+            if not combo or combo.lower() in ("unset", "none") or ".." in combo or "mouse" in combo or "Tap" in combo:
                 continue
 
             disp = item.get("dispatcher", "exec_cmd")
@@ -825,7 +1150,6 @@ def apply_and_reload(config):
     """Writes updated configuration files and reloads Hyprland."""
     lua_code = generate_lua_bindings(config)
 
-    # Save to both target config locations
     for p in [KEYBINDS_LUA, REPO_KEYBINDS_LUA]:
         try:
             os.makedirs(os.path.dirname(p), exist_ok=True)
@@ -834,7 +1158,6 @@ def apply_and_reload(config):
         except Exception as e:
             print(f"Warning: could not write {p}: {e}", file=sys.stderr)
 
-    # Live reload Hyprland config
     try:
         subprocess.run(["hyprctl", "reload", "config-only"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception:
@@ -842,7 +1165,7 @@ def apply_and_reload(config):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: carbon-shortcuts-apply.py {get|set|add-custom|remove-custom|set-tap-super|apply-preset|reset-all|reset-one|export|import|sync}")
+        print("Usage: carbon-shortcuts-apply.py {get|set|unset|add-custom|remove-custom|set-tap-super|apply-preset|reset-all|reset-one|check-conflict|export|import|sync}")
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -861,7 +1184,7 @@ def main():
         cfg_data["combos"] = combos
         save_json(SHORTCUTS_JSON, cfg_data)
 
-        # Check if it's a custom shortcut
+        # Check if it is a custom shortcut
         custom = load_json(CUSTOM_SHORTCUTS_JSON, [])
         for c in custom:
             if c.get("id") == item_id:
@@ -871,6 +1194,19 @@ def main():
         full_cfg = get_config()
         apply_and_reload(full_cfg)
         print(json.dumps({"status": "ok", "id": item_id, "combo": new_combo}))
+        sys.exit(0)
+
+    elif cmd in ("unset", "disable") and len(sys.argv) >= 3:
+        item_id = sys.argv[2]
+        cfg_data = load_json(SHORTCUTS_JSON, {})
+        combos = cfg_data.get("combos", {})
+        combos[item_id] = "Unset"
+        cfg_data["combos"] = combos
+        save_json(SHORTCUTS_JSON, cfg_data)
+
+        full_cfg = get_config()
+        apply_and_reload(full_cfg)
+        print(json.dumps({"status": "ok", "unset": item_id}))
         sys.exit(0)
 
     elif cmd == "add-custom" and len(sys.argv) >= 5:
@@ -945,7 +1281,7 @@ def main():
         print(json.dumps({"status": "ok", "message": "All shortcuts reset to Carbon defaults."}))
         sys.exit(0)
 
-    elif cmd == "reset-one" and len(sys.argv) >= 3:
+    elif cmd in ("reset-one", "restore") and len(sys.argv) >= 3:
         item_id = sys.argv[2]
         cfg_data = load_json(SHORTCUTS_JSON, {})
         combos = cfg_data.get("combos", {})
